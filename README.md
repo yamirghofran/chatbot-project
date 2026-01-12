@@ -11,7 +11,7 @@ To set up the project, the easiest way is to copy the all the folders into an em
 - .github: CI/CD with GitHub Actions. It runs the tests every time there is a pull request to the repository.
 - docs: Documentation of the project.
 - examples: Jupyter notebooks with machine learning experiments. Here is where you would do data exploration, try different machine learning models, etc.
-- miguellib: Libraries with common functions that you use in the project. 
+- miguellib: Libraries with common functions that you use in the project.
 - tests: Python tests of the libraries.
 
 ## Setup
@@ -36,12 +36,25 @@ For example, let's say you want to build a recommendation system with data from 
 
 ### Notebooks that call a library
 
-One of the main differences between a professional and an amateur machine learning project is this. Don't put your functions and classes in the notebooks, instead, create libraries and call them from the notebooks. This is the only way to reuse your code and make it scalable. 
+One of the main differences between a professional and an amateur machine learning project is this. Don't put your functions and classes in the notebooks, instead, create libraries and call them from the notebooks. This is the only way to reuse your code and make it scalable.
 
 Most of the time, notebooks are not deployed, they are used for experimentation and visualization. You deploy the libraries. In addition, if you create libraries, you can test them.
 
 ### Why tests are important?
 
-Tests solve one of the most expensive problems in development: maintenance. The way I see testing is like the immune system of your project. It protects your project from bugs and errors and makes sure your project is healthy. 
+Tests solve one of the most expensive problems in development: maintenance. The way I see testing is like the immune system of your project. It protects your project from bugs and errors and makes sure your project is healthy.
 
 A strong test pipeline minimizes maintenance. It is one of the best investments you can do in your project, because it will avoid new buggy code in the project, and it will detect breaking changes when using dependencies.
+
+## Checklist
+
+- [ ] Create a recommender system / chatbot
+- [ ] Perform Expolratory Data Analysis (EDA)
+- [ ] Deploy the system
+- [ ] Have MLOps (versioning, testing, monitoring, etc)
+- [ ] Follow good development practices
+  - [ ] Work on branches
+  - [ ] Add code via Pull Requests
+  - [ ] Comment on issues
+  - [ ] Libraries that are called by notebooks
+- [ ] Evidence of exceptional ability as a group
