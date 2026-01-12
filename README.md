@@ -57,4 +57,5 @@ A strong test pipeline minimizes maintenance. It is one of the best investments 
   - [ ] Add code via Pull Requests
   - [ ] Comment on issues
   - [ ] Libraries that are called by notebooks
+  - [ ] Tests
 - [ ] Evidence of exceptional ability as a group
