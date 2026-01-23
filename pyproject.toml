@@ -1,0 +1,37 @@
+[project]
+name = "miguellib"
+dynamic = ["version"]
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Yousef Amirghofran", email = "yamirghofran@gmail.com" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.19", # 1.19 required by tensorflow 2.6
+    "pandas>2,<3",
+    "ipykernel>=4.6.1,<7",
+    "jupyter>=1,<2",
+    "zensical>=0.0.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "miguellib/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/miguellib",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["miguellib"]
+
+[tool.uv]
+dev-dependencies = [
+    "black>=22.0.0",
+    "pytest>=7.0.0",
+]
