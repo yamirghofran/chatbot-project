@@ -6,13 +6,19 @@ readme = "README.md"
 authors = [
     { name = "Yousef Amirghofran", email = "yamirghofran@gmail.com" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.19", # 1.19 required by tensorflow 2.6
     "pandas>2,<3",
     "ipykernel>=4.6.1,<7",
     "jupyter>=1,<2",
     "zensical>=0.0.2",
+    "requests>=2.32.4",
+    "torch>=2.5.1",
+    "pillow>=10.4.0",
+    "transformers==4.49.0",
+    "einops>=0.8.2",
+    "timm>=1.0.24",
 ]
 
 [build-system]
