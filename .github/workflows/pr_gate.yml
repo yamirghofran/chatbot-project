@@ -51,7 +51,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install . [dev]
+        uv pip install -e ".[dev]"
 
     - name: Python version and dependency list
       run: |
