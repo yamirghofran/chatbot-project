@@ -1,4 +1,4 @@
-from miguellib.datasets.dummy import dummy_dataset
+from spaiced.datasets.dummy import dummy_dataset
 
 
 def test_dummy_dataset():
