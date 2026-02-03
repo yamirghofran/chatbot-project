@@ -1,0 +1,12 @@
+## Repo Structure and Rules
+
+- `main` branch is only production code
+- `dev` is the branch mostly used
+
+## Tools
+
+- Python
+- [uv](https://docs.astral.sh/uv/) instead of pip
+- [marimo](https://docs.marimo.io/) notebooks instead of Jupyter notebooks
+- [polars](https://docs.pola.rs/) instead of Pandas
+- [zensical](https://zensical.org/docs/get-started/) for documentation
