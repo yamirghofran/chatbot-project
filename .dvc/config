@@ -1,0 +1,6 @@
+[core]
+    remote = r2
+['remote "r2"']
+    url = s3://spaiced
+    endpointurl = https://https://a9a190ee80813000e18bacf626b1281b.r2.cloudflarestorage.com
+    credentialpath = /.aws/credentials

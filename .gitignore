@@ -116,6 +116,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Credentials
+.aws/
+credentials
+
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -133,3 +138,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+/data
