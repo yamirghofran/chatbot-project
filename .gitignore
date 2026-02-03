@@ -65,7 +65,8 @@ db.sqlite3-journal
 # Data stuff
 
 datasets/
-data/
+# data/  ← Temporarily commented out to allow DVC tracking
+!data/**/*.dvc
 
 # Flask stuff:
 instance/
