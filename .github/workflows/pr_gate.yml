@@ -9,6 +9,7 @@ on:
     # Only trigger the workflow with a PR to main
     branches:
     - main
+    - dev
 
   # Enable manual trigger
   workflow_dispatch:
