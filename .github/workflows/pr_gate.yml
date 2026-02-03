@@ -57,10 +57,10 @@ jobs:
     - name: Python version and dependency list
       run: |
         echo "Python version expected: ${{ matrix.python }}"
-        python --version
-        which python
-        pip list
+        uv run python --version
+        uv run python -c "import sys; print(sys.executable)"
+        uv run pip list
 
     - name: Run tests
       run: |
-        pytest tests --disable-warnings --durations 0
+        uv run pytest tests --disable-warnings --durations 0
