@@ -1,5 +1,5 @@
 [project]
-name = "spaiced"
+name = "bookdb"
 dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
@@ -23,14 +23,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "spaiced/__init__.py"
-
+bookdb
 [tool.hatch.build.targets.sdist]
 include = [
-    "/spaiced",
+    "/bookdb",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["spaiced"]
+packages = ["bookdb"]
 
 [tool.uv]
 dev-dependencies = [

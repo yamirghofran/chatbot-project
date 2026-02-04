@@ -4,7 +4,7 @@ from pathlib import Path
 # version
 here = Path(__file__).absolute().parent
 version_data = {}
-with open(here.joinpath("spaiced", "__init__.py"), "r") as f:
+with open(here.joinpath("bookdb", "__init__.py"), "r") as f:
     exec(f.read(), version_data)
 version = version_data.get("__version__", "0.0")
 
@@ -18,10 +18,10 @@ install_requires = [
 ]
 
 setup(
-    name="spaiced",
+    name="bookdb",
     version=version,
     install_requires=install_requires,
-    package_dir={"spaiced": "spaiced"},
+    package_dir={"bookdb": "bookdb"},
     python_requires=">=3.6",
     packages=find_packages(where=".", exclude=["docs", "examples", "tests"]),
 )

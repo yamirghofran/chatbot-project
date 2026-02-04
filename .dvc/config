@@ -2,7 +2,7 @@
     remote = r2
     autostage = true
 ['remote "r2"']
-    url = s3://spaiced
+    url = s3://bookdb-dvc
     endpointurl = https://a9a190ee80813000e18bacf626b1281b.r2.cloudflarestorage.com
     credentialpath = ../.aws/credentials
     profile = r2
