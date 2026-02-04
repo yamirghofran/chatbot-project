@@ -65,8 +65,10 @@ db.sqlite3-journal
 # Data stuff
 
 # datasets/
-# data/  ← Temporarily commented out to allow DVC tracking
+data/**
+!data/
 !data/**/*.dvc
+!data/**/*.md
 
 # Flask stuff:
 instance/
@@ -139,5 +141,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/data
+#/data
 .DS_Store
