@@ -1,5 +1,5 @@
 [project]
-name = "miguellib"
+name = "bookdb"
 dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
@@ -22,15 +22,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "miguellib/__init__.py"
+path = "bookdb/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/miguellib",
+    "/bookdb",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["miguellib"]
+packages = ["bookdb"]
 
 [tool.uv]
 dev-dependencies = [
