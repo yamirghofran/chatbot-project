@@ -17,7 +17,7 @@ def _():
 
 @app.cell
 def _(pl):
-    df = pl.read_parquet("raw_goodreads_book_works.parquet")
+    df = pl.read_parquet("../../data/raw_goodreads_book_works.parquet")
 
     # Replace empty strings with null for date fields
     df = df.with_columns(
@@ -92,7 +92,6 @@ def _(df):
     print(f"\n{missing_year_pct:.1f}% of works missing publication year")
     print(f"\n{missing_month_pct:.1f}% of works missing publication month")
     print(f"\n{missing_day_pct:.1f}% of works missing publication day")
-
     return
 
 
@@ -135,11 +134,11 @@ def _(df, pl):
     # Check for negative values
     neg_reviews = df.filter(pl.col("reviews_count") < 0).shape[0]
     neg_year = df.filter(pl.col("original_publication_year") < 1000).shape[0]
-    future_year = df.filter(pl.col("original_publication_year") > 2024).shape[0]
+    future_year = df.filter(pl.col("original_publication_year") > 2026).shape[0]
 
     print(f"Works with negative reviews: {neg_reviews}")
     print(f"Works with publication year < 1000: {neg_year}")
-    print(f"Works with publication year > 2024: {future_year}")
+    print(f"Works with publication year > 2026: {future_year}")
 
     # Check rating_sum consistency
     rating_issues = df.filter(
@@ -293,7 +292,7 @@ def _(df, pl, plt):
     ax_year.set_xlabel("Publication Year")
     ax_year.set_ylabel("Frequency")
     ax_year.set_title("Distribution of Publication Years")
-    ax_year.set_xlim(1800, 2024)
+    ax_year.set_xlim(1800, 2026)
     plt.tight_layout()
     plt.show()
     return
@@ -336,7 +335,6 @@ def _(mo):
 def _(df):
     df["original_language_id"].value_counts()
     df["default_description_language_code"].value_counts()
-
     return
 
 

@@ -17,7 +17,7 @@ def _():
 
 @app.cell
 def _(pl):
-    df = pl.read_parquet("raw_goodreads_book_authors.parquet")
+    df = pl.read_parquet("../../data/raw_goodreads_book_authors.parquet")
     df = df.with_columns(
         [
             pl.col("average_rating").cast(pl.Float64),
