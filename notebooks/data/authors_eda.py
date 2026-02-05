@@ -46,7 +46,6 @@ def _(df):
         ["average_rating", "text_reviews_count", "ratings_count"]
     ).describe()
     summary
-
     return
 
 
@@ -271,6 +270,18 @@ def _(df, pl, plt):
     )
     plt.tight_layout()
     plt.show()
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Feature Engineering Recommendations
+
+    1. Strong correlation between ratings_count and text_reviews_count keep only one.
+    2. Consider creating a 'popularity_score' combining both
+    3. Consider filtering out authors with very few ratings to improve rating reliability
+    """)
     return
 
 
