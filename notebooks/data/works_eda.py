@@ -503,7 +503,7 @@ def _(df, np, stats):
     # Log-transform for better normality
     log_ratings2 = np.log1p(ratings_count)
     log_reviews2 = np.log1p(text_reviews)
-    log_reviews_count = np.log1p(reviews_count + 6069)  # Add offset for negative values
+    log_reviews_count = np.log1p(np.maximum(0, reviews_count))  # Clip negative values at 0
 
     corr1, p1 = stats.pearsonr(log_ratings2, log_reviews2)
     corr2, p2 = stats.pearsonr(log_ratings2, log_reviews_count)
