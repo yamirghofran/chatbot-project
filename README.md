@@ -2,10 +2,6 @@
 
 The objective of this repository is to serve as a template for machine learning projects.
 
-## Getting Started
-
-To set up the project, the easiest way is to copy the all the folders into an empty GitHub repository. Make sure you change the name of the library `spaiced`.
-
 ## Structure
 
 - .github: CI/CD with GitHub Actions. It runs the tests every time there is a pull request to the repository.
