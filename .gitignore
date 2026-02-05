@@ -66,9 +66,7 @@ db.sqlite3-journal
 
 # datasets/
 data/**
-!data/
 !data/**/*.dvc
-!data/**/*.md
 
 # Flask stuff:
 instance/
