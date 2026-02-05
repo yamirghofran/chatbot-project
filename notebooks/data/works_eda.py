@@ -139,7 +139,7 @@ def _(df, pl):
 
     print(f"Works with negative reviews: {neg_reviews}")
     print(f"Works with publication year < 1000: {neg_year}")
-    print(f"Works with publication year > 2026: {future_year}")
+    print(f"Works with publication year > 2024: {future_year}")
 
     # Check rating_sum consistency
     rating_issues = df.filter(
