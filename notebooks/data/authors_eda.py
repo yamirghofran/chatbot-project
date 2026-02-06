@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.19.8"
-app = marimo.App()
+app = marimo.App(layout_file="layouts/authors_eda.slides.json")
 
 
 @app.cell
@@ -30,8 +30,7 @@ def _(mo, pl):
     # Use absolute path from project root
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_authors.parquet")
-    #df = pl.read_parquet(data_path)
-    df = pl.read_parquet("https://pub-eecdafb53cc84b659949b513e40369d2.r2.dev/files/md5/25/1939e78307a157b3285bb98d085ab2")
+    df = pl.read_parquet(data_path)
     df = df.with_columns(
         [
             pl.col("average_rating").cast(pl.Float64),
@@ -124,13 +123,27 @@ def _(df, np, plt):
 
 
 @app.cell
-def _(df, mo, pl):
+def _(mo):
+    # Add slider for IQR multiplier
+    iqr_multiplier = mo.ui.slider(
+        start=1.0,
+        stop=5.0,
+        step=0.1,
+        value=3.0,
+        label="IQR Multiplier",
+        show_value=True,
+    )
+    return (iqr_multiplier,)
+
+
+@app.cell
+def _(df, iqr_multiplier, mo, pl):
     """Outlier Analysis"""
     # Calculate IQR for ratings_count
     q1 = df["ratings_count"].quantile(0.25)
     q3 = df["ratings_count"].quantile(0.75)
     iqr = q3 - q1
-    upper_bound = q3 + 3 * iqr
+    upper_bound = q3 + iqr_multiplier.value * iqr
 
     outliers_count = df.filter(pl.col("ratings_count") > upper_bound).shape[0]
 
@@ -142,8 +155,9 @@ def _(df, mo, pl):
     )
 
     mo.vstack([
-        mo.md(f"Using 3x IQR method, {outliers_count} authors ({outliers_count / df.shape[0] * 100:.2f}%) have extreme rating counts"),
-        mo.md("Top authors by total count:"),
+        iqr_multiplier,
+        mo.md(f"Using {iqr_multiplier.value}x IQR method, {outliers_count} authors ({outliers_count / df.shape[0] * 100:.2f}%) have extreme rating counts"),
+        mo.md("Top authors by ratings:"),
         top_authors
     ])
     return
