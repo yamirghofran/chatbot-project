@@ -24,9 +24,11 @@ def _(mo):
 def _():
     import polars as pl
     import pathlib
+    import os
 
-    # Get all parquet files
-    data_dir = pathlib.Path("../data")
+    # Get all parquet files using absolute path
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    data_dir = pathlib.Path(project_root) / "data"
     parquet_files = sorted(data_dir.glob("*.parquet"))
     parquet_files
     return parquet_files, pl
