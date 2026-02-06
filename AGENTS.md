@@ -7,6 +7,6 @@
 
 - Python
 - [uv](https://docs.astral.sh/uv/) instead of pip
-- [marimo](https://docs.marimo.io/) notebooks instead of Jupyter notebooks
+- [marimo](https://docs.marimo.io/) notebooks instead of Jupyter notebooks. Local docs/instructions at [local marimo docs](.agents/docs/marimo.md)
 - [polars](https://docs.pola.rs/) instead of Pandas
 - [zensical](https://zensical.org/docs/get-started/) for documentation
