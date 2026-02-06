@@ -15,6 +15,12 @@ dependencies = [
     "zensical>=0.0.2",
     "fsspec>=2025.3.0",
     "s3fs>=0.6.0",
+    "polars>=1.8.2",
+    "pyarrow>=17.0.0",
+    "marimo>=0.8.22",
+    "matplotlib>=3.7.5",
+    "seaborn>=0.13.2",
+    "scipy>=1.10.1",
 ]
 
 [build-system]
