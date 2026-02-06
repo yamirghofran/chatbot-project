@@ -1,0 +1,85 @@
+name: opencode-summary
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build PR summary prompt
+        id: pr_prompt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          pr_list_file="$(mktemp)"
+          pr_view_file="$(mktemp)"
+          pr_diff_file="$(mktemp)"
+          pr_diff_prompt_file="$(mktemp)"
+          prompt_file="$(mktemp)"
+
+          if ! gh pr list --state open --limit 50 >"$pr_list_file"; then
+            echo "Unable to fetch gh pr list output." >"$pr_list_file"
+          fi
+
+          if ! gh pr view "$PR_NUMBER" >"$pr_view_file"; then
+            echo "Unable to fetch gh pr view output for PR #$PR_NUMBER." >"$pr_view_file"
+          fi
+
+          if ! gh pr diff "$PR_NUMBER" >"$pr_diff_file"; then
+            echo "Unable to fetch gh pr diff output for PR #$PR_NUMBER." >"$pr_diff_file"
+          fi
+
+          diff_lines="$(wc -l <"$pr_diff_file")"
+          if [ "$diff_lines" -gt 2000 ]; then
+            sed -n '1,2000p' "$pr_diff_file" >"$pr_diff_prompt_file"
+            echo "" >>"$pr_diff_prompt_file"
+            echo "[Diff truncated to first 2000 lines from ${diff_lines} total lines.]" >>"$pr_diff_prompt_file"
+          else
+            cp "$pr_diff_file" "$pr_diff_prompt_file"
+          fi
+
+          {
+            cat .agents/prompts/pr-summary.md
+            echo ""
+            echo "Resolved values for this run:"
+            echo "{{PR_NUMBER}}"
+            echo "$PR_NUMBER"
+            echo ""
+            echo "{{GH_PR_LIST}}"
+            cat "$pr_list_file"
+            echo ""
+            echo "{{GH_PR_VIEW}}"
+            cat "$pr_view_file"
+            echo ""
+            echo "{{GH_PR_DIFF}}"
+            cat "$pr_diff_prompt_file"
+          } >"$prompt_file"
+
+          delimiter="EOF_$(date +%s%N)"
+          {
+            echo "prompt<<$delimiter"
+            cat "$prompt_file"
+            echo "$delimiter"
+          } >>"$GITHUB_OUTPUT"
+
+      - uses: anomalyco/opencode/github@latest
+        env:
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: zai-coding-plan/glm-4.7
+          use_github_token: true
+          prompt: ${{ steps.pr_prompt.outputs.prompt }}
