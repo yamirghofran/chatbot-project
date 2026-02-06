@@ -2,6 +2,8 @@
 
 The objective of this repository is to serve as a template for machine learning projects.
 
+Updating the README here to test opencode.
+
 ## Structure
 
 - .github: CI/CD with GitHub Actions. It runs the tests every time there is a pull request to the repository.
