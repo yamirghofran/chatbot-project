@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.19.7"
-app = marimo.App()
+__generated_with = "0.19.8"
+app = marimo.App(layout_file="layouts/authors_eda.slides.json")
 
 
 @app.cell
@@ -12,11 +12,20 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
+
     return mo, np, pl, plt, sns, stats
 
 
 @app.cell
-def _(pl):
+def _(mo):
+    mo.md("""
+    # Preliminary EDA for Goodreads Authors Dataset
+    """)
+    return
+
+
+@app.cell
+def _(mo, pl):
     import os
     # Use absolute path from project root
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,41 +39,40 @@ def _(pl):
             pl.col("ratings_count").cast(pl.Int64),
         ]
     )
-    df.head()
+    shape = df.shape
+    mo.md(f"""
+    - Dataset contains {shape[0]} authors and {shape[1]} columns.
+
+    - No missing values found in the dataset
+    """)
+    mo.vstack([
+        mo.md(f"""
+    - Dataset contains {shape[0]} authors and {shape[1]} columns.
+
+    - No missing values found in the dataset
+    """),
+        df.head()
+    ])
     return (df,)
 
 
 @app.cell
-def _(df):
-    """Dataset Overview"""
-    shape = df.shape
-    print(f"Dataset contains {shape[0]} authors and {shape[1]} columns")
-    print("\nNo missing values found in the dataset")
-    return
-
-
-@app.cell
-def _(df):
-    """Summary Statistics"""
+def _(df, mo):
+    """""Summary Statistics"""
     summary = df.select(
         ["average_rating", "text_reviews_count", "ratings_count"]
     ).describe()
-    summary
-    return
 
+    distribution_analysis = mo.md(f"""
+        - Average rating ranges from {df['average_rating'].min():.2f} to {df['average_rating'].max():.2f} with mean {df['average_rating'].mean():.2f}
+        - Text reviews count is highly skewed: median {df['text_reviews_count'].median():.0f} vs max {df['text_reviews_count'].max():,.0f}
+        - Ratings count has extreme outliers: median {df['ratings_count'].median():.0f} vs max {df['ratings_count'].max():,.0f} """)
 
-@app.cell
-def _(df):
-    """Data Distribution Analysis"""
-    print(
-        f"Average rating ranges from {df['average_rating'].min():.2f} to {df['average_rating'].max():.2f} with mean {df['average_rating'].mean():.2f}"
-    )
-    print(
-        f"Text reviews count is highly skewed: median {df['text_reviews_count'].median():.0f} vs max {df['text_reviews_count'].max():,.0f}"
-    )
-    print(
-        f"Ratings count has extreme outliers: median {df['ratings_count'].median():.0f} vs max {df['ratings_count'].max():,.0f}"
-    )
+    mo.vstack([
+        mo.md("### Summary Statistics"),
+        distribution_analysis,
+        summary
+    ])
     return
 
 
@@ -86,7 +94,7 @@ def _(df, plt):
     ax_ratings.set_title("Distribution of Author Average Ratings")
     plt.tight_layout()
 
-    plt.show()
+    fig_ratings
     return
 
 
@@ -110,23 +118,34 @@ def _(df, np, plt):
     axes_log[1].set_title("Log-Transformed Ratings Count")
 
     plt.tight_layout()
-    plt.show()
+    fig_log
     return
 
 
 @app.cell
-def _(df, pl):
+def _(mo):
+    # Add slider for IQR multiplier
+    iqr_multiplier = mo.ui.slider(
+        start=1.0,
+        stop=5.0,
+        step=0.1,
+        value=3.0,
+        label="IQR Multiplier",
+        show_value=True,
+    )
+    return (iqr_multiplier,)
+
+
+@app.cell
+def _(df, iqr_multiplier, mo, pl):
     """Outlier Analysis"""
     # Calculate IQR for ratings_count
     q1 = df["ratings_count"].quantile(0.25)
     q3 = df["ratings_count"].quantile(0.75)
     iqr = q3 - q1
-    upper_bound = q3 + 3 * iqr
+    upper_bound = q3 + iqr_multiplier.value * iqr
 
     outliers_count = df.filter(pl.col("ratings_count") > upper_bound).shape[0]
-    print(
-        f"Using 3x IQR method, {outliers_count} authors ({outliers_count / df.shape[0] * 100:.2f}%) have extreme rating counts"
-    )
 
     # Check top authors by ratings
     top_authors = (
@@ -134,8 +153,13 @@ def _(df, pl):
         .select(["name", "ratings_count"])
         .head(10)
     )
-    print(f"\nTop 10 authors by total ratings count:")
-    print(top_authors)
+
+    mo.vstack([
+        iqr_multiplier,
+        mo.md(f"Using {iqr_multiplier.value}x IQR method, {outliers_count} authors ({outliers_count / df.shape[0] * 100:.2f}%) have extreme rating counts"),
+        mo.md("Top authors by ratings:"),
+        top_authors
+    ])
     return
 
 
@@ -148,7 +172,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, plt, sns):
+def _(df, mo, plt, sns):
     """Correlation Analysis"""
     # Convert to pandas for correlation heatmap
     numeric_df = df.select(
@@ -160,22 +184,17 @@ def _(df, plt, sns):
     sns.heatmap(correlation, annot=True, cmap="coolwarm", center=0, fmt=".3f", ax=ax_analysis)
     ax_analysis.set_title("Correlation Matrix")
     plt.tight_layout()
-    plt.show()
+
+    mo.vstack([
+        mo.md("## Correlation Analysis"),
+        fig_analysis,
+        mo.md("""Strong correlation between ratings_count and text_reviews_count suggests these are redundant popularity metrics: consider creating a `popularity_score` combining both"""),
+    ])
     return
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    Strong correlation between ratings_count and text_reviews_count suggests these are redundant popularity metrics
-
-    Consider creating a 'popularity_score' combining both
-    """)
-    return
-
-
-@app.cell
-def _(df, np, plt):
+def _(df, mo, np, plt):
     """Rating vs Popularity Analysis"""
     fig_analysis2, axes_analysis2 = plt.subplots(1, 2, figsize=(14, 5))
 
@@ -202,15 +221,11 @@ def _(df, np, plt):
     axes_analysis2[1].set_title("Average Rating vs Text Reviews Count")
 
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Average rating shows weak positive correlation with popularity (more popular authors tend to have slightly higher ratings)
-    """)
+    mo.vstack([
+        mo.md("""Average rating shows weak positive correlation with popularity (more popular authors tend to have slightly higher ratings)"""),
+        fig_analysis2
+    ])
     return
 
 
@@ -273,7 +288,7 @@ def _(df, pl, plt):
         "Average Rating with Confidence Intervals for Top 100 Authors (>=1000 ratings)"
     )
     plt.tight_layout()
-    plt.show()
+    fig_quality
     return
 
 
