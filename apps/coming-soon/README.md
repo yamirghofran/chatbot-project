@@ -4,7 +4,7 @@ Ultra-minimal static landing page served via Cloudflare Pages.
 
 ## Structure
 
-The Astro app lives at `apps/coming-soon` inside this repo. Astro builds the site into `dist`, which Cloudflare Pages can deploy as static assets. citeturn0search2turn0search4
+The Astro app lives at `apps/coming-soon` inside this repo. Astro builds the site into `dist`, which Cloudflare Pages can deploy as static assets.
 
 ## Local dev
 
