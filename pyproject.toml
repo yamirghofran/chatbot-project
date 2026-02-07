@@ -23,6 +23,11 @@ dependencies = [
     "scipy>=1.10.1",
     "requests>=2.32.4",
     "adlfs>=2024.7.0",
+    "sqlalchemy",
+    "alembic",
+    "pydantic",
+    "python-dotenv",
+    "pymysql",
 ]
 
 [build-system]
