@@ -1,8 +1,9 @@
 """
-Simple dataset importer for books and authors.
+Dataset importer for books and authors.
 
-Reads CSV or Parquet files using polars and inserts data into the DB
-in batches. Keeps logic obvious and debuggable.
+Supports:
+- Generic CSV/Parquet import via import_dataset()
+- Goodreads-specific imports via import_authors() and import_books()
 """
 
 from pathlib import Path
@@ -15,7 +16,7 @@ from bookdb.db.session import SessionLocal
 from .crud import BookCRUD, AuthorCRUD
 
 
-# Column mappings
+# Column mappings for generic imports
 
 DEFAULT_COLUMNS = {
     "title": "title",
@@ -29,8 +30,7 @@ DEFAULT_COLUMNS = {
 # Helpers
 
 def read_file(path: str | Path) -> pl.DataFrame:
-    # Support both csv and parquet
-    
+    """Read CSV or Parquet file."""
     path = Path(path)
     ext = path.suffix.lower()
 
@@ -95,6 +95,7 @@ def import_dataset(
         "rows": 0,
         "books_created": 0,
         "books_skipped": 0,
+        "authors_created"
         "errors": 0,
     }
 
@@ -127,12 +128,11 @@ def import_dataset(
 
                     seen_titles.add(title_key)
 
-                    book = BookCRUD.create_with_authors(
+                    BookCRUD.create_with_authors(
                         session,
                         author_names=author_names,
                         **book_data,
                     )
-
                     stats["books_created"] += 1
 
                 except Exception:
@@ -170,6 +170,188 @@ def preview_dataset(file_path: str | Path, n: int = 5) -> list[dict]:
             })
 
     return preview
+
+
+# Importers for individual models (not paired)
+def parse_rating_dist(rating_str: str | None) -> dict[str, int]:
+    """
+    Parse Goodreads rating_dist string.
+    Format: "5:count|4:count|3:count|2:count|1:count|total:count"
+    """
+    result = {
+        "rating_dist_1": 0,
+        "rating_dist_2": 0,
+        "rating_dist_3": 0,
+        "rating_dist_4": 0,
+        "rating_dist_5": 0,
+        "rating_dist_total": 0,
+    }
+
+    if not rating_str:
+        return result
+
+    try:
+        for part in rating_str.split("|"):
+            key, val = part.split(":")
+            count = int(val)
+            if key == "total":
+                result["rating_dist_total"] = count
+            elif key in ("1", "2", "3", "4", "5"):
+                result[f"rating_dist_{key}"] = count
+    except (ValueError, AttributeError):
+        pass
+
+    return result
+
+
+def import_authors(
+    file_path: str | Path = None,
+    batch_size: int = 1000,
+    limit: int | None = None,
+    session: Session | None = None,
+) -> dict[str, int]:
+    """
+    Import authors from Goodreads authors dataset.
+
+    Expected columns: name, author_id, average_rating, ratings_count, text_reviews_count
+    """
+    stats = {
+        "rows": 0,
+        "authors_created": 0,
+        "authors_skipped": 0,
+        "errors": 0,
+    }
+
+    df = pl.read_parquet(file_path)
+
+    if limit:
+        df = df.head(limit)
+
+    rows = df.to_dicts()
+    stats["rows"] = len(rows)
+
+    own_session = session is None
+    if own_session:
+        session = SessionLocal()
+
+    seen_names: set[str] = set()
+
+    try:
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i : i + batch_size]
+
+            for row in batch:
+                try:
+                    name = row.get("name")
+                    if not name or not str(name).strip():
+                        stats["errors"] += 1
+                        continue
+
+                    name = str(name).strip()
+                    name_key = name.lower()
+
+                    if name_key in seen_names:
+                        stats["authors_skipped"] += 1
+                        continue
+
+                    seen_names.add(name_key)
+                    AuthorCRUD.create(session, name)
+                    stats["authors_created"] += 1
+
+                except Exception:
+                    stats["errors"] += 1
+                    continue
+
+            if own_session:
+                session.commit()
+
+    finally:
+        if own_session:
+            session.close()
+
+    return stats
+
+
+def import_books(
+    file_path: str | Path = None,
+    batch_size: int = 1000,
+    limit: int | None = None,
+    session: Session | None = None,
+) -> dict[str, int]:
+    """
+    Import books from Goodreads book works dataset.
+
+    Expected columns: original_title, original_publication_year/month/day,
+                      rating_dist, ratings_count, reviews_count, work_id
+    """
+    stats = {
+        "rows": 0,
+        "books_created": 0,
+        "books_skipped": 0,
+        "errors": 0,
+    }
+
+    df = pl.read_parquet(file_path)
+
+    if limit:
+        df = df.head(limit)
+
+    rows = df.to_dicts()
+    stats["rows"] = len(rows)
+
+    own_session = session is None
+    if own_session:
+        session = SessionLocal()
+
+    seen_titles: set[str] = set()
+
+    try:
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i : i + batch_size]
+
+            for row in batch:
+                try:
+                    title = row.get("original_title")
+                    if not title or not str(title).strip():
+                        stats["errors"] += 1
+                        continue
+
+                    title = str(title).strip()
+                    title_key = title.lower()
+
+                    if title_key in seen_titles:
+                        stats["books_skipped"] += 1
+                        continue
+
+                    seen_titles.add(title_key)
+
+                    # Parse rating distribution
+                    ratings = parse_rating_dist(row.get("rating_dist"))
+
+                    book_data = {
+                        "title": title,
+                        "publish_year": safe_int(row.get("original_publication_year")),
+                        "publish_month": safe_int(row.get("original_publication_month")),
+                        "publish_day": safe_int(row.get("original_publication_day")),
+                        "num_reviews": safe_int(row.get("reviews_count")) or 0,
+                        **ratings,
+                    }
+
+                    BookCRUD.create(session, **book_data)
+                    stats["books_created"] += 1
+
+                except Exception:
+                    stats["errors"] += 1
+                    continue
+
+            if own_session:
+                session.commit()
+
+    finally:
+        if own_session:
+            session.close()
+
+    return stats
 
 
 

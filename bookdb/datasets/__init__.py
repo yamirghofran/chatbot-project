@@ -1,21 +1,15 @@
 """
 Dataset processing and CRUD operations for BookDB.
 
-This module provides tools for importing datasets and performing
-database operations on books, authors, users, and lists.
-
 Quick start:
-    from bookdb.datasets import DatasetProcessor
+    from bookdb.datasets import import_authors, import_books
 
-    # Import a dataset
-    stats = DatasetProcessor.process_dataset("books.csv")
-    print(stats)
+    # Import Goodreads data
+    stats = import_authors("data/raw_goodreads_book_authors.parquet")
+    stats = import_books("data/raw_goodreads_book_works.parquet")
 
-    # Preview before importing
-    preview = DatasetProcessor.preview("books.parquet", n_rows=5)
-
-    # Validate a file
-    info = DatasetProcessor.validate_file("books.json")
+    # Or use generic import for simple CSV/Parquet files
+    stats = import_dataset("books.csv")
 """
 
 from .crud import (
@@ -23,12 +17,13 @@ from .crud import (
     BookCRUD,
     UserCRUD,
     BookListCRUD,
-    BaseCRUD,
 )
 from .processor import (
-    DatasetProcessor,
-    ColumnMapping,
-    ProcessingStats,
+    import_dataset,
+    import_authors,
+    import_books,
+    preview_dataset,
+    read_file,
 )
 
 __all__ = [
@@ -37,9 +32,11 @@ __all__ = [
     "BookCRUD",
     "UserCRUD",
     "BookListCRUD",
-    "BaseCRUD",
-    # Dataset processing
-    "DatasetProcessor",
-    "ColumnMapping",
-    "ProcessingStats",
+    # Goodreads imports
+    "import_authors",
+    "import_books",
+    # Generic imports
+    "import_dataset",
+    "preview_dataset",
+    "read_file",
 ]
