@@ -29,6 +29,10 @@ from .collections import (
     get_books_collection,
     get_users_collection,
 )
+from .embeddings import (
+    EmbeddingService,
+    get_embedding_service,
+)
 
 __all__ = [
     # Client
@@ -48,4 +52,7 @@ __all__ = [
     "initialize_all_collections",
     "get_books_collection",
     "get_users_collection",
+    # Embeddings
+    "EmbeddingService",
+    "get_embedding_service",
 ]
