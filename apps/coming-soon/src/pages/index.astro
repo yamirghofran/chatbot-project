@@ -1,0 +1,80 @@
+---
+const title = "BookDB — Coming Soon";
+const description = "BookDB is coming soon.";
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content={description} />
+        <meta name="generator" content={Astro.generator} />
+        <title>{title}</title>
+        <style>
+            :root {
+                --bg: #fafafa;
+                --fg: #111111;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            html {
+                color-scheme: light;
+                background: var(--bg);
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--fg);
+            }
+            main {
+                min-height: 100%;
+                display: grid;
+                place-items: center;
+                text-align: center;
+                padding: 40px 20px;
+            }
+      .stack {
+        transform: translateY(-32px);
+      }
+            img {
+                width: 240px;
+                height: auto;
+                margin: 0 0 18px 0;
+            }
+            h1 {
+                margin: 0;
+                font-family: "Lora", serif;
+                font-weight: 400;
+                font-size: clamp(2.25rem, 5vw, 3.5rem);
+                letter-spacing: 0.02em;
+            }
+            p {
+                margin: 10px 0 0 0;
+                font-family: "Crimson Text", serif;
+                font-weight: 400;
+                font-size: clamp(1.15rem, 2.4vw, 1.4rem);
+            }
+        </style>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400&family=Lora:wght@400&display=swap"
+        />
+    </head>
+    <body>
+        <main>
+            <div class="stack">
+                <img src="/bookdb.avif" alt="BookDB mark" />
+                <h1>BookDB</h1>
+                <p>Coming soon</p>
+            </div>
+        </main>
+    </body>
+</html>
