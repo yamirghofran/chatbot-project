@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Yousef Amirghofran", email = "yamirghofran@gmail.com" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 dependencies = [
     "numpy>=1.19", # 1.19 required by tensorflow 2.6
     "pandas>2,<3",
@@ -28,6 +28,8 @@ dependencies = [
     "pydantic",
     "python-dotenv",
     "psycopg[binary]",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [build-system]
