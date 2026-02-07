@@ -1,6 +1,6 @@
 ---
-const title = "BookDB — Coming Soon";
-const description = "BookDB is coming soon.";
+const title = "BookDB";
+const description = "Coming soon.";
 ---
 
 <!doctype html>
@@ -10,7 +10,42 @@ const description = "BookDB is coming soon.";
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content={description} />
         <meta name="generator" content={Astro.generator} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content="/og-image.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content="/og-image.png" />
         <title>{title}</title>
+        <link rel="icon" href="/favicon/favicon.ico" sizes="any" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon/favicon-32x32.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/favicon/favicon-16x16.png"
+        />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="192x192"
+            href="/favicon/android-chrome-192x192.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="512x512"
+            href="/favicon/android-chrome-512x512.png"
+        />
+        <link rel="manifest" href="/favicon/site.webmanifest" />
         <style>
             :root {
                 --bg: #fafafa;
@@ -39,9 +74,9 @@ const description = "BookDB is coming soon.";
                 text-align: center;
                 padding: 40px 20px;
             }
-      .stack {
-        transform: translateY(-32px);
-      }
+            .stack {
+                transform: translateY(-32px);
+            }
             img {
                 width: 240px;
                 height: auto;
