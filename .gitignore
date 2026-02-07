@@ -142,3 +142,6 @@ dmypy.json
 #/data
 .DS_Store
 /data
+
+# ChromaDB local data
+chroma_data/

@@ -17,5 +17,18 @@ services:
       timeout: 5s
       retries: 10
 
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: local-chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-TRUE}
+
 volumes:
   pg_data:
+  chroma_data:

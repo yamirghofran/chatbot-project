@@ -1,4 +1,4 @@
-.PHONY: help install dev db-up db-down db-reset migrate make-migration seed setup
+.PHONY: help install dev db-up db-down db-reset migrate make-migration seed setup chroma-up chroma-down chroma-reset chroma-logs
 
 help:
 	@echo "Available commands:"
@@ -9,6 +9,10 @@ help:
 	@echo "  make make-migration    - Create a migration (msg=...)"
 	@echo "  make seed              - Seed the database"
 	@echo "  make setup             - Bring up DB, migrate, seed"
+	@echo "  make chroma-up         - Start ChromaDB with Docker"
+	@echo "  make chroma-down       - Stop ChromaDB"
+	@echo "  make chroma-reset      - Reset ChromaDB volume"
+	@echo "  make chroma-logs       - View ChromaDB logs"
 
 install:
 	uv sync
@@ -39,3 +43,17 @@ setup:
 	make db-up
 	make migrate
 	make seed
+
+chroma-up:
+	docker compose up -d chromadb
+
+chroma-down:
+	docker compose stop chromadb
+
+chroma-reset:
+	docker compose down chromadb
+	docker volume rm bookdb_chroma_data || true
+	docker compose up -d chromadb
+
+chroma-logs:
+	docker compose logs -f chromadb
