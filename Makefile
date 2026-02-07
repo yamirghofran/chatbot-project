@@ -2,13 +2,11 @@
 
 help:
 	@echo "Available commands:"
-	@echo "  make install           - Install dependencies"
-	@echo "  make dev               - Install dev dependencies"
-	@echo "  make db-up             - Start MySQL with Docker"
-	@echo "  make db-down           - Stop MySQL"
-	@echo "  make db-reset          - Reset MySQL volume"
+	@echo "  make db-up             - Start Postgres with Docker"
+	@echo "  make db-down           - Stop Postgres"
+	@echo "  make db-reset          - Reset Postgres volume"
 	@echo "  make migrate           - Apply migrations"
-	@echo "  make make-migration    - Create a new migration (msg=...)"
+	@echo "  make make-migration    - Create a migration (msg=...)"
 	@echo "  make seed              - Seed the database"
 	@echo "  make setup             - Bring up DB, migrate, seed"
 
@@ -35,7 +33,7 @@ make-migration:
 	alembic revision --autogenerate -m "$(msg)"
 
 seed:
-	python bookdb/seed.py
+	python app/seed.py
 
 setup:
 	make db-up

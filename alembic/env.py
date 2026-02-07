@@ -4,8 +4,8 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from dotenv import load_dotenv
 
-from app.db.base import Base
-from app.db import models  # noqa: F401
+from bookdb.db.base import Base
+from bookdb.db import models  # noqa
 
 load_dotenv()
 

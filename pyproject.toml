@@ -27,7 +27,7 @@ dependencies = [
     "alembic",
     "pydantic",
     "python-dotenv",
-    "pymysql",
+    "psycopg[binary]",
 ]
 
 [build-system]
