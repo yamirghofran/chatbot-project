@@ -500,7 +500,7 @@ def _(df, mo, pl):
 
     books_distribution = df.group_by("books_count").len().sort("books_count")
     mo.vstack([
-        (f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"),
+        mo.md(f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"),
         mo.md("\nDistribution of books count:"),
         books_distribution.head(20)
     ])
