@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.19.8"
-app = marimo.App(layout_file="layouts/authors_eda.slides.json")
+__generated_with = "0.19.7"
+app = marimo.App()
 
 
 @app.cell
@@ -12,7 +12,6 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
-
     return mo, np, pl, plt, sns, stats
 
 
@@ -293,6 +292,27 @@ def _(df, pl, plt):
 
 
 @app.cell
+def _(df, mo, pl):
+    neg_ratings = df.filter(pl.col("ratings_count") < 0).shape[0]
+    neg_reviews = df.filter(pl.col("text_reviews_count") < 0).shape[0]
+    
+    # Check for low rating counts
+    low_ratings = df.filter(pl.col("ratings_count") < 10).shape[0]
+    
+    # Check for duplicates
+    duplicates = df.group_by("author_id").len().filter(pl.col("len") > 1).shape[0]
+    
+    mo.vstack([
+        mo.md("### Data Quality"),
+        mo.md(f"- **Negative ratings_count**: {neg_ratings} rows"),
+        mo.md(f"- **Negative text_reviews_count**: {neg_reviews} rows"),
+        mo.md(f"- **Authors with < 10 ratings**: {low_ratings} ({low_ratings/df.shape[0]*100:.1f}%)"),
+        mo.md(f"- **Duplicate author_id**: {duplicates} rows")
+    ])
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     ## Feature Engineering Recommendations
@@ -300,6 +320,15 @@ def _(mo):
     1. Strong correlation between ratings_count and text_reviews_count keep only one.
     2. Consider creating a 'popularity_score' combining both
     3. Consider filtering out authors with very few ratings to improve rating reliability
+    4. Log-Transform Skewed Metrics
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Data Cleaning
     """)
     return
 
