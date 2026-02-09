@@ -99,15 +99,17 @@ class BookVectorCRUD(BaseVectorCRUD):
             genre=genre,
         )
         
-        if embedding is None:
-            from .embeddings import get_embedding_service
-            service = get_embedding_service()
-            embedding = service.generate_book_embedding(
-                title=title,
-                description=description,
-                author=author,
-                genre=genre,
-            )
+        # TODO: Generate embedding if not provided
+        # if embedding is None:
+        #     from .embeddings import get_embedding_service
+        #     service = get_embedding_service()
+        #     embedding = service.generate_book_embedding(
+        #         title=title,
+        #         description=description,
+        #         author=author,
+        #         genre=genre,
+        #     )
+        
         self.add(
             id=book_id,
             document=document,
@@ -191,15 +193,16 @@ class BookVectorCRUD(BaseVectorCRUD):
                 genre=metadata.genre,
             )
             
-            if embedding is None:
-                from .embeddings import get_embedding_service
-                service = get_embedding_service()
-                embedding = service.generate_book_embedding(
-                    title=metadata.title,
-                    description=description,
-                    author=metadata.author,
-                    genre=metadata.genre,
-                )
+            # TODO: Regenerate embedding if content changed
+            # if embedding is None:
+            #     from .embeddings import get_embedding_service
+            #     service = get_embedding_service()
+            #     embedding = service.generate_book_embedding(
+            #         title=metadata.title,
+            #         description=description,
+            #         author=metadata.author,
+            #         genre=metadata.genre,
+            #     )
         
         # Update in collection
         self.update(
