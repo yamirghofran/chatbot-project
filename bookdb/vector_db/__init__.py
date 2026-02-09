@@ -34,6 +34,7 @@ from .embeddings import (
     get_embedding_service,
 )
 from .crud import BaseVectorCRUD
+from .book_crud import BookVectorCRUD
 
 __all__ = [
     # Client
@@ -58,4 +59,5 @@ __all__ = [
     "get_embedding_service",
     # CRUD
     "BaseVectorCRUD",
+    "BookVectorCRUD",
 ]
