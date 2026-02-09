@@ -204,8 +204,8 @@ class TestCollectionManager:
         manager = CollectionManager()
         manager.initialize_collections()
         
-        # Should create both collections
-        assert mock_client.get_or_create_collection.call_count == 2
+        # Should create all collections
+        assert mock_client.get_or_create_collection.call_count == 3
         
         # Check books collection creation
         calls = mock_client.get_or_create_collection.call_args_list
@@ -213,8 +213,13 @@ class TestCollectionManager:
         assert books_call[1]["name"] == "books"
         assert "cosine" in books_call[1]["metadata"]["hnsw:space"]
         
+        # Check authors collection creation
+        authors_call = calls[1]
+        assert authors_call[1]["name"] == "authors"
+        assert "cosine" in authors_call[1]["metadata"]["hnsw:space"]
+        
         # Check users collection creation
-        users_call = calls[1]
+        users_call = calls[2]
         assert users_call[1]["name"] == "users"
         assert "cosine" in users_call[1]["metadata"]["hnsw:space"]
     
