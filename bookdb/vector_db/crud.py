@@ -100,9 +100,9 @@ class BaseVectorCRUD(ABC):
             raise ValueError("Length of documents must match length of ids")
         
         # Check for existing IDs
-        existing_ids = [id for id in ids if self.exists(id)]
-        if existing_ids:
-            raise ValueError(f"Items with IDs already exist: {existing_ids}")
+        existing_items = self.collection.get(ids=ids)
+        if existing_items['ids']:
+            raise ValueError(f"Items with IDs already exist: {existing_items['ids']}")
         
         try:
             self.collection.add(
