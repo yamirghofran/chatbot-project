@@ -95,7 +95,7 @@ def import_dataset(
         "rows": 0,
         "books_created": 0,
         "books_skipped": 0,
-        "authors_created"
+        "authors_created": 0,
         "errors": 0,
     }
 
@@ -151,25 +151,9 @@ def import_dataset(
 
 # Preview helper to inspect datasets before upload
 def preview_dataset(file_path: str | Path, n: int = 5) -> list[dict]:
+    """Return the first n rows of a dataset file as-is."""
     df = read_file(file_path)
-    rows = df.head(n).to_dicts()
-
-    preview = []
-
-    for row in rows:
-        try:
-            book, authors = extract_book(row, DEFAULT_COLUMNS)
-            preview.append({
-                "book": book,
-                "authors": authors,
-            })
-        except Exception as e:
-            preview.append({
-                "error": str(e),
-                "row": row,
-            })
-
-    return preview
+    return df.head(n).to_dicts()
 
 
 # Importers for individual models (not paired)
@@ -255,7 +239,22 @@ def import_authors(
                         continue
 
                     seen_names.add(name_key)
-                    AuthorCRUD.create(session, name)
+
+                    author_data = {}
+                    avg = row.get("average_rating")
+                    if avg is not None:
+                        try:
+                            author_data["average_rating"] = float(avg)
+                        except (TypeError, ValueError):
+                            pass
+                    rc = safe_int(row.get("ratings_count"))
+                    if rc is not None:
+                        author_data["ratings_count"] = rc
+                    trc = safe_int(row.get("text_reviews_count"))
+                    if trc is not None:
+                        author_data["text_reviews_count"] = trc
+
+                    AuthorCRUD.create(session, name, **author_data)
                     stats["authors_created"] += 1
 
                 except Exception:
@@ -334,6 +333,16 @@ def import_books(
                         "publish_month": safe_int(row.get("original_publication_month")),
                         "publish_day": safe_int(row.get("original_publication_day")),
                         "num_reviews": safe_int(row.get("reviews_count")) or 0,
+                        "text_reviews_count": safe_int(row.get("text_reviews_count")),
+                        "ratings_count": safe_int(row.get("ratings_count")),
+                        "ratings_sum": safe_int(row.get("ratings_sum")),
+                        "books_count": safe_int(row.get("books_count")),
+                        "media_type": row.get("media_type") or None,
+                        "best_book_id": row.get("best_book_id") or None,
+                        "work_id": row.get("work_id") or None,
+                        "original_language_id": row.get("original_language_id") or None,
+                        "default_description_language_code": row.get("default_description_language_code") or None,
+                        "default_chaptering_book_id": row.get("default_chaptering_book_id") or None,
                         **ratings,
                     }
 

@@ -3,6 +3,7 @@ from sqlalchemy import (
     String,
     DateTime,
     Integer,
+    Float,
     ForeignKey,
     Table,
     func,
@@ -83,12 +84,23 @@ class Book(Base):
     publish_year: Mapped[int | None] = mapped_column(Integer)
 
     num_reviews: Mapped[int] = mapped_column(Integer, default=0)
+    text_reviews_count: Mapped[int | None] = mapped_column(Integer)
+    ratings_count: Mapped[int | None] = mapped_column(Integer)
+    ratings_sum: Mapped[int | None] = mapped_column(Integer)
     rating_dist_1: Mapped[int] = mapped_column(Integer, default=0)
     rating_dist_2: Mapped[int] = mapped_column(Integer, default=0)
     rating_dist_3: Mapped[int] = mapped_column(Integer, default=0)
     rating_dist_4: Mapped[int] = mapped_column(Integer, default=0)
     rating_dist_5: Mapped[int] = mapped_column(Integer, default=0)
     rating_dist_total: Mapped[int] = mapped_column(Integer, default=0)
+
+    books_count: Mapped[int | None] = mapped_column(Integer)
+    media_type: Mapped[str | None] = mapped_column(String(50))
+    best_book_id: Mapped[str | None] = mapped_column(String(50))
+    work_id: Mapped[str | None] = mapped_column(String(50))
+    original_language_id: Mapped[str | None] = mapped_column(String(50))
+    default_description_language_code: Mapped[str | None] = mapped_column(String(10))
+    default_chaptering_book_id: Mapped[str | None] = mapped_column(String(50))
 
     authors: Mapped[list["Author"]] = relationship(
         secondary=book_authors,
@@ -108,6 +120,9 @@ class Author(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
+    average_rating: Mapped[float | None] = mapped_column(Float)
+    ratings_count: Mapped[int | None] = mapped_column(Integer)
+    text_reviews_count: Mapped[int | None] = mapped_column(Integer)
 
     books: Mapped[list["Book"]] = relationship(
         secondary=book_authors,

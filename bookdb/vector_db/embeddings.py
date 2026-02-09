@@ -90,6 +90,9 @@ class EmbeddingService:
             ...     author="George Orwell",
             ... )
         """
+        # testing embedding service
+        return [1, 1, 1, 1]
+    
         # TODO: Implement book embedding generation
         # - Combine text fields into a single string
         # - Generate embedding using the model

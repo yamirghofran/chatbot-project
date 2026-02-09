@@ -26,8 +26,8 @@ class AuthorCRUD:
         return session.scalar(stmt)
 
     @staticmethod
-    def create(session: Session, name: str) -> Author:
-        author = Author(name=name)
+    def create(session: Session, name: str, **kwargs) -> Author:
+        author = Author(name=name, **kwargs)
         session.add(author)
         session.flush()
         return author
