@@ -9,8 +9,10 @@ from bookdb.db import models  # noqa
 
 load_dotenv()
 
+DATABASE_URL = f"postgresql+psycopg://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PW']}@localhost:5433/{os.environ['DATABASE_NAME']}"
+
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 fileConfig(config.config_file_name)
 target_metadata = Base.metadata

@@ -179,7 +179,7 @@ session.close()
 
 ### Connection String
 
-For external tools (DBeaver, pgAdmin, etc.):
+For external tools (DBeaver, pgAdmin, tablePlus, etc.):
 
 ```
 Host: localhost

@@ -5,5 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-engine = create_engine(os.environ["DATABASE_URL"], future=True)
+DATABASE_URL = f"postgresql+psycopg://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PW']}@localhost:5433/{os.environ['DATABASE_NAME']}"
+
+engine = create_engine(DATABASE_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
