@@ -9,7 +9,14 @@ from bookdb.db import models  # noqa
 
 load_dotenv()
 
-DATABASE_URL = f"postgresql+psycopg://{os.environ['DATABASE_USER']}:{os.environ['DATABASE_PW']}@localhost:5433/{os.environ['DATABASE_NAME']}"
+DATABASE_USER = os.getenv('DATABASE_USER')
+DATABASE_PW = os.getenv('DATABASE_PW')
+DATABASE_NAME = os.getenv('DATABASE_NAME')
+
+if not all([DATABASE_USER, DATABASE_PW, DATABASE_NAME]):
+    raise ValueError("DATABASE_USER, DATABASE_PW, and DATABASE_NAME must be set in environment variables")
+
+DATABASE_URL = f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PW}@localhost:5433/{DATABASE_NAME}"
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
