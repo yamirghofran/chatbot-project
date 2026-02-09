@@ -48,9 +48,13 @@ class AuthorCRUD:
         stmt = select(Author).where(Author.name.in_(names))
         existing = {a.name: a for a in session.scalars(stmt).all()}
 
-        for name in names:
-            if name not in existing:
-                existing[name] = AuthorCRUD.create(session, name)
+        to_create = [name for name in names if name not in existing]
+        if to_create:
+            new_authors = [Author(name=name) for name in to_create]
+            session.add_all(new_authors)
+            session.flush()
+            for author in new_authors:
+                existing[author.name] = author
 
         return existing
 
