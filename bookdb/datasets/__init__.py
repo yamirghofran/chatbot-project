@@ -25,6 +25,7 @@ from .processor import (
     preview_dataset,
     read_file,
 )
+from .repository import Repository
 
 __all__ = [
     # CRUD operations
@@ -32,6 +33,8 @@ __all__ = [
     "BookCRUD",
     "UserCRUD",
     "BookListCRUD",
+    # Repository (unified PG + ChromaDB)
+    "Repository",
     # Goodreads imports
     "import_authors",
     "import_books",
