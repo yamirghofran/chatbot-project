@@ -91,21 +91,23 @@ class BookVectorCRUD(BaseVectorCRUD):
             average_rating=average_rating,
         )
         
-        # Create document from description or title
-        document = description or f"{title} by {author}"
+        # Create document from book information
+        document = self._create_book_document(
+            title=title,
+            author=author,
+            description=description,
+            genre=genre,
+        )
         
-        # TODO: Generate embedding if not provided
-        # if embedding is None:
-        #     from .embeddings import get_embedding_service
-        #     service = get_embedding_service()
-        #     embedding = service.generate_book_embedding(
-        #         title=title,
-        #         description=description,
-        #         author=author,
-        #         genre=genre,
-        #     )
-        
-        # Add to collection
+        if embedding is None:
+            from .embeddings import get_embedding_service
+            service = get_embedding_service()
+            embedding = service.generate_book_embedding(
+                title=title,
+                description=description,
+                author=author,
+                genre=genre,
+            )
         self.add(
             id=book_id,
             document=document,
@@ -182,18 +184,22 @@ class BookVectorCRUD(BaseVectorCRUD):
         # Create updated document if content changed
         document = None
         if any(x is not None for x in [title, author, description, genre]):
-            document = description or f"{metadata.title} by {metadata.author}"
+            document = self._create_book_document(
+                title=metadata.title,
+                author=metadata.author,
+                description=description,
+                genre=metadata.genre,
+            )
             
-            # TODO: Regenerate embedding if content changed
-            # if embedding is None:
-            #     from .embeddings import get_embedding_service
-            #     service = get_embedding_service()
-            #     embedding = service.generate_book_embedding(
-            #         title=metadata.title,
-            #         description=description,
-            #         author=metadata.author,
-            #         genre=metadata.genre,
-            #     )
+            if embedding is None:
+                from .embeddings import get_embedding_service
+                service = get_embedding_service()
+                embedding = service.generate_book_embedding(
+                    title=metadata.title,
+                    description=description,
+                    author=metadata.author,
+                    genre=metadata.genre,
+                )
         
         # Update in collection
         self.update(
@@ -302,29 +308,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Search for books similar to a query text using semantic search.
-        
-        This method performs vector similarity search to find books semantically
-        similar to the query text. Optionally filters by metadata.
-        
-        Args:
-            query_text: Text to search for (e.g., "science fiction about space")
-            n_results: Number of results to return
-            genre: Optional genre filter
-            author: Optional author filter
-            min_year: Optional minimum publication year
-            max_year: Optional maximum publication year
-        
-        Returns:
-            List of similar books with similarity scores
-        
-        Example:
-            >>> results = crud.search_similar_books(
-            ...     query_text="dystopian novels about totalitarianism",
-            ...     n_results=5,
-            ...     genre="Fiction",
-            ... )
-        """
+        """Search for books similar to a query text using semantic search."""
         # TODO: Implement semantic search
 
         pass
@@ -337,32 +321,40 @@ class BookVectorCRUD(BaseVectorCRUD):
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Get book recommendations based on a given book.
+        """Get book recommendations based on a given book."""
+        # TODO: Implement book recommendations
+        pass
+    
+    def _create_book_document(
+        self,
+        title: str,
+        author: str,
+        description: Optional[str] = None,
+        genre: Optional[str] = None,
+    ) -> str:
+        """Create a text document from book information.
         
-        This finds books similar to the specified book using its embedding.
+        This combines book fields into a single text representation for
+        storage and embedding generation.
         
         Args:
-            book_id: ID of the book to find similar books for
-            n_results: Number of recommendations to return
-            genre: Optional genre filter
-            min_year: Optional minimum publication year
-            max_year: Optional maximum publication year
+            title: Book title
+            author: Book author
+            description: Book description
+            genre: Book genre
         
         Returns:
-            List of recommended books (excludes the input book)
-        
-        Example:
-            >>> recommendations = crud.get_book_recommendations(
-            ...     book_id="book_123",
-            ...     n_results=5,
-            ...     genre="Fiction",
-            ... )
+            Combined text document
         """
-        # TODO: Implement book recommendations
-        # 1. Get the book by ID
-        # 2. Extract its embedding
-        # 3. Query collection for similar embeddings
-        # 4. Filter out the original book
-        # 5. Apply optional metadata filters
-        # 6. Return recommendations
-        pass
+        parts = [
+            f"Title: {title}",
+            f"Author: {author}",
+        ]
+        
+        if genre:
+            parts.append(f"Genre: {genre}")
+        
+        if description:
+            parts.append(f"Description: {description}")
+        
+        return " | ".join(parts)

@@ -121,8 +121,8 @@ class TestBookVectorCRUD:
                 publication_year=999,  # Invalid year
             )
     
-    def test_add_book_with_description(self, book_crud, mock_collection):
-        """Test document uses description when provided."""
+    def test_add_book_document_creation(self, book_crud, mock_collection):
+        """Test document creation from book fields."""
         mock_collection.get.return_value = {"ids": []}
         
         book_crud.add_book(
@@ -136,7 +136,10 @@ class TestBookVectorCRUD:
         call_args = mock_collection.add.call_args
         document = call_args[1]["documents"][0]
         
-        assert document == "A dystopian novel"
+        assert "Title: 1984" in document
+        assert "Author: George Orwell" in document
+        assert "Genre: Dystopian" in document
+        assert "Description: A dystopian novel" in document
     
     def test_update_book_single_field(self, book_crud, mock_collection):
         """Test updating a single book field."""
@@ -199,7 +202,8 @@ class TestBookVectorCRUD:
         # Document should be updated
         assert call_args[1]["documents"] is not None
         document = call_args[1]["documents"][0]
-        assert document == "New description"
+        assert "Title: New Title" in document
+        assert "Description: New description" in document
     
     def test_update_book_nonexistent(self, book_crud, mock_collection):
         """Test error when updating non-existent book."""
@@ -353,6 +357,31 @@ class TestBookVectorCRUD:
         
         assert len(results) == 0
         assert isinstance(results, list)
+    
+    def test_create_book_document_minimal(self, book_crud):
+        """Test document creation with minimal fields."""
+        doc = book_crud._create_book_document(
+            title="Test Title",
+            author="Test Author",
+        )
+        
+        assert "Title: Test Title" in doc
+        assert "Author: Test Author" in doc
+        assert " | " in doc
+    
+    def test_create_book_document_full(self, book_crud):
+        """Test document creation with all fields."""
+        doc = book_crud._create_book_document(
+            title="1984",
+            author="George Orwell",
+            description="A dystopian novel",
+            genre="Dystopian Fiction",
+        )
+        
+        assert "Title: 1984" in doc
+        assert "Author: George Orwell" in doc
+        assert "Genre: Dystopian Fiction" in doc
+        assert "Description: A dystopian novel" in doc
     
     def test_search_similar_books_not_implemented(self, book_crud):
         """Test that search_similar_books is TODO."""
