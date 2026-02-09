@@ -8,13 +8,15 @@ from pydantic import BaseModel, Field, field_validator, model_validator, ConfigD
 
 class CollectionNames(str, Enum):
     """Enumeration of collection names in ChromaDB.
-    
+
     Attributes:
         BOOKS: Collection for book embeddings and metadata
+        AUTHORS: Collection for author embeddings and metadata
         USERS: Collection for user preference embeddings and metadata
     """
-    
+
     BOOKS = "books"
+    AUTHORS = "authors"
     USERS = "users"
 
 
@@ -65,6 +67,45 @@ class BookMetadata(BaseModel):
                 "language": "en",
                 "page_count": 180,
                 "average_rating": 4.5,
+            }
+        }
+    )
+
+
+class AuthorMetadata(BaseModel):
+    """Metadata schema for author embeddings.
+
+    This metadata is stored alongside author embeddings in ChromaDB
+    and can be used for filtering during similarity search.
+
+    Attributes:
+        name: Author name
+        average_rating: Average rating of author's works
+        ratings_count: Total number of ratings
+        text_reviews_count: Total number of text reviews
+        created_at: Timestamp when embedding was created
+    """
+
+    name: str = Field(..., description="Author name")
+    average_rating: Optional[float] = Field(
+        None, description="Average rating of author's works", ge=0.0, le=5.0
+    )
+    ratings_count: Optional[int] = Field(None, description="Total number of ratings", ge=0)
+    text_reviews_count: Optional[int] = Field(
+        None, description="Total number of text reviews", ge=0
+    )
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="Creation timestamp",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "F. Scott Fitzgerald",
+                "average_rating": 4.2,
+                "ratings_count": 1250000,
+                "text_reviews_count": 85000,
             }
         }
     )
@@ -122,6 +163,21 @@ def validate_book_metadata(metadata: dict) -> BookMetadata:
         ValueError: If metadata validation fails
     """
     return BookMetadata(**metadata)
+
+
+def validate_author_metadata(metadata: dict) -> AuthorMetadata:
+    """Validate and parse author metadata.
+
+    Args:
+        metadata: Dictionary containing author metadata
+
+    Returns:
+        Validated AuthorMetadata instance
+
+    Raises:
+        ValueError: If metadata validation fails
+    """
+    return AuthorMetadata(**metadata)
 
 
 def validate_user_metadata(metadata: dict) -> UserMetadata:

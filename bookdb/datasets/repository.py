@@ -59,13 +59,7 @@ class Repository:
             self._cm.get_collection(CollectionNames.USERS)
         )
         self._authors_vec = BaseVectorCRUD(
-            self._cm.client.get_or_create_collection(
-                name="authors",
-                metadata={
-                    "description": "Author embeddings",
-                    "hnsw:space": "cosine",
-                },
-            )
+            self._cm.get_collection(CollectionNames.AUTHORS)
         )
 
     # ── lifecycle ────────────────────────────────────────────────────

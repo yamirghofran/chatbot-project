@@ -5,7 +5,7 @@ from chromadb import Collection
 from chromadb.api.types import CollectionMetadata
 
 from .client import get_chroma_client
-from .schemas import CollectionNames, BookMetadata, UserMetadata
+from .schemas import CollectionNames, BookMetadata, UserMetadata, AuthorMetadata
 from .config import ChromaDBConfig
 
 
@@ -32,10 +32,10 @@ class CollectionManager:
     
     def initialize_collections(self) -> None:
         """Initialize all required collections.
-        
-        Creates the BOOKS and USERS collections if they don't exist.
+
+        Creates the BOOKS, AUTHORS, and USERS collections if they don't exist.
         Configures appropriate distance functions and metadata for each.
-        
+
         Note:
             This method is idempotent - it will not recreate existing collections.
         """
@@ -47,7 +47,16 @@ class CollectionManager:
                 "hnsw:space": "cosine",  # Use cosine similarity for book embeddings
             },
         )
-        
+
+        # Initialize authors collection
+        self._get_or_create_collection(
+            name=CollectionNames.AUTHORS.value,
+            metadata={
+                "description": "Author embeddings and metadata",
+                "hnsw:space": "cosine",
+            },
+        )
+
         # Initialize users collection
         self._get_or_create_collection(
             name=CollectionNames.USERS.value,
@@ -114,6 +123,14 @@ class CollectionManager:
                 name=collection_name.value,
                 metadata={
                     "description": "Book embeddings and metadata for semantic search",
+                    "hnsw:space": "cosine",
+                },
+            )
+        elif collection_name == CollectionNames.AUTHORS:
+            self._get_or_create_collection(
+                name=collection_name.value,
+                metadata={
+                    "description": "Author embeddings and metadata",
                     "hnsw:space": "cosine",
                 },
             )

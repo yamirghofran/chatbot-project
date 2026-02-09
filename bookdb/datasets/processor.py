@@ -6,6 +6,7 @@ Supports:
 - Goodreads-specific imports via import_authors() and import_books()
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from bookdb.db.session import SessionLocal
 from .crud import BookCRUD, AuthorCRUD
+
+logger = logging.getLogger(__name__)
 
 
 # Column mappings for generic imports
@@ -136,6 +139,7 @@ def import_dataset(
                     stats["books_created"] += 1
 
                 except Exception:
+                    logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
 
@@ -258,6 +262,7 @@ def import_authors(
                     stats["authors_created"] += 1
 
                 except Exception:
+                    logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
 
@@ -350,6 +355,7 @@ def import_books(
                     stats["books_created"] += 1
 
                 except Exception:
+                    logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
 
