@@ -563,8 +563,8 @@ def _(mo):
     7. Media type is mostly 'book', may not be useful as a feature
     8. Language data (id and description) are empty and unique
     9. Works with multiple editions might need to do a join with the books db to select best one.
-    11. Outlier treatment needed for extreme rating counts
-    12. Consider creating an average_rating column (ratings_sum/ratings_count) to measure popularity
+    10. Outlier treatment needed for extreme rating counts
+    11. Consider creating an average_rating column (ratings_sum/ratings_count) to measure popularity
     """)
     return
 
