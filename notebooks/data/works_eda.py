@@ -172,6 +172,11 @@ def _(df, mo, pl):
 
 
 @app.cell
+def _():
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     Data contains negative review counts and impossible publication years, requiring cleaning before modeling
@@ -350,7 +355,6 @@ def _(df, mo, pl):
 def _(mo):
     mo.md(r"""
     Most entries are 'book' type
-
     Consider getting rid of other media types
     """)
     return
@@ -558,9 +562,9 @@ def _(mo):
     6. Consider filtering to works with minimum rating threshold (e.g., >= 10 ratings)
     7. Media type is mostly 'book', may not be useful as a feature
     8. Language data (id and description) are empty and unique
-    9. Works with multiple editions (4.4%) need deduplication or ranking strategy
-    10. Outlier treatment needed for extreme rating counts
-    11. Consider creating an average_rating column (ratings_sum/ratings_count) to measure popularity
+    9. Works with multiple editions might need to do a join with the books db to select best one.
+    11. Outlier treatment needed for extreme rating counts
+    12. Consider creating an average_rating column (ratings_sum/ratings_count) to measure popularity
     """)
     return
 
@@ -568,9 +572,129 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    - get rid of whats not a book
-    - get rid month and day
-    - only keep best book id from all versions (count)
+    # Data Cleaning
+       1. Filter to keep only books
+       2. Fix invalid publication years
+       3. Drop redundant and unused columns
+    """)
+    return
+
+
+@app.cell
+def _(df, mo, pl):
+    """Filter to keep only book entries"""
+    # Check current media type distribution
+    media_dist = df.group_by("media_type").len().sort("len", descending=True)
+    
+    # Filter to keep only books
+    df_books = df.filter(pl.col("media_type") == "book")
+    
+    mo.vstack([
+        mo.md("### Filter by Media Type"),
+        mo.md(f"Original dataset: {df.shape[0]:,} works"),
+        media_dist,
+        mo.md(f"\nAfter filtering to 'book' only: {df_books.shape[0]:,} works"),
+        mo.md(f"Rows removed: {df.shape[0] - df_books.shape[0]:,} ({(1 - df_books.shape[0]/df.shape[0])*100:.1f}%)")
+        ])
+
+    return (df_books,)
+
+
+@app.cell
+def _(df_books, mo, pl):
+    """Fix invalid publication years"""
+    # Count invalid years before fixing
+    year_too_old = df_books.filter(pl.col("original_publication_year") < 1000).shape[0]
+    year_too_new = df_books.filter(pl.col("original_publication_year") > 2026).shape[0]
+    year_null_before = df_books["original_publication_year"].is_null().sum()
+    
+    # Fix invalid years by setting them to null
+    df_cleaned = df_books.with_columns(
+        pl.when(
+            (pl.col("original_publication_year") < 1000) | 
+            (pl.col("original_publication_year") > 2026)
+        )
+        .then(None)
+        .otherwise(pl.col("original_publication_year"))
+        .alias("original_publication_year")
+    )
+    
+    year_null_after = df_cleaned["original_publication_year"].is_null().sum()
+    
+    mo.vstack([
+        mo.md("### Fix Invalid Publication Years"),
+        mo.md(f"Years < 1000: {year_too_old:,} rows → set to null"),
+        mo.md(f"Years > 2026: {year_too_new:,} rows → set to null"),
+        mo.md(f"Null years before: {year_null_before:,} ({year_null_before/df_books.shape[0]*100:.1f}%)"),
+        mo.md(f"Null years after: {year_null_after:,} ({year_null_after/df_cleaned.shape[0]*100:.1f}%)"),
+        mo.md(f"Valid years (1000-2026): {df_cleaned.shape[0] - year_null_after:,} rows")
+    ])
+    return (df_cleaned,)
+
+
+@app.cell
+def _(df_cleaned, mo):
+    """Drop redundant and unused columns"""
+    # Define columns to drop
+    columns_to_drop = [
+        "original_publication_month", 
+        "original_publication_day",     
+        "original_language_id",         
+        "default_description_language_code",  
+        "reviews_count",                
+        "ratings_sum",                  
+        "media_type",                   
+        "default_chaptering_book_id",  
+    ]
+    
+    # Drop the columns
+    df_final = df_cleaned.drop(columns_to_drop)
+    
+    mo.vstack([
+        mo.md("### Drop Redundant Columns"),
+        mo.md("Columns dropped:"),
+        mo.md("- `original_publication_month` - Too many missing values"),
+        mo.md("- `original_publication_day` - Too many missing values"),
+        mo.md("- `original_language_id` - All empty values"),
+        mo.md("- `default_description_language_code` - All empty values"),
+        mo.md("- `reviews_count` - Redundant with text_reviews_count"),
+        mo.md("- `ratings_sum` - Redundant with ratings_count"),
+        mo.md("- `media_type` - All values are 'book' after filtering"),
+        mo.md("- `default_chaptering_book_id` - Mostly empty"),
+        mo.md(f"\nColumns before: {df_cleaned.shape[1]}"),
+        mo.md(f"Columns after: {df_final.shape[1]}"),
+        mo.md(f"Final dataset: {df_final.shape[0]:,} works × {df_final.shape[1]} columns")
+    ])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    1. Impute Missing Publication Years
+    14.8% of works have null original_publication_year after cleaning.
+    - Drop rows: Simple but lose 14.8% of data
+    - Impute with median: Quick fix but ignores other signals
+    2. Parse rating_dist
+    The format is: 5:X|4:Y|3:Z|2:W|1:V|total:N
+    - Extract star counts as separate columns
+    - Create weighted average rating
+    - Calculate rating variance/sentiment metrics
+    2. Create Derived Features
+    - average_rating: ratings_sum / ratings_count
+    - log_ratings_count: log1p(ratings_count) for normality
+    - popularity_score: Combined metric (log(ratings) × avg_rating)
+    3. Handle Outliers
+    The EDA showed extreme outliers:
+    - Winsorization: Cap values at 95th/99th percentile
+    4.Join with Books Table
+    best_book_id could be used to:
+    - Get language_code from books table (more informative than the empty language fields)
+    - Get format information (hardcover, paperback, ebook)
+    - Get publisher for publisher-level analysis
+    5. Join with Authors Table
+    - Add author information for author-level features
+    - Author popularity, average ratings, ...
     """)
     return
 
