@@ -139,9 +139,9 @@ class BaseVectorCRUD(ABC):
             
             return {
                 "id": result["ids"][0],
-                "document": result["documents"][0] if result["documents"] else None,
-                "metadata": result["metadatas"][0] if result["metadatas"] else None,
-                "embedding": result["embeddings"][0] if result["embeddings"] else None,
+                "document": result["documents"][0] if result["documents"] is not None and len(result["documents"]) > 0 else None,
+                "metadata": result["metadatas"][0] if result["metadatas"] is not None and len(result["metadatas"]) > 0 else None,
+                "embedding": result["embeddings"][0] if result["embeddings"] is not None and len(result["embeddings"]) > 0 else None,
             }
         except Exception as e:
             raise Exception(f"Failed to get item '{id}': {str(e)}") from e
@@ -171,9 +171,9 @@ class BaseVectorCRUD(ABC):
             for i in range(len(result["ids"])):
                 items.append({
                     "id": result["ids"][i],
-                    "document": result["documents"][i] if result["documents"] else None,
-                    "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                    "embedding": result["embeddings"][i] if result["embeddings"] else None,
+                    "document": result["documents"][i] if result["documents"] is not None and len(result["documents"]) > i else None,
+                    "metadata": result["metadatas"][i] if result["metadatas"] is not None and len(result["metadatas"]) > i else None,
+                    "embedding": result["embeddings"][i] if result["embeddings"] is not None and len(result["embeddings"]) > i else None,
                 })
             
             return items
@@ -324,9 +324,9 @@ class BaseVectorCRUD(ABC):
             for i in range(len(result["ids"])):
                 items.append({
                     "id": result["ids"][i],
-                    "document": result["documents"][i] if result["documents"] else None,
-                    "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                    "embedding": result["embeddings"][i] if result["embeddings"] else None,
+                    "document": result["documents"][i] if result["documents"] is not None and len(result["documents"]) > i else None,
+                    "metadata": result["metadatas"][i] if result["metadatas"] is not None and len(result["metadatas"]) > i else None,
+                    "embedding": result["embeddings"][i] if result["embeddings"] is not None and len(result["embeddings"]) > i else None,
                 })
             
             return items

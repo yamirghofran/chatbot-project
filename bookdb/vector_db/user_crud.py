@@ -96,7 +96,7 @@ class UserVectorCRUD(BaseVectorCRUD):
         self.add(
             id=id_str,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     
@@ -174,7 +174,7 @@ class UserVectorCRUD(BaseVectorCRUD):
         self.update(
             id=id_str,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     

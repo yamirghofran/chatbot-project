@@ -113,7 +113,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self.add(
             id=book_id,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     
@@ -208,7 +208,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self.update(
             id=book_id,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     
@@ -292,9 +292,9 @@ class BookVectorCRUD(BaseVectorCRUD):
             for i in range(len(result["ids"])):
                 items.append({
                     "id": result["ids"][i],
-                    "document": result["documents"][i] if result["documents"] else None,
-                    "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                    "embedding": result["embeddings"][i] if result["embeddings"] else None,
+                    "document": result["documents"][i] if result["documents"] is not None and len(result["documents"]) > i else None,
+                    "metadata": result["metadatas"][i] if result["metadatas"] is not None and len(result["metadatas"]) > i else None,
+                    "embedding": result["embeddings"][i] if result["embeddings"] is not None and len(result["embeddings"]) > i else None,
                 })
             
             return items
