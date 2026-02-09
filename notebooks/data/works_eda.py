@@ -59,10 +59,16 @@ def _(pl):
 
 
 @app.cell
-def _(df):
+def _(df, mo):
     """Dataset Overview"""
     shape = df.shape
-    print(f"Dataset contains {shape[0]:,.0f} works and {shape[1]} columns")
+    mo.md(f"Dataset contains {shape[0]:,.0f} works and {shape[1]} columns")
+    return
+
+
+@app.cell
+def _(df):
+    df.describe()
     return
 
 
@@ -75,11 +81,9 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(df, mo):
     """Missing Values Analysis"""
     null_counts = df.null_count()
-    print("Missing values per column:")
-    print(null_counts)
 
     missing_year_pct = (
         df["original_publication_year"].is_null().sum() / df.shape[0] * 100
@@ -93,9 +97,20 @@ def _(df):
         df["original_publication_day"].is_null().sum() / df.shape[0] * 100
     )
 
-    print(f"\n{missing_year_pct:.1f}% of works missing publication year")
-    print(f"\n{missing_month_pct:.1f}% of works missing publication month")
-    print(f"\n{missing_day_pct:.1f}% of works missing publication day")
+    mo.vstack([
+        mo.md(f"{missing_year_pct:.1f}% of works missing publication year"),
+        mo.md(f"{missing_month_pct:.1f}% of works missing publication month"),
+        mo.md(f"{missing_day_pct:.1f}% of works missing publication day"),
+        mo.md("### Missing values per column:"),
+        null_counts
+    ])
+    return
+
+
+@app.cell
+def _(df):
+
+    df["media_type"].unique_counts()
     return
 
 
@@ -133,24 +148,26 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     """Data Quality Checks"""
     # Check for negative values
     neg_reviews = df.filter(pl.col("reviews_count") < 0).shape[0]
     neg_year = df.filter(pl.col("original_publication_year") < 1000).shape[0]
     future_year = df.filter(pl.col("original_publication_year") > 2026).shape[0]
 
-    print(f"Works with negative reviews: {neg_reviews}")
-    print(f"Works with publication year < 1000: {neg_year}")
-    print(f"Works with publication year > 2026: {future_year}")
 
     # Check rating_sum consistency
     rating_issues = df.filter(
         pl.col("ratings_sum") > pl.col("ratings_count") * 5
     ).shape[0]
-    print(
+
+    mo.vstack([mo.md(f"Works with negative reviews: {neg_reviews}"),
+    mo.md(f"Works with publication year < 1000: {neg_year}"),
+    mo.md(f"Works with publication year > 2026: {future_year}"),
+    mo.md(
         f"\nWorks where rating_sum exceeds max possible (ratings_count * 5): {rating_issues}"
-    )
+    )])
+
     return
 
 
@@ -163,20 +180,21 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(df, mo):
     """Distribution Analysis"""
-    print(
+    mo.vstack([mo.md(
         f"Books per work: median {df['books_count'].median():.0f}, max {df['books_count'].max():.0f}"
-    )
-    print(
+    ),
+    mo.md(
         f"Ratings per work: median {df['ratings_count'].median():.0f}, max {df['ratings_count'].max():,.0f}"
-    )
-    print(
+    ),
+    mo.md(
         f"Text reviews per work: median {df['text_reviews_count'].median():.0f}, max {df['text_reviews_count'].max():,.0f}"
-    )
-    print(
+    ),
+    mo.md(
         f"Publication year: {df['original_publication_year'].min():.0f} to {df['original_publication_year'].max():.0f}"
-    )
+    )])
+
     return
 
 
@@ -249,7 +267,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     """Outlier Analysis"""
     # Calculate IQR for ratings_count
     q1 = df["ratings_count"].quantile(0.25)
@@ -258,9 +276,6 @@ def _(df, pl):
     upper_bound = q3 + 3 * iqr
 
     outliers_count = df.filter(pl.col("ratings_count") > upper_bound).shape[0]
-    print(
-        f"Using 3x IQR method, {outliers_count:,} works ({outliers_count / df.shape[0] * 100:.2f}%) are outliers"
-    )
 
     # Check top works by ratings
     top_works = (
@@ -268,8 +283,12 @@ def _(df, pl):
         .select(["original_title", "ratings_count", "ratings_sum"])
         .head(10)
     )
-    print("\nTop 10 works by total ratings count:")
-    print(top_works)
+    mo.vstack([mo.md(
+        f"Using 3x IQR method, {outliers_count:,} works ({outliers_count / df.shape[0] * 100:.2f}%) are outliers"
+    ),
+    mo.md("\nTop 10 works by total ratings count:"),
+    top_works])
+
     return
 
 
@@ -311,34 +330,29 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     """Media Type Analysis"""
     media_counts = df.group_by("media_type").len().sort("len", descending=True)
-    print("Distribution of media types:")
-    print(media_counts)
-
     # Count works with non-empty language
     has_language = df.filter(pl.col("original_language_id") != "").shape[0]
-    print(
+    mo.vstack([
+        mo.md("Distribution of media types:"),
+        media_counts,
+        mo.md(
         f"\nWorks with language specified: {has_language:,} ({has_language / df.shape[0] * 100:.1f}%)"
     )
+    ])
+
     return
 
 
 @app.cell
 def _(mo):
     mo.md(r"""
-    Most entries are 'book' type with very few having specified language, limiting multilingual recommendation potential.
+    Most entries are 'book' type
 
     Consider getting rid of other media types
     """)
-    return
-
-
-@app.cell
-def _(df):
-    df["original_language_id"].value_counts()
-    df["default_description_language_code"].value_counts()
     return
 
 
@@ -469,34 +483,38 @@ def _(df):
 def _(mo):
     mo.md(r"""
     Rating_dist field provides granular rating breakdown that could enable weighted scoring or preference modeling
+
+    can be used for weighted averaging or sentiment analysis
     """)
     return
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     """Books per Work Analysis"""
     multi_book = df.filter(pl.col("books_count") > 1).shape[0]
-    print(
-        f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"
-    )
 
     books_distribution = df.group_by("books_count").len().sort("books_count")
-    print("\nDistribution of books count:")
-    print(books_distribution.head(20))
+    mo.vstack([
+        (f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"),
+        mo.md("\nDistribution of books count:"),
+        books_distribution.head(20)
+    ])
     return
 
 
 @app.cell
 def _(mo):
     mo.md(r"""
-    Most works have a single book edition, but 4.4% have multiple editions requiring deduplication or ranking
+    Most works have a single book edition, but 4.4% have multiple editions requiring deduplication or ranking.
+
+    Best solution is to keep the best version based on book id
     """)
     return
 
 
 @app.cell
-def _(df, np, stats):
+def _(df, mo, np, stats):
     """Pearson Correlation Significance Tests"""
     ratings_count = df["ratings_count"].to_pandas().values
     text_reviews = df["text_reviews_count"].to_pandas().values
@@ -511,9 +529,11 @@ def _(df, np, stats):
     corr2, p2 = stats.pearsonr(log_ratings2, log_reviews_count)
     corr3, p3 = stats.pearsonr(log_reviews2, log_reviews_count)
 
-    print(f"Log(Ratings) vs Log(Text Reviews): r={corr1:.4f}, p={p1:.2e}")
-    print(f"Log(Ratings) vs Log(Reviews): r={corr2:.4f}, p={p2:.2e}")
-    print(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}")
+    mo.vstack([
+        mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr1:.4f}, p={p1:.2e}"),
+        mo.md(f"Log(Ratings) vs Log(Reviews): r={corr2:.4f}, p={p2:.2e}"),
+        mo.md(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}")
+    ])
     return
 
 
@@ -541,6 +561,16 @@ def _(mo):
     9. Works with multiple editions (4.4%) need deduplication or ranking strategy
     10. Outlier treatment needed for extreme rating counts
     11. Consider creating an average_rating column (ratings_sum/ratings_count) to measure popularity
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    - get rid of whats not a book
+    - get rid month and day
+    - only keep best book id from all versions (count)
     """)
     return
 
