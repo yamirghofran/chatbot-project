@@ -29,18 +29,22 @@ db-down:
 db-reset:
 	docker compose down -v
 	docker compose up -d
+	@echo "Waiting for database to be ready..."
+	@sleep 3
 
 migrate:
-	alembic upgrade head
+	uv run alembic upgrade head
 
 make-migration:
-	alembic revision --autogenerate -m "$(msg)"
+	uv run alembic revision --autogenerate -m "$(msg)"
 
 seed:
-	python app/seed.py
+	uv run python -m bookdb.seed
 
 setup:
 	make db-up
+	@echo "Waiting for database to be ready..."
+	@sleep 3
 	make migrate
 	make seed
 
