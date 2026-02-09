@@ -90,8 +90,6 @@ class EmbeddingService:
             ...     author="George Orwell",
             ... )
         """
-        # testing embedding service
-        return [1, 1, 1, 1]
     
         # TODO: Implement book embedding generation
         # - Combine text fields into a single string
@@ -215,4 +213,4 @@ def get_embedding_service(
     # TODO: Implement service creation
     # - Consider singleton pattern
     # - Return EmbeddingService instance
-    pass
+    return EmbeddingService()
