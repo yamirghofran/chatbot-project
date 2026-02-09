@@ -91,13 +91,8 @@ class BookVectorCRUD(BaseVectorCRUD):
             average_rating=average_rating,
         )
         
-        # Create document from book information
-        document = self._create_book_document(
-            title=title,
-            author=author,
-            description=description,
-            genre=genre,
-        )
+        # Create document from description or title
+        document = description or f"{title} by {author}"
         
         # TODO: Generate embedding if not provided
         # if embedding is None:
@@ -187,12 +182,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         # Create updated document if content changed
         document = None
         if any(x is not None for x in [title, author, description, genre]):
-            document = self._create_book_document(
-                title=metadata.title,
-                author=metadata.author,
-                description=description,
-                genre=metadata.genre,
-            )
+            document = description or f"{metadata.title} by {metadata.author}"
             
             # TODO: Regenerate embedding if content changed
             # if embedding is None:
@@ -336,10 +326,7 @@ class BookVectorCRUD(BaseVectorCRUD):
             ... )
         """
         # TODO: Implement semantic search
-        # 1. Generate embedding for query_text using EmbeddingService
-        # 2. Build where filter from optional parameters
-        # 3. Query collection with embedding and filters
-        # 4. Format and return results with similarity scores
+
         pass
     
     def get_book_recommendations(
@@ -379,37 +366,3 @@ class BookVectorCRUD(BaseVectorCRUD):
         # 5. Apply optional metadata filters
         # 6. Return recommendations
         pass
-    
-    def _create_book_document(
-        self,
-        title: str,
-        author: str,
-        description: Optional[str] = None,
-        genre: Optional[str] = None,
-    ) -> str:
-        """Create a text document from book information.
-        
-        This combines book fields into a single text representation for
-        storage and embedding generation.
-        
-        Args:
-            title: Book title
-            author: Book author
-            description: Book description
-            genre: Book genre
-        
-        Returns:
-            Combined text document
-        """
-        parts = [
-            f"Title: {title}",
-            f"Author: {author}",
-        ]
-        
-        if genre:
-            parts.append(f"Genre: {genre}")
-        
-        if description:
-            parts.append(f"Description: {description}")
-        
-        return " | ".join(parts)
