@@ -680,19 +680,19 @@ def _(mo):
     - Extract star counts as separate columns
     - Create weighted average rating
     - Calculate rating variance/sentiment metrics
-    2. Create Derived Features
+    3. Create Derived Features
     - average_rating: ratings_sum / ratings_count
     - log_ratings_count: log1p(ratings_count) for normality
     - popularity_score: Combined metric (log(ratings) × avg_rating)
-    3. Handle Outliers
+    4. Handle Outliers
     The EDA showed extreme outliers:
     - Winsorization: Cap values at 95th/99th percentile
-    4.Join with Books Table
+    5. Join with Books Table
     best_book_id could be used to:
     - Get language_code from books table (more informative than the empty language fields)
     - Get format information (hardcover, paperback, ebook)
     - Get publisher for publisher-level analysis
-    5. Join with Authors Table
+    6. Join with Authors Table
     - Add author information for author-level features
     - Author popularity, average ratings, ...
     """)
