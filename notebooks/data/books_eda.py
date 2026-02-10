@@ -12,7 +12,7 @@ def _():
     import polars as pl
     import seaborn as sns
     from scipy import stats
-    return mo, np, pl, plt
+    return mo, np, pl, plt, sns
 
 
 @app.cell
@@ -138,33 +138,19 @@ def _(df, mo, pl, plt):
     _ax1.legend()
     _ax1.grid(True, alpha=0.3)
 
-    _bins = [0, 1, 2, 3, 4, 5]
     _labels = ["0-1", "1-2", "2-3", "3-4", "4-5"]
 
     rating_binned = (
         pl.DataFrame({"rating": ratings.cast(pl.Float64)})
         .with_columns(
-            rating=pl.col("rating").clip(0.0, 5.0),
-            bin=(
-                pl.when((pl.col("rating") >= 0) & (pl.col("rating") < 1)).then(pl.lit("0-1"))
-                .when((pl.col("rating") >= 1) & (pl.col("rating") < 2)).then(pl.lit("1-2"))
-                .when((pl.col("rating") >= 2) & (pl.col("rating") < 3)).then(pl.lit("2-3"))
-                .when((pl.col("rating") >= 3) & (pl.col("rating") < 4)).then(pl.lit("3-4"))
-                .when((pl.col("rating") >= 4) & (pl.col("rating") <= 5)).then(pl.lit("4-5"))
-                .otherwise(None)
-            ),
+            rating=pl.col("rating").clip(0.0, 5.0)
         )
-        .filter(pl.col("bin").is_not_null())
+        .with_columns(
+            bin=pl.cut(pl.col("rating"), breaks=[0, 1, 2, 3, 4, 5], labels=_labels, right_closed=False)
+        )
         .group_by("bin")
         .agg(pl.len().alias("count"))
-        # keep the bin order stable:
-        .with_columns(
-            bin_order=pl.col("bin").replace(
-                {"0-1": 0, "1-2": 1, "2-3": 2, "3-4": 3, "4-5": 4}
-            )
-        )
-        .sort("bin_order")
-        .drop("bin_order")
+        .sort("bin")
     )
 
 
@@ -432,7 +418,7 @@ def _(df, mo, pl, plt):
 
 
 @app.cell
-def _(df, mo, np, pl, plt):
+def _(df, mo, pl, plt, sns):
     """Correlations Heatmap"""
     corr_data = df.filter(
         (pl.col("average_rating").is_not_null())
@@ -455,28 +441,8 @@ def _(df, mo, np, pl, plt):
     corr_matrix = corr_data.corr()
 
     _fig, _ax = plt.subplots(figsize=(10, 8))
-    _im = _ax.imshow(
-        corr_matrix.to_numpy(), cmap="coolwarm", aspect="auto", vmin=-1, vmax=1
-    )
-
-    _ax.set_xticks(np.arange(len(corr_matrix.columns)))
-    _ax.set_yticks(np.arange(len(corr_matrix.columns)))
-    _ax.set_xticklabels(corr_matrix.columns, rotation=45, ha="right")
-    _ax.set_yticklabels(corr_matrix.columns)
-
-    for _i in range(len(corr_matrix.columns)):
-        for _j in range(len(corr_matrix.columns)):
-            _text = _ax.text(
-                _j,
-                _i,
-                f"{corr_matrix.to_numpy()[_i, _j]:.2f}",
-                ha="center",
-                va="center",
-                color="black" if abs(corr_matrix.to_numpy()[_i, _j]) < 0.5 else "white",
-            )
-
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f", ax=_ax)
     _ax.set_title("Correlation Heatmap")
-    plt.colorbar(_im, ax=_ax)
     plt.tight_layout()
 
     mo.vstack(
