@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.7"
+__generated_with = "0.19.9"
 app = marimo.App()
 
 
@@ -12,6 +12,7 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
+
     return mo, np, pl, plt, sns, stats
 
 
@@ -167,12 +168,6 @@ def _(df, mo, pl):
     mo.md(
         f"\nWorks where rating_sum exceeds max possible (ratings_count * 5): {rating_issues}"
     )])
-
-    return
-
-
-@app.cell
-def _():
     return
 
 
@@ -199,7 +194,6 @@ def _(df, mo):
     mo.md(
         f"Publication year: {df['original_publication_year'].min():.0f} to {df['original_publication_year'].max():.0f}"
     )])
-
     return
 
 
@@ -228,7 +222,7 @@ def _(df, plt):
 
 
 @app.cell
-def _(df, np, plt):
+def _(df, mo, np, plt):
     """Distribution of Log-Transformed Metrics"""
     fig_log, axes_log = plt.subplots(2, 2, figsize=(14, 10))
 
@@ -259,15 +253,11 @@ def _(df, np, plt):
     axes_log[1, 1].set_title("Log-Transformed Books Count")
 
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Log-transformation reveals approximately normal distributions, suggesting it's appropriate for modeling
-    """)
+    mo.vstack([
+        fig_log,
+        mo.md("Log-transformation reveals approximately normal distributions, suggesting it's appropriate for modeling")
+    ])
     return
 
 
@@ -292,21 +282,13 @@ def _(df, mo, pl):
         f"Using 3x IQR method, {outliers_count:,} works ({outliers_count / df.shape[0] * 100:.2f}%) are outliers"
     ),
     mo.md("\nTop 10 works by total ratings count:"),
+    mo.md("Small percentage of extreme outliers dominate the metrics, consider cap or separate treatment"),
     top_works])
-
     return
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    Small percentage of extreme outliers dominate the metrics, consider cap or separate treatment
-    """)
-    return
-
-
-@app.cell
-def _(df, pl, plt):
+def _(df, mo, pl, plt):
     """Publication Year Distribution"""
     valid_years = df.filter(pl.col("original_publication_year").is_not_null())
 
@@ -322,15 +304,11 @@ def _(df, pl, plt):
     ax_year.set_title("Distribution of Publication Years")
     ax_year.set_xlim(1800, 2026)
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Most works are from recent decades (2000-2020), with fewer older classics available
-    """)
+    mo.vstack([
+        fig_year,
+        mo.md("Most works are from recent decades (2000-2020), with fewer older classics available")
+    ])
     return
 
 
@@ -345,32 +323,15 @@ def _(df, mo, pl):
         media_counts,
         mo.md(
         f"\nWorks with language specified: {has_language:,} ({has_language / df.shape[0] * 100:.1f}%)"
-    )
+    ),
+        mo.md("Most entries are 'book' type. Consider getting rid of other media types"),
+        mo.md("Both `original_language_id` and `default_description_language_code` have empty values (same for all). Consider droppig later")
     ])
-
     return
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    Most entries are 'book' type
-    Consider getting rid of other media types
-    """)
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Both `original_language_id` and `default_description_language_code` have empty values (same for all).
-    Consider droppig later
-    """)
-    return
-
-
-@app.cell
-def _(df, plt, sns):
+def _(df, mo, plt, sns):
     """Correlation Analysis"""
     # Convert to pandas for correlation heatmap
     numeric_df = df.select(
@@ -391,23 +352,19 @@ def _(df, plt, sns):
     )
     ax_corr.set_title("Correlation Matrix")
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Very high correlation between ratings_count and ratings_sum (r=0.99) suggests redundancy, consider removing one
+    mo.vstack([
+        fig_corr,
+        mo.md("""Very high correlation between ratings_count and ratings_sum (r=0.99) suggests redundancy, consider removing one
     Same with review_count and text_reviews_count.
 
-    Consider dropping _count/_sum variables for later, all redundant.
-    """)
+    Consider dropping _count/_sum variables for later, all redundant.""")
+    ])
     return
 
 
 @app.cell
-def _(df, pl, plt):
+def _(df, mo, pl, plt):
     """Rating Quality Analysis"""
     # Calculate average rating from ratings_sum and ratings_count
     df_rating = df.with_columns(
@@ -425,15 +382,11 @@ def _(df, pl, plt):
     ax_rating_hist.set_ylabel("Frequency")
     ax_rating_hist.set_title("Distribution of Calculated Average Ratings")
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Ratings are normally distributed around 3.5-4.0 with slight left skew, typical for user-generated content
-    """)
+    mo.vstack([
+        fig_rating_hist,
+        mo.md("Ratings are normally distributed around 3.5-4.0 with slight left skew, typical for user-generated content")
+    ])
     return
 
 
@@ -468,18 +421,16 @@ def _(mo):
 
 
 @app.cell
-def _(df):
+def _(df, mo):
     """Rating Distribution Parsing Analysis"""
     # Parse a sample of rating_dist to understand the format
     sample_dists = df["rating_dist"].head(10).to_list()
 
-    print("Sample rating distributions (format: 5:X|4:Y|3:Z|2:W|1:V|total:N):")
-    for dist in sample_dists:
-        print(f"  {dist}")
-
-    print(
-        "\nThis format contains detailed breakdown by star rating, can be used for weighted averaging or sentiment analysis"
-    )
+    mo.vstack([
+        mo.md("Sample rating distributions (format: 5:X|4:Y|3:Z|2:W|1:V|total:N):"),
+        *[mo.md(f"- `{dist}`") for dist in sample_dists],
+        mo.md("This format contains detailed breakdown by star rating, can be used for weighted averaging or sentiment analysis")
+    ])
     return
 
 
@@ -536,16 +487,9 @@ def _(df, mo, np, stats):
     mo.vstack([
         mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr1:.4f}, p={p1:.2e}"),
         mo.md(f"Log(Ratings) vs Log(Reviews): r={corr2:.4f}, p={p2:.2e}"),
-        mo.md(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}")
+        mo.md(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}"),
+        mo.md("All three popularity metrics are highly correlated, suggesting they measure similar underlying construct")
     ])
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    All three popularity metrics are highly correlated, suggesting they measure similar underlying construct
-    """)
     return
 
 
@@ -585,10 +529,10 @@ def _(df, mo, pl):
     """Filter to keep only book entries"""
     # Check current media type distribution
     media_dist = df.group_by("media_type").len().sort("len", descending=True)
-    
+
     # Filter to keep only books
     df_books = df.filter(pl.col("media_type") == "book")
-    
+
     mo.vstack([
         mo.md("### Filter by Media Type"),
         mo.md(f"Original dataset: {df.shape[0]:,} works"),
@@ -596,7 +540,6 @@ def _(df, mo, pl):
         mo.md(f"\nAfter filtering to 'book' only: {df_books.shape[0]:,} works"),
         mo.md(f"Rows removed: {df.shape[0] - df_books.shape[0]:,} ({(1 - df_books.shape[0]/df.shape[0])*100:.1f}%)")
         ])
-
     return (df_books,)
 
 
@@ -607,7 +550,7 @@ def _(df_books, mo, pl):
     year_too_old = df_books.filter(pl.col("original_publication_year") < 1000).shape[0]
     year_too_new = df_books.filter(pl.col("original_publication_year") > 2026).shape[0]
     year_null_before = df_books["original_publication_year"].is_null().sum()
-    
+
     # Fix invalid years by setting them to null
     df_cleaned = df_books.with_columns(
         pl.when(
@@ -618,9 +561,9 @@ def _(df_books, mo, pl):
         .otherwise(pl.col("original_publication_year"))
         .alias("original_publication_year")
     )
-    
+
     year_null_after = df_cleaned["original_publication_year"].is_null().sum()
-    
+
     mo.vstack([
         mo.md("### Fix Invalid Publication Years"),
         mo.md(f"Years < 1000: {year_too_old:,} rows → set to null"),
@@ -646,10 +589,10 @@ def _(df_cleaned, mo):
         "media_type",                   
         "default_chaptering_book_id",  
     ]
-    
+
     # Drop the columns
     df_final = df_cleaned.drop(columns_to_drop)
-    
+
     mo.vstack([
         mo.md("### Drop Redundant Columns"),
         mo.md("Columns dropped:"),
