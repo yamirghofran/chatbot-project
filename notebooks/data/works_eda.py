@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.19.9"
-app = marimo.App(layout_file="layouts/works_eda.slides.json")
+__generated_with = "0.19.7"
+app = marimo.App()
 
 
 @app.cell
@@ -12,8 +12,15 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
-
     return mo, np, pl, plt, sns, stats
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    # Preliminary EDA for Goodreads Works Dataset
+    """)
+    return
 
 
 @app.cell
