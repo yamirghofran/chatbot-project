@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.19.9"
-app = marimo.App()
+app = marimo.App(layout_file="layouts/works_eda.slides.json")
 
 
 @app.cell
@@ -68,13 +68,8 @@ def _(df, mo):
 
 
 @app.cell
-def _(df):
+def _(df, mo):
     df.describe()
-    return
-
-
-@app.cell
-def _(mo):
     mo.md(r"""
     Large dataset with 1.5M works, all numeric fields are highly skewed with extreme outliers
     """)
@@ -103,7 +98,10 @@ def _(df, mo):
         mo.md(f"{missing_month_pct:.1f}% of works missing publication month"),
         mo.md(f"{missing_day_pct:.1f}% of works missing publication day"),
         mo.md("### Missing values per column:"),
-        null_counts
+        null_counts,
+        mo.md(r"""
+        Original publication dates have a lot of missing values, will need imputation or filtering strategies
+        """)
     ])
     return
 
@@ -116,15 +114,7 @@ def _(df):
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    Original publication dates have a lot of missing values, will need imputation or filtering strategies
-    """)
-    return
-
-
-@app.cell
-def _(df):
+def _(df, mo):
     """Summary Statistics"""
     summary = df.select(
         [
@@ -136,15 +126,12 @@ def _(df):
             "original_publication_year",
         ]
     ).describe()
-    summary
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Extreme outliers present: negative review counts (-6069), unrealistic publication years (-2600, 32767), and highly skewed rating counts
-    """)
+    mo.vstack([
+        summary,
+        mo.md(r"""
+        Extreme outliers present: negative review counts (-6069), unrealistic publication years (-2600, 32767), and highly skewed rating counts
+        """)
+    ])
     return
 
 
@@ -167,15 +154,10 @@ def _(df, mo, pl):
     mo.md(f"Works with publication year > 2026: {future_year}"),
     mo.md(
         f"\nWorks where rating_sum exceeds max possible (ratings_count * 5): {rating_issues}"
-    )])
-    return
-
-
-@app.cell
-def _(mo):
+    ),
     mo.md(r"""
     Data contains negative review counts and impossible publication years, requiring cleaning before modeling
-    """)
+    """)])
     return
 
 
@@ -193,20 +175,15 @@ def _(df, mo):
     ),
     mo.md(
         f"Publication year: {df['original_publication_year'].min():.0f} to {df['original_publication_year'].max():.0f}"
-    )])
-    return
-
-
-@app.cell
-def _(mo):
+    ),
     mo.md(r"""
     Metrics are extremely right-skewed with long tails, requiring log-transformation for analysis
-    """)
+    """)])
     return
 
 
 @app.cell
-def _(df, plt):
+def _(df, mo, plt):
     """Distribution of Ratings Count"""
     fig_ratings, ax_ratings = plt.subplots(figsize=(10, 6))
     ax_ratings.hist(
@@ -215,9 +192,13 @@ def _(df, plt):
     ax_ratings.set_xlabel("Ratings Count")
     ax_ratings.set_ylabel("Frequency")
     ax_ratings.set_title("Distribution of Ratings Count (Raw)")
-    ax_ratings.set_xlim(0, 1000) 
+    ax_ratings.set_xlim(0, 1000)
     plt.tight_layout()
-    plt.show()
+
+    mo.vstack([
+        fig_ratings,
+        mo.md("The raw distribution is heavily right-skewed, with most works having very few ratings")
+    ])
     return
 
 
@@ -391,7 +372,7 @@ def _(df, mo, pl, plt):
 
 
 @app.cell
-def _(df, np, pl, plt):
+def _(df, mo, np, pl, plt):
     """Popularity vs Rating Analysis"""
     df_rating2 = df.with_columns(
         [(pl.col("ratings_sum") / pl.col("ratings_count")).alias("avg_rating")]
@@ -408,15 +389,13 @@ def _(df, np, pl, plt):
     ax_pop.set_ylabel("Average Rating")
     ax_pop.set_title("Average Rating vs Popularity")
     plt.tight_layout()
-    plt.show()
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Weak relationship between popularity and rating quality, popular works don't consistently have higher ratings
-    """)
+    mo.vstack([
+        fig_pop,
+        mo.md(r"""
+        Weak relationship between popularity and rating quality, popular works don't consistently have higher ratings
+        """)
+    ])
     return
 
 
@@ -429,18 +408,12 @@ def _(df, mo):
     mo.vstack([
         mo.md("Sample rating distributions (format: 5:X|4:Y|3:Z|2:W|1:V|total:N):"),
         *[mo.md(f"- `{dist}`") for dist in sample_dists],
-        mo.md("This format contains detailed breakdown by star rating, can be used for weighted averaging or sentiment analysis")
+        mo.md(r"""
+        Rating_dist field provides granular rating breakdown that could enable weighted scoring or preference modeling
+
+        Can be used for weighted averaging or sentiment analysis
+        """)
     ])
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Rating_dist field provides granular rating breakdown that could enable weighted scoring or preference modeling
-
-    can be used for weighted averaging or sentiment analysis
-    """)
     return
 
 
@@ -453,18 +426,13 @@ def _(df, mo, pl):
     mo.vstack([
         mo.md(f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"),
         mo.md("\nDistribution of books count:"),
-        books_distribution.head(20)
+        books_distribution.head(20),
+        mo.md(r"""
+        Most works have a single book edition, but 4.4% have multiple editions requiring deduplication or ranking.
+
+        Best solution is to keep the best version based on book id
+        """)
     ])
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Most works have a single book edition, but 4.4% have multiple editions requiring deduplication or ranking.
-
-    Best solution is to keep the best version based on book id
-    """)
     return
 
 
