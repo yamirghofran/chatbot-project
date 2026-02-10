@@ -38,11 +38,6 @@ def _(mo, pl):
         ]
     )
     shape = df.shape
-    mo.md(f"""
-    - Dataset contains {shape[0]} authors and {shape[1]} columns.
-
-    - No missing values found in the dataset
-    """)
     mo.vstack([
         mo.md(f"""
     - Dataset contains {shape[0]} authors and {shape[1]} columns.
@@ -230,7 +225,6 @@ def _(df, mo, np, stats):
     mo.vstack([mo.md(f"Log(Ratings) vs Average Rating: r={corr1:.4f}, p={p1:.2e}"),
     mo.md(f"Log(Text Reviews) vs Average Rating: r={corr2:.4f}, p={p2:.2e}"),
     mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr3:.4f}, p={p3:.2e}")])
-
     return
 
 
