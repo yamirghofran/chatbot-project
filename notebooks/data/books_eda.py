@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.7"
+__generated_with = "0.19.9"
 app = marimo.App()
 
 
@@ -12,7 +12,8 @@ def _():
     import polars as pl
     import seaborn as sns
     from scipy import stats
-    return mo, np, pl, plt, sns
+
+    return mo, pl, plt, sns
 
 
 @app.cell
@@ -140,14 +141,29 @@ def _(df, mo, pl, plt):
 
     _labels = ["0-1", "1-2", "2-3", "3-4", "4-5"]
 
+    # Create rating bins using qcut for quantile-based binning
     rating_binned = (
         pl.DataFrame({"rating": ratings.cast(pl.Float64)})
         .with_columns(
             rating=pl.col("rating").clip(0.0, 5.0)
         )
         .with_columns(
-            bin=pl.cut(pl.col("rating"), breaks=[0, 1, 2, 3, 4, 5], labels=_labels, right_closed=False)
+            bin=pl.col("rating").cut(breaks=[0, 1, 2, 3, 4, 5], include_breaks=True)
         )
+        .with_columns(
+            bin=pl.when(pl.col("rating").is_between(0, 1, closed="left"))
+            .then(pl.lit("0-1"))
+            .when(pl.col("rating").is_between(1, 2, closed="left"))
+            .then(pl.lit("1-2"))
+            .when(pl.col("rating").is_between(2, 3, closed="left"))
+            .then(pl.lit("2-3"))
+            .when(pl.col("rating").is_between(3, 4, closed="left"))
+            .then(pl.lit("3-4"))
+            .when(pl.col("rating").is_between(4, 5, closed="both"))
+            .then(pl.lit("4-5"))
+            .otherwise(None)
+        )
+        .filter(pl.col("bin").is_not_null())
         .group_by("bin")
         .agg(pl.len().alias("count"))
         .sort("bin")
@@ -340,7 +356,7 @@ def _(df, mo, pl, plt):
             mo.md("""- Page counts follow a highly right-skewed distribution
             - Most books are around 250 pages long while a small number of extremely long books create a long tail and inflate the mean""")
     ])
-    
+
     return
 
 
@@ -596,7 +612,6 @@ def _(df, mo, pl, plt):
         """)
 
     ])
-
     return
 
 
