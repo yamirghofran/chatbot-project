@@ -25,6 +25,9 @@ dependencies = [
     "adlfs>=2024.7.0",
     "sentence-transformers>=3.2.1",
     "torch>=2.5.1",
+    "datasets>=2.14.4",
+    "accelerate>=1.0.1",
+    "transformers[torch]>=4.46.3",
 ]
 
 [build-system]
