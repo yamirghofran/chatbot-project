@@ -34,8 +34,7 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     # Finetuning `embeddinggemma` with safe `MultipleNegativesRankingLoss`
 
     This notebook builds positive book pairs from Goodreads `similar_books`, then finetunes
@@ -43,8 +42,7 @@ def _(mo):
 
     The key constraint for `MultipleNegativesRankingLoss` is handled explicitly:
     each batch is sampled with **at most one pair per similarity component** to avoid known false negatives.
-    """
-    )
+    """)
     return
 
 
@@ -75,13 +73,11 @@ def _(book_texts_path, mo, raw_books_path):
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 1. Configure sampling and training
 
     Use these controls to keep experiments lightweight while preserving safe batching behavior.
-    """
-    )
+    """)
     return
 
 
@@ -133,6 +129,16 @@ def _(mo):
     )
     epochs_ui = mo.ui.slider(start=1, stop=10, value=2, step=1, label="Epochs")
     learning_rate_ui = mo.ui.number(value=2e-5, label="Learning rate")
+    max_seq_length_ui = mo.ui.slider(
+        start=64,
+        stop=1024,
+        value=256,
+        step=32,
+        label="Max sequence length (tokens)",
+    )
+    gradient_checkpointing_ui = mo.ui.checkbox(
+        label="Enable gradient checkpointing", value=True
+    )
     warmup_ratio_ui = mo.ui.slider(
         start=0,
         stop=30,
@@ -177,9 +183,11 @@ def _(mo):
                     batch_size_ui,
                     epochs_ui,
                     learning_rate_ui,
+                    max_seq_length_ui,
                     warmup_ratio_ui,
                 ]
             ),
+            mo.hstack([gradient_checkpointing_ui]),
             mo.hstack([model_name_ui, output_dir_ui]),
             run_training_ui,
             mo.md("### Evaluation"),
@@ -192,8 +200,10 @@ def _(mo):
         epochs_ui,
         eval_k_ui,
         eval_queries_ui,
+        gradient_checkpointing_ui,
         learning_rate_ui,
         max_pairs_ui,
+        max_seq_length_ui,
         min_support_ui,
         min_text_chars_ui,
         model_name_ui,
@@ -210,14 +220,12 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 2. Load and validate source data
 
     We keep operations lazy with Polars and only materialize what we need for previews
     and sampled training subsets.
-    """
-    )
+    """)
     return
 
 
@@ -348,14 +356,12 @@ def _(candidate_pair_count, candidate_pairs_preview_df, mo):
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 3. Sample pairs and compute similarity components
 
     We build connected components over sampled positive edges.
     During training, each batch uses at most one edge from each component.
-    """
-    )
+    """)
     return
 
 
@@ -467,13 +473,11 @@ def _(component_sizes_df, mo, preview_rows_ui, sample_size):
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 4. Split by component and attach texts
 
     Splitting by component prevents near-duplicate positives from leaking between train and validation.
-    """
-    )
+    """)
     return
 
 
@@ -593,14 +597,12 @@ def _(
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 5. Baseline retrieval evaluation
 
     Evaluate the base `embeddinggemma` model on held-out validation components
     before finetuning so we can compare fairly.
-    """
-    )
+    """)
     return
 
 
@@ -654,15 +656,38 @@ def _(np):
         text_by_id,
         max_queries,
         k,
+        device=None,
+        encode_batch_size=None,
     ):
         from sentence_transformers import SentenceTransformer
+        import torch
 
-        model = SentenceTransformer(str(model_name_or_path))
+        if device is None:
+            if torch.cuda.is_available():
+                runtime_device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                runtime_device = "mps"
+            else:
+                runtime_device = "cpu"
+        else:
+            runtime_device = str(device)
+
+        if encode_batch_size is None:
+            if runtime_device == "cuda":
+                runtime_encode_batch_size = 256
+            elif runtime_device == "mps":
+                runtime_encode_batch_size = 64
+            else:
+                runtime_encode_batch_size = 64
+        else:
+            runtime_encode_batch_size = int(encode_batch_size)
+
+        model = SentenceTransformer(str(model_name_or_path), device=runtime_device)
         corpus_ids = list(candidate_ids)
         corpus_texts = [text_by_id[book_id] for book_id in corpus_ids]
         corpus_embeddings = model.encode(
             corpus_texts,
-            batch_size=64,
+            batch_size=runtime_encode_batch_size,
             convert_to_numpy=True,
             normalize_embeddings=True,
             show_progress_bar=True,
@@ -797,13 +822,11 @@ def _(
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 6. Check dependencies and run finetuning
 
     Required packages: `sentence-transformers` and `torch`.
-    """
-    )
+    """)
     return
 
 
@@ -911,15 +934,13 @@ def _(
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ### Why this sampler avoids known false negatives
 
     `MultipleNegativesRankingLoss` treats all non-matching items in the batch as negatives.
     By ensuring one sample per connected similarity component in each batch, we avoid placing
     known positives together as negatives.
-    """
-    )
+    """)
     return
 
 
@@ -928,7 +949,9 @@ def _(
     DataLoader,
     component_sampler,
     epochs_ui,
+    gradient_checkpointing_ui,
     learning_rate_ui,
+    max_seq_length_ui,
     mo,
     model_name_ui,
     resolved_output_path,
@@ -941,13 +964,62 @@ def _(
         mo.md("Press **Run finetuning** to train and save the model."),
     )
 
+    import os
+
+    import torch
     from sentence_transformers import SentenceTransformer, losses
 
-    model = SentenceTransformer(model_name_ui.value)
+    if torch.cuda.is_available():
+        training_device = "cuda"
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+        torch.set_float32_matmul_precision("high")
+        dataloader_num_workers = min(16, os.cpu_count() or 1)
+        dataloader_pin_memory = True
+        dataloader_prefetch_factor = 4
+        use_amp = True
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        training_device = "mps"
+        dataloader_num_workers = 0
+        dataloader_pin_memory = False
+        dataloader_prefetch_factor = 2
+        use_amp = False
+    else:
+        training_device = "cpu"
+        dataloader_num_workers = min(8, os.cpu_count() or 1)
+        dataloader_pin_memory = False
+        dataloader_prefetch_factor = 2
+        use_amp = False
+
+    model = SentenceTransformer(model_name_ui.value, device=training_device)
+    model.max_seq_length = int(max_seq_length_ui.value)
+    gradient_checkpointing_enabled = False
+    if gradient_checkpointing_ui.value:
+        try:
+            first_module = model._first_module()
+            auto_model = getattr(first_module, "auto_model", None)
+            if auto_model is not None and hasattr(
+                auto_model, "gradient_checkpointing_enable"
+            ):
+                auto_model.gradient_checkpointing_enable()
+                gradient_checkpointing_enabled = True
+        except Exception:
+            gradient_checkpointing_enabled = False
+
+    dataloader_kwargs = {}
+    if dataloader_num_workers > 0:
+        dataloader_kwargs["num_workers"] = dataloader_num_workers
+        dataloader_kwargs["persistent_workers"] = True
+        dataloader_kwargs["prefetch_factor"] = dataloader_prefetch_factor
+    if dataloader_pin_memory:
+        dataloader_kwargs["pin_memory"] = True
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_sampler=component_sampler,
         collate_fn=model.smart_batching_collate,
+        **dataloader_kwargs,
     )
     train_loss = losses.MultipleNegativesRankingLoss(model=model)
 
@@ -958,18 +1030,29 @@ def _(
     total_steps = steps_per_epoch * epochs_ui.value
     warmup_steps = int(total_steps * (warmup_ratio_ui.value / 100))
 
-    model.fit(
+    # `fit()` in sentence-transformers v3 rebuilds datasets from dataloaders and
+    # expects `data_loader.batch_size` to be an integer. With a custom
+    # `batch_sampler`, PyTorch sets `batch_size=None`, which breaks `fit()` and
+    # also bypasses our component-aware batching constraint. `old_fit()` keeps
+    # the provided dataloader behavior, so we use it here intentionally.
+    model.old_fit(
         train_objectives=[(train_dataloader, train_loss)],
         epochs=epochs_ui.value,
         warmup_steps=warmup_steps,
         optimizer_params={"lr": float(learning_rate_ui.value)},
         output_path=str(output_path),
+        use_amp=use_amp,
         show_progress_bar=True,
     )
 
     mo.md(
         "### Finetuning complete\n"
         f"- Saved to: `{output_path}`\n"
+        f"- Device: `{training_device}`\n"
+        f"- AMP: `{'enabled' if use_amp else 'disabled'}`\n"
+        f"- DataLoader workers: `{dataloader_num_workers}`\n"
+        f"- Max sequence length: `{model.max_seq_length}`\n"
+        f"- Gradient checkpointing: `{'enabled' if gradient_checkpointing_enabled else 'disabled'}`\n"
         f"- Steps per epoch: `{steps_per_epoch}`\n"
         f"- Total steps: `{total_steps}`\n"
         f"- Warmup steps: `{warmup_steps}`"
@@ -979,11 +1062,9 @@ def _(
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 7. Evaluate the finetuned model
-    """
-    )
+    """)
     return
 
 
@@ -1054,11 +1135,9 @@ def _(
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 8. Compare baseline vs finetuned
-    """
-    )
+    """)
     return
 
 
@@ -1150,14 +1229,12 @@ def _(comparison_eval_metrics_df, mo, np, pl, plt):
 
 @app.cell
 def _(mo):
-    mo.md(
-        """
+    mo.md("""
     ## Step 9. Next checks
 
     1. Evaluate retrieval quality on held-out components.
     2. Export embeddings for all books and compare nearest-neighbor quality before/after finetuning.
-    """
-    )
+    """)
     return
 
 
