@@ -13,6 +13,7 @@ def _():
     import seaborn as sns
     from scipy import stats
     import json
+
     return json, mo, np, pl, plt, sns, stats
 
 
@@ -680,24 +681,23 @@ def _(df_final, json, mo, os, pl, project_root):
     mapping_df = (
         df_final.join(books_per_work, on="work_id", how="left")
         .filter(
-            pl.col("all_book_ids").is_not_null() & (pl.col("all_book_ids").list.len() > 1)
+            pl.col("all_book_ids").is_not_null()
+            & (pl.col("all_book_ids").list.len() > 1)
         )  # Keep only works with multiple books
         .select(["best_book_id", "all_book_ids"])
     )
 
-    # Create the mapping in a performant, Polars-native way
-    best_book_id_map_df = (
-        mapping_df.explode("all_book_ids")
-        .filter(pl.col("all_book_ids") != pl.col("best_book_id"))
-        .group_by("best_book_id")
-        .agg(pl.col("all_book_ids").sort())
-    )
-    best_book_id_map = dict(
-        zip(
-            best_book_id_map_df["best_book_id"],
-            best_book_id_map_df["all_book_ids"],
-        )
-    )
+    # Convert to dictionary using Python lists to ensure JSON serializability
+    best_book_id_map = {}
+    for row in mapping_df.iter_rows(named=True):
+        best_id = int(row["best_book_id"])
+        all_ids = row["all_book_ids"]
+        # Handle Polars Series or list - convert to Python list
+        if hasattr(all_ids, "to_list"):
+            all_ids = all_ids.to_list()
+        # Convert to Python ints and filter out best_book_id
+        other_ids = sorted([int(id) for id in all_ids if int(id) != best_id])
+        best_book_id_map[str(best_id)] = other_ids
 
     output_path = os.path.join(project_root, "data", "best_book_id_map.json")
     with open(output_path, "w") as f:
