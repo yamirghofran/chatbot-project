@@ -680,7 +680,7 @@ def _(df_final, json, mo, os, pl, project_root):
     mapping_df = (
         df_final.join(books_per_work, on="work_id", how="left")
         .filter(
-            pl.col("all_book_ids").list.len() > 1
+            pl.col("all_book_ids").is_not_null() & (pl.col("all_book_ids").list.len() > 1)
         )  # Keep only works with multiple books
         .select(["best_book_id", "all_book_ids"])
     )
