@@ -685,18 +685,19 @@ def _(df_final, json, mo, os, pl, project_root):
         .select(["best_book_id", "all_book_ids"])
     )
 
-    # Convert to pandas to do the list filtering
-    mapping_pandas = mapping_df.to_pandas()
-
-    # For each row remove best_book_id from the all_book_ids list
-    best_book_id_map = {}
-    for _, row in mapping_pandas.iterrows():
-        best_id = int(row["best_book_id"])
-        all_ids = list(row["all_book_ids"])
-        # Remove best_book_id from the list
-        other_ids = [int(id) for id in all_ids if id != best_id]
-        other_ids.sort()
-        best_book_id_map[best_id] = other_ids
+    # Create the mapping in a performant, Polars-native way
+    best_book_id_map_df = (
+        mapping_df.explode("all_book_ids")
+        .filter(pl.col("all_book_ids") != pl.col("best_book_id"))
+        .group_by("best_book_id")
+        .agg(pl.col("all_book_ids").sort())
+    )
+    best_book_id_map = dict(
+        zip(
+            best_book_id_map_df["best_book_id"],
+            best_book_id_map_df["all_book_ids"],
+        )
+    )
 
     output_path = os.path.join(project_root, "data", "best_book_id_map.json")
     with open(output_path, "w") as f:
