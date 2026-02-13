@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.19.8"
-app = marimo.App(layout_file="layouts/authors_eda.slides.json")
+__generated_with = "0.19.7"
+app = marimo.App()
 
 
 @app.cell
@@ -12,7 +12,6 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
-
     return mo, np, pl, plt, sns, stats
 
 
@@ -27,7 +26,6 @@ def _(mo):
 @app.cell
 def _(mo, pl):
     import os
-    # Use absolute path from project root
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_authors.parquet")
     df = pl.read_parquet(data_path)
@@ -40,11 +38,6 @@ def _(mo, pl):
         ]
     )
     shape = df.shape
-    mo.md(f"""
-    - Dataset contains {shape[0]} authors and {shape[1]} columns.
-
-    - No missing values found in the dataset
-    """)
     mo.vstack([
         mo.md(f"""
     - Dataset contains {shape[0]} authors and {shape[1]} columns.
@@ -71,16 +64,9 @@ def _(df, mo):
     mo.vstack([
         mo.md("### Summary Statistics"),
         distribution_analysis,
-        summary
+        summary,
+        mo.md("Highly skewed distribution of reviews/rating counts suggests log-transformation will be needed")
     ])
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Highly skewed distribution of reviews/rating counts suggests log-transformation will be needed
-    """)
     return
 
 
@@ -139,7 +125,7 @@ def _(mo):
 @app.cell
 def _(df, iqr_multiplier, mo, pl):
     """Outlier Analysis"""
-    # Calculate IQR for ratings_count
+    # IQR for ratings_count
     q1 = df["ratings_count"].quantile(0.25)
     q3 = df["ratings_count"].quantile(0.75)
     iqr = q3 - q1
@@ -158,23 +144,15 @@ def _(df, iqr_multiplier, mo, pl):
         iqr_multiplier,
         mo.md(f"Using {iqr_multiplier.value}x IQR method, {outliers_count} authors ({outliers_count / df.shape[0] * 100:.2f}%) have extreme rating counts"),
         mo.md("Top authors by ratings:"),
-        top_authors
+        top_authors,
+        mo.md("Filter out authors with very few ratings (<10) to improve rating reliability")
     ])
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Filter out authors with very few ratings (<10) to improve rating reliability
-    """)
     return
 
 
 @app.cell
 def _(df, mo, plt, sns):
     """Correlation Analysis"""
-    # Convert to pandas for correlation heatmap
     numeric_df = df.select(
         ["average_rating", "text_reviews_count", "ratings_count"]
     ).to_pandas()
@@ -230,7 +208,7 @@ def _(df, mo, np, plt):
 
 
 @app.cell
-def _(df, np, stats):
+def _(df, mo, np, stats):
     """Pearson Correlation Significance Test"""
     ratings = df["ratings_count"].to_pandas().values
     reviews = df["text_reviews_count"].to_pandas().values
@@ -244,9 +222,9 @@ def _(df, np, stats):
     corr2, p2 = stats.pearsonr(log_reviews2, avg_rating)
     corr3, p3 = stats.pearsonr(log_ratings2, log_reviews2)
 
-    print(f"Log(Ratings) vs Average Rating: r={corr1:.4f}, p={p1:.2e}")
-    print(f"Log(Text Reviews) vs Average Rating: r={corr2:.4f}, p={p2:.2e}")
-    print(f"Log(Ratings) vs Log(Text Reviews): r={corr3:.4f}, p={p3:.2e}")
+    mo.vstack([mo.md(f"Log(Ratings) vs Average Rating: r={corr1:.4f}, p={p1:.2e}"),
+    mo.md(f"Log(Text Reviews) vs Average Rating: r={corr2:.4f}, p={p2:.2e}"),
+    mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr3:.4f}, p={p3:.2e}")])
     return
 
 
@@ -293,6 +271,27 @@ def _(df, pl, plt):
 
 
 @app.cell
+def _(df, mo, pl):
+    neg_ratings = df.filter(pl.col("ratings_count") < 0).shape[0]
+    neg_reviews = df.filter(pl.col("text_reviews_count") < 0).shape[0]
+
+    # Check for low rating counts
+    low_ratings = df.filter(pl.col("ratings_count") < 10).shape[0]
+
+    # Check for duplicates
+    duplicates = df.group_by("author_id").len().filter(pl.col("len") > 1).shape[0]
+
+    mo.vstack([
+        mo.md("### Data Quality"),
+        mo.md(f"- **Negative ratings_count**: {neg_ratings} rows"),
+        mo.md(f"- **Negative text_reviews_count**: {neg_reviews} rows"),
+        mo.md(f"- **Authors with < 10 ratings**: {low_ratings} ({low_ratings/df.shape[0]*100:.1f}%)"),
+        mo.md(f"- **Duplicate author_id**: {duplicates} rows")
+    ])
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
     ## Feature Engineering Recommendations
@@ -300,6 +299,15 @@ def _(mo):
     1. Strong correlation between ratings_count and text_reviews_count keep only one.
     2. Consider creating a 'popularity_score' combining both
     3. Consider filtering out authors with very few ratings to improve rating reliability
+    4. Log-Transform Skewed Metrics
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Data Cleaning
     """)
     return
 
