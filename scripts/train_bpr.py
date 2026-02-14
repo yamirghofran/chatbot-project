@@ -60,9 +60,9 @@ DEFAULT_CONFIG = {
     "num_threads": 0,  # 0 = auto
 
     # Recommendation settings
-    "top_k": 100,
+    "top_k": 30,
     "remove_seen": True,
-    "batch_size": 1000,  # Users to process at once
+    "batch_size": 10000,  # Users to process at once
 
     # Other
     "random_state": 42,
