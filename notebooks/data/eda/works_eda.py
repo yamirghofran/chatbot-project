@@ -31,7 +31,7 @@ def _(pl):
 
     # Use absolute path from project root
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_works.parquet")
     df = pl.read_parquet(data_path)

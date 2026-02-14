@@ -29,7 +29,7 @@ def _(mo, pl):
     import os
 
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     data_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
     df = pl.read_parquet(data_path)
