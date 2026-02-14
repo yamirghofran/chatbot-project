@@ -84,22 +84,21 @@ def _(df_all, df_spoiler):
 
 
 @app.cell
-def _(df_all, df_spoiler):
+def _(df_all, df_spoiler, pl):
     # Check if spoiler review_ids are a subset of dedup review_ids
-    _dedup_ids = set(df_all["review_id"].to_list())
-    _spoiler_ids = set(df_spoiler["review_id"].to_list())
+    _only_in_spoiler = df_spoiler.filter(~pl.col("review_id").is_in(df_all["review_id"]))
+    _n_only_in_spoiler = _only_in_spoiler.height
+    _n_spoiler = df_spoiler.height
+    _n_in_both = _n_spoiler - _n_only_in_spoiler
 
-    _in_both = _spoiler_ids & _dedup_ids
-    _only_in_spoiler = _spoiler_ids - _dedup_ids
+    print(f"Spoiler review_ids in dedup: {_n_in_both:,} ({_n_in_both/_n_spoiler*100:.1f}%)")
+    print(f"Spoiler review_ids NOT in dedup: {_n_only_in_spoiler:,} ({_n_only_in_spoiler/_n_spoiler*100:.1f}%)")
 
-    print(f"Spoiler review_ids in dedup: {len(_in_both):,} ({len(_in_both)/len(_spoiler_ids)*100:.1f}%)")
-    print(f"Spoiler review_ids NOT in dedup: {len(_only_in_spoiler):,} ({len(_only_in_spoiler)/len(_spoiler_ids)*100:.1f}%)")
-
-    _is_subset = len(_only_in_spoiler) == 0
+    _is_subset = _n_only_in_spoiler == 0
     print(f"\nSpoiler is strict subset of dedup: {_is_subset}")
 
     if not _is_subset:
-        print(f"  WARNING: {len(_only_in_spoiler):,} spoiler reviews are not in dedup dataset")
+        print(f"  WARNING: {_n_only_in_spoiler:,} spoiler reviews are not in dedup dataset")
     return
 
 
@@ -279,28 +278,19 @@ def _(mo):
 
 
 @app.cell
-def _(df_spoiler, re):
+def _(df_spoiler, pl):
     # Validate: does every (view spoiler)[ have a matching (hide spoiler)]?
-    _view_pattern = re.compile(r'\(view spoiler\)\[')
-    _hide_pattern = re.compile(r'\(hide spoiler\)\]')
+    # Vectorized approach using Polars expressions
+    validation_df = df_spoiler.with_columns(
+        view_count=pl.col("review_text").str.count_matches(r'\(view spoiler\)\[', literal=False).fill_null(0),
+        hide_count=pl.col("review_text").str.count_matches(r'\(hide spoiler\)\]', literal=False).fill_null(0),
+    )
 
-    mismatched_reviews = []
-    _total_view = 0
-    _total_hide = 0
+    _total_view = validation_df["view_count"].sum()
+    _total_hide = validation_df["hide_count"].sum()
 
-    for _row in df_spoiler.iter_rows(named=True):
-        _text = str(_row['review_text']) if _row['review_text'] else ""
-        _view_count = len(_view_pattern.findall(_text))
-        _hide_count = len(_hide_pattern.findall(_text))
-        _total_view += _view_count
-        _total_hide += _hide_count
-
-        if _view_count != _hide_count:
-            mismatched_reviews.append({
-                'review_id': _row['review_id'],
-                'view_count': _view_count,
-                'hide_count': _hide_count
-            })
+    mismatched_reviews_df = validation_df.filter(pl.col("view_count") != pl.col("hide_count"))
+    mismatched_reviews = mismatched_reviews_df.select("review_id", "view_count", "hide_count").to_dicts()
 
     print("Validating spoiler tag pairs:")
     print(f"  Total (view spoiler)[ tags: {_total_view:,}")
@@ -316,22 +306,12 @@ def _(df_spoiler, re):
 
 
 @app.cell
-def _(df_spoiler, mismatched_reviews):
+def _(df_spoiler, mismatched_reviews, pl):
     # Categorize mismatched reviews by tag type
-    _only_view = []  # Has view but no hide (truncated)
-    _only_hide = []  # Has hide but no view (orphan)
-    _partial = []    # Has both but unequal counts
-    _neither = []    # Has neither tag
-
-    for _r in mismatched_reviews:
-        if _r['view_count'] > 0 and _r['hide_count'] == 0:
-            _only_view.append(_r)
-        elif _r['view_count'] == 0 and _r['hide_count'] > 0:
-            _only_hide.append(_r)
-        elif _r['view_count'] > 0 and _r['hide_count'] > 0:
-            _partial.append(_r)
-        else:
-            _neither.append(_r)
+    _only_view = [r for r in mismatched_reviews if r['view_count'] > 0 and r['hide_count'] == 0]
+    _only_hide = [r for r in mismatched_reviews if r['view_count'] == 0 and r['hide_count'] > 0]
+    _partial = [r for r in mismatched_reviews if r['view_count'] > 0 and r['hide_count'] > 0]
+    _neither = [r for r in mismatched_reviews if not (r['view_count'] > 0 or r['hide_count'] > 0)]
 
     _id_to_info = {r['review_id']: r for r in mismatched_reviews}
 
@@ -342,10 +322,12 @@ def _(df_spoiler, mismatched_reviews):
         print(f"\n{'='*80}")
         print(f"{_category_name}: {len(_id_list)} reviews")
         print("="*80 + "\n")
+
+        # Efficiently filter the DataFrame for the relevant IDs
         _ids = {r['review_id'] for r in _id_list}
-        for _row in df_spoiler.iter_rows(named=True):
-            if _row['review_id'] not in _ids:
-                continue
+        reviews_to_print = df_spoiler.filter(pl.col('review_id').is_in(_ids))
+
+        for _row in reviews_to_print.iter_rows(named=True):
             _text = str(_row['review_text']) if _row['review_text'] else ""
             _info = _id_to_info[_row['review_id']]
             print(f"Review ID: {_row['review_id']}")
@@ -380,19 +362,15 @@ def _(mo):
 
 
 @app.cell
-def _(df_spoiler, re):
-
+def _(df_spoiler, pl):
     # Analyze how many spoiler tags per review
-    _spoiler_pattern = re.compile(r'\(view spoiler\)\[', re.DOTALL)
-
-    _spoiler_counts = []
-    for _row in df_spoiler.iter_rows(named=True):
-        _text = str(_row['review_text']) if _row['review_text'] else ""
-        _count = len(_spoiler_pattern.findall(_text))
-        _spoiler_counts.append(_count)
+    from collections import Counter
+    spoiler_counts_df = df_spoiler.with_columns(
+        spoiler_tags=pl.col("review_text").str.count_matches(r'\(view spoiler\)\[', literal=False).fill_null(0)
+    )
+    _spoiler_counts = spoiler_counts_df["spoiler_tags"].to_list()
 
     # Distribution of spoiler tag counts
-    from collections import Counter
     _count_dist = Counter(_spoiler_counts)
 
     print("Distribution of (view spoiler) tags per review:")
@@ -402,8 +380,8 @@ def _(df_spoiler, re):
         _freq = _count_dist[_n_tags]
         print(f"  {_n_tags} tags: {_freq:,} reviews ({_freq/len(_spoiler_counts)*100:.2f}%)")
 
-    _reviews_with_tags = sum(1 for c in _spoiler_counts if c > 0)
-    _reviews_multi_tags = sum(1 for c in _spoiler_counts if c > 1)
+    _reviews_with_tags = spoiler_counts_df.filter(pl.col("spoiler_tags") > 0).height
+    _reviews_multi_tags = spoiler_counts_df.filter(pl.col("spoiler_tags") > 1).height
     print(f"\nSummary:")
     print(f"  Reviews with at least 1 spoiler tag: {_reviews_with_tags:,} ({_reviews_with_tags/len(_spoiler_counts)*100:.1f}%)")
     print(f"  Reviews with multiple spoiler tags: {_reviews_multi_tags:,} ({_reviews_multi_tags/len(_spoiler_counts)*100:.1f}%)")
@@ -435,58 +413,60 @@ def _(df_all, pl):
 
 
 @app.cell
-def _(joined_comparison, pl, re):
+def _(joined_comparison, pl):
     # Check if content is the same after stripping spoiler markup
     _diff_rows = joined_comparison.filter(
         pl.col("review_text").ne_missing(pl.col("review_text_dedup"))
     )
 
-    def _strip_and_normalize(_text):
-        """Remove spoiler markup and normalize whitespace"""
-        _text = re.sub(r'\(view spoiler\)\[', '', _text)
-        _text = re.sub(r'\(hide spoiler\)\]', '', _text)
-        _text = re.sub(r'\(hide spoiler\)', '', _text)
-        # Normalize whitespace: collapse multiple spaces/newlines to single space
-        _text = re.sub(r'\s+', ' ', _text.strip())
-        return _text
+    # Vectorized string stripping
+    stripped_df = _diff_rows.with_columns(
+        spoiler_stripped=pl.col("review_text")
+            .str.replace_all(r'\(view spoiler\)\[', '', literal=True)
+            .str.replace_all(r'\(hide spoiler\)\]', '', literal=True)
+            .str.replace_all(r'\(hide spoiler\)', '', literal=True)
+            .str.replace_all(r'\s+', ' ', literal=False)
+            .str.strip_chars(),
+        dedup_stripped=pl.col("review_text_dedup")
+            .str.replace_all(r'\(view spoiler\)\[', '', literal=True)
+            .str.replace_all(r'\(hide spoiler\)\]', '', literal=True)
+            .str.replace_all(r'\(hide spoiler\)', '', literal=True)
+            .str.replace_all(r'\s+', ' ', literal=False)
+            .str.strip_chars(),
+    )
 
-    _same_after_strip = 0
-    _diff_after_strip = 0
+    same_count = stripped_df.filter(pl.col("spoiler_stripped") == pl.col("dedup_stripped")).height
+    diff_count = stripped_df.height - same_count
+
+    # Get examples of differences
+    _diff_examples_df = stripped_df.filter(pl.col("spoiler_stripped") != pl.col("dedup_stripped")).head(5)
+
     _diff_examples = []
+    for _row in _diff_examples_df.iter_rows(named=True):
+        _spoiler_stripped = str(_row['spoiler_stripped'])
+        _dedup_stripped = str(_row['dedup_stripped'])
 
-    for _row in _diff_rows.iter_rows(named=True):
-        _spoiler_text = str(_row['review_text']) if _row['review_text'] else ""
-        _dedup_text = str(_row['review_text_dedup']) if _row['review_text_dedup'] else ""
-
-        _spoiler_stripped = _strip_and_normalize(_spoiler_text)
-        # Dedup shouldn't have tags, but strip anyway to be safe
-        _dedup_stripped = _strip_and_normalize(_dedup_text)
-
-        if _spoiler_stripped == _dedup_stripped:
-            _same_after_strip += 1
+        # Find where they differ
+        _diverge_at = 0
+        for _i, (_c1, _c2) in enumerate(zip(_spoiler_stripped, _dedup_stripped)):
+            if _c1 != _c2:
+                _diverge_at = _i
+                break
         else:
-            _diff_after_strip += 1
-            if len(_diff_examples) < 5:
-                # Find where they differ
-                _diverge_at = 0
-                for _i, (_c1, _c2) in enumerate(zip(_spoiler_stripped, _dedup_stripped)):
-                    if _c1 != _c2:
-                        _diverge_at = _i
-                        break
-                else:
-                    _diverge_at = min(len(_spoiler_stripped), len(_dedup_stripped))
-                _diff_examples.append({
-                    'review_id': _row['review_id'],
-                    'diverge_at': _diverge_at,
-                    'spoiler_around': _spoiler_stripped[max(0,_diverge_at-30):_diverge_at+50],
-                    'dedup_around': _dedup_stripped[max(0,_diverge_at-30):_diverge_at+50],
-                    'len_spoiler': len(_spoiler_stripped),
-                    'len_dedup': len(_dedup_stripped),
-                })
+            _diverge_at = min(len(_spoiler_stripped), len(_dedup_stripped))
+
+        _diff_examples.append({
+            'review_id': _row['review_id'],
+            'diverge_at': _diverge_at,
+            'spoiler_around': _spoiler_stripped[max(0,_diverge_at-30):_diverge_at+50],
+            'dedup_around': _dedup_stripped[max(0,_diverge_at-30):_diverge_at+50],
+            'len_spoiler': len(_spoiler_stripped),
+            'len_dedup': len(_dedup_stripped),
+        })
 
     print("After stripping spoiler markup ((view spoiler)[, (hide spoiler)]):")
-    print(f"  Content identical: {_same_after_strip:,} ({_same_after_strip/_diff_rows.height*100:.2f}%)")
-    print(f"  Content still different: {_diff_after_strip:,} ({_diff_after_strip/_diff_rows.height*100:.2f}%)")
+    print(f"  Content identical: {same_count:,} ({same_count/_diff_rows.height*100:.2f}%)")
+    print(f"  Content still different: {diff_count:,} ({diff_count/_diff_rows.height*100:.2f}%)")
 
     if _diff_examples:
         print("\nExamples still different after stripping:")
@@ -502,15 +482,14 @@ def _(joined_comparison, pl, re):
 @app.cell
 def _(df_all, df_spoiler, pl):
     # Create non-spoiler subset by excluding spoiler review_ids
-    spoiler_ids = set(df_spoiler["review_id"].to_list())
-    df_nonspoiler = df_all.filter(~pl.col("review_id").is_in(spoiler_ids))
+    df_nonspoiler = df_all.join(df_spoiler, on="review_id", how="anti")
 
     print(f"All reviews (dedup): {df_all.height:,}")
     print(f"Spoiler reviews: {df_spoiler.height:,} ({df_spoiler.height/df_all.height*100:.1f}%)")
     print(f"Non-spoiler reviews: {df_nonspoiler.height:,} ({df_nonspoiler.height/df_all.height*100:.1f}%)")
 
     # Sanity check
-    _expected_nonspoiler = df_all.height - len(spoiler_ids & set(df_all["review_id"].to_list()))
+    _expected_nonspoiler = df_all.height - df_all.join(df_spoiler, on="review_id", how="semi").height
     print(f"\nSanity check - expected non-spoiler count: {_expected_nonspoiler:,}")
     print(f"Actual non-spoiler count: {df_nonspoiler.height:,}")
     print(f"Match: {_expected_nonspoiler == df_nonspoiler.height}")

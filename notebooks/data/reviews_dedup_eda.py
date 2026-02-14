@@ -176,49 +176,35 @@ def _(mo):
     return
 
 @app.cell
-def _(df):
+def _(df, pl):
     date_cols = ["date_added", "date_updated", "read_at", "started_at"]
 
-    def _parse_year(date_str):
-        if not date_str or date_str == "":
-            return None
-        try:
-            return int(date_str.strip()[-4:])
-        except:
-            return None
-
-    def _parse_day(date_str):
-        if not date_str or date_str == "":
-            return None
-        try:
-            return int(date_str.strip()[8:10])
-        except:
-            return None
-
     for col in date_cols:
-        valid_dates = df.filter(df[col] != "")
-        date_list = valid_dates[col].to_list()
-        years = [_parse_year(d) for d in date_list]
-        days = [_parse_day(d) for d in date_list]
+        valid_dates = df.filter(pl.col(col) != "")
 
-        # Filter out None values
-        years = [y for y in years if y is not None]
-        days = [d for d in days if d is not None]
+        # Extract years and days using Polars expressions
+        years_df = valid_dates.with_columns(
+            pl.col(col).str.slice(-4).cast(pl.Int32, strict=False).alias("year"),
+            pl.col(col).str.slice(8, 2).cast(pl.Int32, strict=False).alias("day")
+        )
 
-        if years:
-            print(f"{col}: year range {min(years)} to {max(years)}")
+        years_list = years_df["year"].drop_nulls().to_list()
+        days_list = years_df["day"].drop_nulls().to_list()
+
+        if years_list:
+            print(f"{col}: year range {min(years_list)} to {max(years_list)}")
             # Print dates with year < 2000
-            old_dates = [d for d in date_list if _parse_year(d) is not None and _parse_year(d) < 2000]
+            old_dates = years_df.filter(pl.col("year") < 2000).select(col).to_series().to_list()
             if old_dates:
                 print(f"  Dates with year < 2000: {old_dates[:5]}{' ...' if len(old_dates) > 5 else ''} (total: {len(old_dates)})")
             # Print dates with year > 2026
-            future_dates = [d for d in date_list if _parse_year(d) is not None and _parse_year(d) > 2026]
+            future_dates = years_df.filter(pl.col("year") > 2026).select(col).to_series().to_list()
             if future_dates:
                 print(f"  Dates with year > 2026: {future_dates[:5]}{' ...' if len(future_dates) > 5 else ''} (total: {len(future_dates)})")
 
-        if days:
-            print(f"{col}: day range {min(days)} to {max(days)}")
-            if min(days) < 1 or max(days) > 31:
+        if days_list:
+            print(f"{col}: day range {min(days_list)} to {max(days_list)}")
+            if min(days_list) < 1 or max(days_list) > 31:
                 print(f"  Warning: Found days outside 1-31 in {col}")
     return
 
@@ -535,33 +521,30 @@ def _(df, pl):
 
 
 @app.cell
-def _(df, pd, pl):
+def _(df, pl):
     # Compute word count for non-empty reviews
     _df_text = df.filter(pl.col("review_text").str.strip_chars() != "").with_columns([
         pl.col("review_text").str.split(" ").list.len().alias("word_count"),
     ])
 
-    # Convert to pandas for binning
-    _pdf = _df_text.select([
-        "word_count", "n_votes", "n_comments"
-    ]).to_pandas()
-
     # Define bins and labels
     bins = [0, 10, 50, 100, 250, 500, 10000]
     labels = ["0-10", "10-50", "50-100", "100-250", "250-500", "500+"]
 
-    # Bin word counts
-    _pdf["length_bin"] = pd.cut(_pdf["word_count"], bins=bins, labels=labels, right=True)
+    # Bin word counts using pl.cut
+    _binned_df = _df_text.with_columns(
+        pl.cut(pl.col("word_count"), bins=bins, labels=labels, right=True).alias("length_bin")
+    )
 
     # Group and summarize
-    summary = _pdf.groupby("length_bin").agg({
-        "word_count": "mean",
-        "n_votes": "mean",
-        "n_comments": "mean",
-        "word_count": "count"
-    }).rename(columns={"word_count": "n_reviews"})
+    summary = _binned_df.group_by("length_bin", maintain_order=True).agg([
+        pl.len().alias("n_reviews"),
+        pl.mean("word_count"),
+        pl.mean("n_votes"),
+        pl.mean("n_comments"),
+    ])
 
-    print("Review Length Bin Summary (using pandas):")
+    print("Review Length Bin Summary (using polars):")
     print(summary)
     return
 
