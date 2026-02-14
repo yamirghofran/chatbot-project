@@ -14,7 +14,7 @@ def _():
     from collections import Counter
     import pandas as pd
 
-    return mo, np, pd, pl, plt, sns
+    return mo, np, pl, plt, sns
 
 
 @app.cell
@@ -174,6 +174,7 @@ def _(mo):
     - These negative values should be cleaned (clip to 0) or excluded during analysis.
     """)
     return
+
 
 @app.cell
 def _(df, pl):
@@ -382,6 +383,7 @@ def _(df, pl):
     print(f"Long reviews (>500 words): {_long:,} ({_long/df.height*100:.1f}%)")
     return
 
+
 @app.cell
 def _(df, pl):
     # Analyze empty review_text entries - categorize by activity
@@ -438,6 +440,7 @@ def _(mo):
     However, these empty reviews still show different levels of engagement with nearly half of them containing votes or comments.
     """)
     return
+
 
 @app.cell
 def _(df, np, pl, plt):
@@ -527,13 +530,14 @@ def _(df, pl):
         pl.col("review_text").str.split(" ").list.len().alias("word_count"),
     ])
 
-    # Define bins and labels
-    bins = [0, 10, 50, 100, 250, 500, 10000]
+    # Define breaks (internal division points) and labels
+    # 5 breaks create 6 bins: [-inf, 10), [10, 50), [50, 100), [100, 250), [250, 500), [500, inf)
+    breaks = [10, 50, 100, 250, 500]
     labels = ["0-10", "10-50", "50-100", "100-250", "250-500", "500+"]
 
-    # Bin word counts using pl.cut
+    # Bin word counts using pl.col().cut()
     _binned_df = _df_text.with_columns(
-        pl.cut(pl.col("word_count"), bins=bins, labels=labels, right=True).alias("length_bin")
+        pl.col("word_count").cut(breaks, labels=labels).alias("length_bin")
     )
 
     # Group and summarize
@@ -547,7 +551,6 @@ def _(df, pl):
     print("Review Length Bin Summary (using polars):")
     print(summary)
     return
-
 
 
 @app.cell
@@ -848,12 +851,14 @@ def _(df, pl, plt, sns):
     _fig
     return
 
+
 @app.cell
 def _(mo):
     mo.md(r"""
     Weak correlations.
     """)
     return
+
 
 @app.cell
 def _(mo):
@@ -866,6 +871,7 @@ def _(mo):
     - Prioritize reviews with higher engagement (votes/comments), especially those with extreme ratings
     """)
     return
+
 
 if __name__ == "__main__":
     app.run()
