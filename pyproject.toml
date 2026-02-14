@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.32.4",
     "adlfs>=2024.7.0",
     "mlflow>=2.0.0",
+    "cornac>=2.3.0",
 ]
 
 [build-system]

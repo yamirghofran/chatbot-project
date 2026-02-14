@@ -1213,6 +1213,8 @@ source = { editable = "." }
 dependencies = [
     { name = "adlfs", version = "2024.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "adlfs", version = "2025.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "cornac", version = "2.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "cornac", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "fsspec", version = "2025.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "fsspec", version = "2025.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "fsspec", version = "2026.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -1266,6 +1268,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "adlfs", specifier = ">=2024.7.0" },
+    { name = "cornac", specifier = ">=2.3.0" },
     { name = "fsspec", specifier = ">=2025.3.0" },
     { name = "ipykernel", specifier = ">=4.6.1,<7" },
     { name = "jupyter", specifier = ">=1,<2" },
@@ -2045,6 +2048,76 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/59/ebfb8c677c75605cc27f7122c90313fd2f375ff3c8d19a1694bda74aaa63/contourpy-1.3.3-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:70f9aad7de812d6541d29d2bbf8feb22ff7e1c299523db288004e3157ff4674e", size = 302202, upload-time = "2025-07-26T12:02:55.947Z" },
     { url = "https://files.pythonhosted.org/packages/3c/37/21972a15834d90bfbfb009b9d004779bd5a07a0ec0234e5ba8f64d5736f4/contourpy-1.3.3-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5ed3657edf08512fc3fe81b510e35c2012fbd3081d2e26160f27ca28affec989", size = 329207, upload-time = "2025-07-26T12:02:57.468Z" },
     { url = "https://files.pythonhosted.org/packages/0c/58/bd257695f39d05594ca4ad60df5bcb7e32247f9951fd09a9b8edb82d1daa/contourpy-1.3.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:3d1a3799d62d45c18bafd41c5fa05120b96a28079f2393af559b843d1a966a77", size = 225315, upload-time = "2025-07-26T12:02:58.801Z" },
+]
+
+[[package]]
+name = "cornac"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.9' and sys_platform != 'win32'",
+    "python_full_version < '3.9' and sys_platform == 'win32'",
+]
+dependencies = [
+    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "powerlaw", marker = "python_full_version < '3.9'" },
+    { name = "scipy", version = "1.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "tqdm", marker = "python_full_version < '3.9'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/97/03/00a7a640973d7c2b8ee5252e6258a76d40f3709ae5796bc5ccae303da971/cornac-2.3.0.tar.gz", hash = "sha256:af5c5e7dca71c6388d1ee0511e1ca5d5544ee34ab2f4c883ee50649462eb8879", size = 5893968, upload-time = "2024-12-24T07:21:25.873Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/1a/fb25ab3fe442573260d338eecfbbfe5ea8d6e896d4d6bfcd3f118cd6dee0/cornac-2.3.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7d286ae7e3c2bd7349125158727d6f8d6af4626efd93b0697cacfd31d443c23a", size = 7068589, upload-time = "2024-12-24T07:20:48.171Z" },
+    { url = "https://files.pythonhosted.org/packages/93/60/ebcda93f4531db31d2956965f7fb5e91be8a91434a95265ca5a7b205a173/cornac-2.3.0-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:ca1966ce6a8888ea24e8b7393e7958a5c9c982e73e3f1495872b82bc090533f6", size = 23949647, upload-time = "2024-12-24T07:20:52.593Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/ef/c8fcefb6df21b9f7a1fba3bd6c9fba50b86511cab970a1f3330718d3de94/cornac-2.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:861ae3510317601414547cbe5d29725c14d82a76681a30045b57166abc869dd2", size = 3401988, upload-time = "2024-12-24T07:20:56.152Z" },
+    { url = "https://files.pythonhosted.org/packages/37/b9/3133eb165646a9d60b653154562b57d4f36b346a248a0b9f591145f296ab/cornac-2.3.0-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:7d5e5eeee6f8b5472fc297fccc3475fbf2cd1e5f84d79d60801e53974e72ca26", size = 7069405, upload-time = "2024-12-24T07:20:59.969Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/ff/32f335b9771c1316552c75c17a545446496b7515aad68f9c8f62c6611a87/cornac-2.3.0-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:1dad2af129b568928fecba21be8fc6ec6a5fcd7a481acc6964826dc2c89557ee", size = 25421429, upload-time = "2024-12-24T07:21:03.334Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/0b/49093f879b9547039adaa15f73915ff2103f8156d8ac3a5bc606faa2ab4a/cornac-2.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:c866b455f1e2ee16e7092c109f1af65da1e34f5f9ce53c77b7ca657077195547", size = 3410673, upload-time = "2024-12-24T07:21:07.46Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/cf/a28d66d6b77c217e46a1d5620fcbe0aa9d27325d7ed6e68d8738533d16d1/cornac-2.3.0-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:c5ed222568a5ce40052e53bdf65bca4a1d23b864cd11651c1faa8f5908249734", size = 7103838, upload-time = "2024-12-24T07:21:09.067Z" },
+    { url = "https://files.pythonhosted.org/packages/75/dd/309bb2868f05e26c7c70a3dcfa7b0d1c9b31c9d32b33625e75e96cb4570a/cornac-2.3.0-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:623bb9063c9b4ba6f589e2d5a3d1a2f83642a3c3dfe6fe3e0bb8e209a1df8cfb", size = 25255473, upload-time = "2024-12-24T07:21:12.296Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/87/3120cf258e4bdfe49a1011c18420560039300719e58fe7be0ba2ddeb6871/cornac-2.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:bca016e582c948bbfe8bd54c1f81c52f013532928e0ce8854591ec2f3a22c586", size = 3386190, upload-time = "2024-12-24T07:21:15.197Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/4a/016f7b79a930fe1c0d657acc77c6545400444c21696f907420b71c5275af/cornac-2.3.0-cp39-cp39-macosx_14_0_arm64.whl", hash = "sha256:a8f795d6ee4d5c90980afb0e40315920da9a0f357ae1d3a336b4033c75b9be81", size = 3661204, upload-time = "2024-12-24T07:21:16.716Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/08/394a507b4ef93cd86d36ad3189c0b83ef264956d65ad19e226c1c98bc84b/cornac-2.3.0-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:3c9c4485a9364305ca4cd5bd88ea16f9c0cb5d34b20a06897611d1bea97bae9b", size = 23947048, upload-time = "2024-12-24T07:21:19.436Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/f9/743a41a3368031c139a49ceeb1c12f2348a478c5d1ed2400020ddcf94939/cornac-2.3.0-cp39-cp39-win_amd64.whl", hash = "sha256:85e97d25811633f3e08ba6573913bf33f4f42d6d349e1eb3c7c68588b5bcf2d0", size = 3411422, upload-time = "2024-12-24T07:21:23.011Z" },
+]
+
+[[package]]
+name = "cornac"
+version = "2.3.5"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14'",
+    "python_full_version >= '3.12' and python_full_version < '3.14'",
+    "python_full_version == '3.11.*'",
+    "python_full_version == '3.10.*'",
+    "python_full_version == '3.9.*'",
+]
+dependencies = [
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "powerlaw", marker = "python_full_version >= '3.9'" },
+    { name = "scipy", version = "1.13.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tqdm", marker = "python_full_version >= '3.9'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/68/9bcc1a3061f38244ff1810aa9a6c70afd688f901517bd006c6ddeb4198bd/cornac-2.3.5.tar.gz", hash = "sha256:9257380060b24a0320815c706d257a27461ac80619368707155b9a0994ed9bba", size = 5903609, upload-time = "2025-10-04T22:28:34.46Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/41/6a/be9abe2d9bbe5b36663f116fe332235e00826be5ebea7db493987bbfd5b4/cornac-2.3.5-cp310-cp310-macosx_12_0_universal2.whl", hash = "sha256:e1ad4401857433e96a17c969f3fe0d9f78c8bbef6ee2b4c77f5d804dfc69c332", size = 9954189, upload-time = "2025-10-04T22:28:03.432Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/96/c2d85d9a88579cfc23198ff3b5d58a77e003435d02bcb2514867f81ac1e0/cornac-2.3.5-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:d0137ff98d32c9781f37668a34e6d02cad989580d186c6e51cf89f5802cdb4e7", size = 29060331, upload-time = "2025-10-04T22:28:06.112Z" },
+    { url = "https://files.pythonhosted.org/packages/59/c7/bd98c55b4e37fa252be7634b9fbb1188b56d7a1724738ba6b53a50f7c314/cornac-2.3.5-cp310-cp310-win_amd64.whl", hash = "sha256:fc9e9adfa3cccdd83a3e78b2fcc3caa4b803c0373aa73848a763989f6ecdade3", size = 9646277, upload-time = "2025-10-04T22:28:08.277Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/f3/f1bd8597e4879497d215ff5a8537e8569374e34d1714f3792aab7c35a698/cornac-2.3.5-cp311-cp311-macosx_12_0_universal2.whl", hash = "sha256:b6467f8be8a8b739511f4f314afdbad52922ef9d50a7d6d575e8ce09054f8cfa", size = 9971319, upload-time = "2025-10-04T22:28:10.13Z" },
+    { url = "https://files.pythonhosted.org/packages/50/95/c6110bb5345209e9b85cf33513e8300b3150c8d987a6ec6eb54835e28421/cornac-2.3.5-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:3fd42e754a3a3adc6b129483123743a5dd524d0b398a74ac7c421028cd2d29e1", size = 30087294, upload-time = "2025-10-04T22:28:12.109Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/9f/b7c6f6c6be173d2e0516c96e2c7bf75a516d69cbe63550d1bec5796f6545/cornac-2.3.5-cp311-cp311-win_amd64.whl", hash = "sha256:5c913ddcfd9c22dffef431391357c3673f1882e80de8d58c798664543f6e78ea", size = 9653105, upload-time = "2025-10-04T22:28:14.363Z" },
+    { url = "https://files.pythonhosted.org/packages/59/74/627a6443e0b8801e73597d3635839f3f38dc23370e8bbf34fc086a7253d1/cornac-2.3.5-cp312-cp312-macosx_12_0_universal2.whl", hash = "sha256:37abe1374617af877e9d7c31d271156f089307be422bcea99579afec70ec41c4", size = 9977944, upload-time = "2025-10-04T22:28:16.214Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/48/5279e7edbfeb2947e7dfa8d5c08238504d7204e45ebd92a081a076eb5fd7/cornac-2.3.5-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:234a986014d4c1197e88a88771f3296ceb60f944d08175ed61d2be33d4aa77d5", size = 29592758, upload-time = "2025-10-04T22:28:18.101Z" },
+    { url = "https://files.pythonhosted.org/packages/78/a3/d2833848795c5f6f7b6d76054e3e07fb24238c2ba648a0825bcb8d5700b0/cornac-2.3.5-cp312-cp312-win_amd64.whl", hash = "sha256:f1dac67381e1cf3d1c6f636bb2a87d715d022651083266385e24319fd9d8b283", size = 9595910, upload-time = "2025-10-04T22:28:20.045Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/f9/22f5b70eb7cbbacfc7c8dcd82111d472e3413038b22a0544b7dff1e660f0/cornac-2.3.5-cp313-cp313-macosx_12_0_universal2.whl", hash = "sha256:703e85a808b80e165c95da627b4509c669dabbc56087513496c9ba03935e525b", size = 9955480, upload-time = "2025-10-04T22:28:22.248Z" },
+    { url = "https://files.pythonhosted.org/packages/64/5a/0e30079278d8cc7ef9c32b67e1f71655bbbbf4f2d40013e00006eedf5a12/cornac-2.3.5-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:6a591e28456a8b004f5602a6e0ae2b5fc3947e471c66b0b6d3bc867131615f43", size = 29593662, upload-time = "2025-10-04T22:28:24.221Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/b4/822e3aa76af6408f579b97e4de315435904187125c4c18cb2e882216a3b7/cornac-2.3.5-cp313-cp313-win_amd64.whl", hash = "sha256:d8e46340d7e12711b089e9f68f7d08fa708bfe903b66a3ae16bc087511781ccc", size = 9605129, upload-time = "2025-10-04T22:28:26.312Z" },
+    { url = "https://files.pythonhosted.org/packages/43/8c/287ed2032de76bc696da40cff4e3ea0f955c1ec6d584d7f26718350de8e1/cornac-2.3.5-cp39-cp39-macosx_15_0_arm64.whl", hash = "sha256:de932e538affcc4fdbd41d7ad7453286ac8d847c481f8d411268ff61db86f449", size = 9959625, upload-time = "2025-10-04T22:28:27.846Z" },
+    { url = "https://files.pythonhosted.org/packages/29/b0/7bfd58c8b5bffd2e2eb9ea7c70e8fd27c407144a7ffcc98756ed830ce341/cornac-2.3.5-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:fbb0b07866a69379ee0a58f18d498d7597822faa76bf7bb558db067fb6c4b364", size = 28930591, upload-time = "2025-10-04T22:28:29.73Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/bb/8aece842fa3403a3aef901885339922d10d29d55cfb6c7f0f1eb7fb69520/cornac-2.3.5-cp39-cp39-win_amd64.whl", hash = "sha256:20fb331ec37e9560a0b2e9c91d0fe9db8348bcc0dcec4700505671428be297db", size = 9653720, upload-time = "2025-10-04T22:28:32.055Z" },
 ]
 
 [[package]]
@@ -5368,6 +5441,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mpmath"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/47/dd32fa426cc72114383ac549964eecb20ecfd886d1e5ccf5340b55b02f57/mpmath-1.3.0.tar.gz", hash = "sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f", size = 508106, upload-time = "2023-03-07T16:47:11.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl", hash = "sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c", size = 536198, upload-time = "2023-03-07T16:47:09.197Z" },
+]
+
+[[package]]
 name = "msal"
 version = "1.34.0"
 source = { registry = "https://pypi.org/simple" }
@@ -7050,6 +7132,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/37/88/fe02e4450e9b582ea6f1a7490921208a9c3a0a1efdf976aadbaa4cae73bb/polars_runtime_32-1.38.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e944f924a99750909299fa701edb07a63a5988e5ee58d673993f3d9147a22276", size = 45327635, upload-time = "2026-02-04T11:59:38.28Z" },
     { url = "https://files.pythonhosted.org/packages/68/db/9bb8007a4bea76b476537740ed18c8bccd809faa390ca1443134e98f8b60/polars_runtime_32-1.38.0-cp310-abi3-win_amd64.whl", hash = "sha256:46fbfb4ee6f8e1914dc0babfb6a138ead552db05a2d9e531c1fb19411b1a6744", size = 45670197, upload-time = "2026-02-04T11:59:41.297Z" },
     { url = "https://files.pythonhosted.org/packages/58/78/28f793ec2e1cff72c0ced1bc9186c9b4dbfe44ca8316df11b2aa8039764c/polars_runtime_32-1.38.0-cp310-abi3-win_arm64.whl", hash = "sha256:ed0e6d7a546de9179e5715bffe9d3b94ba658d5655bbbf44943e138e061dcc90", size = 41637784, upload-time = "2026-02-04T11:59:44.396Z" },
+]
+
+[[package]]
+name = "powerlaw"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib", version = "3.7.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "matplotlib", version = "3.9.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "matplotlib", version = "3.10.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "mpmath" },
+    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scipy", version = "1.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "scipy", version = "1.13.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/89/bc9f37c09a0f721183a0be7aa5e096bfd03a898a04f0088561130cdb04c7/powerlaw-2.0.0.tar.gz", hash = "sha256:bf4e030a93940c02ad4b0bd449cbe131fcaf3d95767891d84f89c4d7c8d138b0", size = 2158287, upload-time = "2026-01-02T16:33:57.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/20/e3683cdd6ceff2a5a2ba4df1745e28bcc52965d6959e7a2d869a3b779f0c/powerlaw-2.0.0-py3-none-any.whl", hash = "sha256:71b65820ab48828d3a9010a810dad5ff2160617a916ef3d2dc6c8683ffe33913", size = 191993, upload-time = "2026-01-02T16:33:55.375Z" },
 ]
 
 [[package]]
@@ -9725,6 +9831,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/1a/d7592328d037d36f2d2462f4bc1fbb383eec9278bc786c1b111cbbd44cfa/tornado-6.5.4-cp39-abi3-win32.whl", hash = "sha256:1768110f2411d5cd281bac0a090f707223ce77fd110424361092859e089b38d1", size = 446481, upload-time = "2025-12-15T19:21:00.008Z" },
     { url = "https://files.pythonhosted.org/packages/d6/6d/c69be695a0a64fd37a97db12355a035a6d90f79067a3cf936ec2b1dc38cd/tornado-6.5.4-cp39-abi3-win_amd64.whl", hash = "sha256:fa07d31e0cd85c60713f2b995da613588aa03e1303d75705dca6af8babc18ddc", size = 446886, upload-time = "2025-12-15T19:21:01.287Z" },
     { url = "https://files.pythonhosted.org/packages/50/49/8dc3fd90902f70084bd2cd059d576ddb4f8bb44c2c7c0e33a11422acb17e/tornado-6.5.4-cp39-abi3-win_arm64.whl", hash = "sha256:053e6e16701eb6cbe641f308f4c1a9541f91b6261991160391bfc342e8a551a1", size = 445910, upload-time = "2025-12-15T19:21:02.571Z" },
+]
+
+[[package]]
+name = "tqdm"
+version = "4.67.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf", size = 78374, upload-time = "2026-02-03T17:35:50.982Z" },
 ]
 
 [[package]]
