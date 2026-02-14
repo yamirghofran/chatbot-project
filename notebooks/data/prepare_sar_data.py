@@ -43,14 +43,11 @@ def _(os, pl):
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     data_path = os.path.join(
-        project_root, "data", "raw_goodreads_interactions_dedup.parquet"
+        project_root, "data", "raw_goodreads_interactions_dedup_sample.parquet"
     )
 
-    _df_full = pl.read_parquet(data_path)
-    _full_rows = _df_full.shape[0]
-    df = _df_full.sample(fraction=0.05, seed=42)
-    del _df_full
-    return (df,)
+    df = pl.read_parquet(data_path)
+    return df, project_root
 
 
 @app.cell
@@ -78,30 +75,26 @@ def _(mo):
 
 @app.cell
 def _(pl):
-    def calculate_weight(df, rating_weight=0.5, is_read_weight=0.3, review_weight=0.2):
-        """
-        Calculate a combined engagement weight for each interaction.
-
-        Parameters:
-        - df: Polars DataFrame with rating, is_read, and review_text_incomplete columns
-        - rating_weight: Weight for explicit rating component (default 0.5)
-        - is_read_weight: Weight for is_read component (default 0.3)
-        - review_weight: Weight for review component (default 0.2)
-
-        Returns:
-        - Polars DataFrame with added 'weight' column
-        """
-        return df.with_columns(
-            [
-                (pl.col("rating") / 5).alias("rating_normalized"),
-                (pl.col("review_text_incomplete").str.len_chars() > 0).alias("has_review"),
-            ]
-        ).with_columns(
-            (
-                rating_weight * pl.col("rating_normalized")
-                + is_read_weight * pl.col("is_read").cast(pl.Float64)
-                + review_weight * pl.col("has_review").cast(pl.Float64)
-            ).alias("weight")
+    def calculate_weight(df, base_weight=0.1, rating_weight=0.4, is_read_weight=0.2, review_weight=0.3):
+        return (
+            df.with_columns([
+                (pl.col("rating").fill_null(0) / 5).alias("rating_norm"),
+                pl.col("is_read").cast(pl.Float32).alias("read_val"),
+                (pl.col("review_text_incomplete").str.len_chars().fill_null(0) > 0)
+                .cast(pl.Float32)
+                .alias("has_review_val")
+            ])
+            .with_columns(
+                (
+                    base_weight +
+                    (rating_weight * pl.col("rating_norm")) +
+                    (is_read_weight * pl.col("read_val")) +
+                    (review_weight * pl.col("has_review_val"))
+                )
+                .cast(pl.Float32) # Downcast to 32-bit to save space
+                .alias("weight")
+            )
+            .drop(["rating_norm", "read_val", "has_review_val"]) # Clean up intermediate cols
         )
 
     return (calculate_weight,)
@@ -163,18 +156,21 @@ def _(mo):
 
 
 @app.cell
-def _(df_with_timestamp):
+def _(df_with_timestamp, os, project_root):
     sar_df = df_with_timestamp.select(["user_id", "book_id", "weight", "timestamp"])
 
-    _project_root = _os.path.dirname(
-        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-    )
-    output_path = _os.path.join(_project_root, "data", "sar_interactions.parquet")
+    output_path = os.path.join(project_root, "data", "sar_interactions_sample.parquet")
 
     sar_df.write_parquet(output_path)
 
     f"Saved {sar_df.shape[0]:,} rows to {output_path}"
     return (sar_df,)
+
+
+@app.cell
+def _(sar_df):
+    sar_df.head(3)
+    return
 
 
 @app.cell
