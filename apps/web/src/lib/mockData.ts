@@ -5,7 +5,7 @@ export const mockBooks: Book[] = [
     id: "1",
     title: "The Master and Margarita",
     author: "Mikhail Bulgakov",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780143108276-L.jpg",
     description:
       "The Devil arrives in Soviet Moscow accompanied by a retinue that includes a giant cat, a fanged assassin, and a naked witch. As he wreaks havoc on the city's literary establishment, a parallel narrative follows Pontius Pilate's fateful encounter with a wandering philosopher.",
     tags: ["Fiction", "Classic", "Satire", "Russian"],
@@ -14,7 +14,7 @@ export const mockBooks: Book[] = [
     id: "2",
     title: "Sapiens",
     author: "Yuval Noah Harari",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg",
     description:
       "A sweeping history of humankind from the emergence of Homo sapiens in Africa to the present. Harari examines how biology, mythology, and economics have shaped human societies, asking what it means to be human and where our species is heading.",
     tags: ["Nonfiction", "History", "Anthropology", "Science"],
@@ -23,7 +23,7 @@ export const mockBooks: Book[] = [
     id: "3",
     title: "Kafka on the Shore",
     author: "Haruki Murakami",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9781400079278-L.jpg",
     description:
       "A fifteen-year-old boy runs away from home to escape an oedipal prophecy, while an elderly man who can talk to cats sets out on a journey of his own. Their stories intertwine in a dreamlike narrative blurring the boundaries between the real and the fantastic.",
     tags: ["Fiction", "Surrealist", "Japanese", "Coming-of-age"],
@@ -32,7 +32,7 @@ export const mockBooks: Book[] = [
     id: "4",
     title: "The Remains of the Day",
     author: "Kazuo Ishiguro",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780679731726-L.jpg",
     description:
       "An ageing English butler takes a motoring trip through the West Country, reflecting on his decades of service at a great house. Beneath his impeccable composure lies a lifetime of suppressed emotion and missed opportunities.",
     tags: ["Fiction", "Literary"],
@@ -41,7 +41,7 @@ export const mockBooks: Book[] = [
     id: "5",
     title: "Thinking, Fast and Slow",
     author: "Daniel Kahneman",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780374533557-L.jpg",
     description:
       "Nobel laureate Daniel Kahneman reveals the two systems that drive the way we think—fast, intuitive, and emotional versus slow, deliberate, and logical—and shows how cognitive biases shape our judgments and decisions.",
     tags: ["Nonfiction", "Psychology"],
@@ -50,7 +50,7 @@ export const mockBooks: Book[] = [
     id: "6",
     title: "Stoner",
     author: "John Williams",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9781590171998-L.jpg",
     description:
       "William Stoner, the son of poor Missouri farmers, discovers a love of literature at university and spends his life as an English professor. A quiet, devastating portrait of an unremarkable life lived with hidden passion and dignity.",
     tags: ["Fiction", "Literary"],
@@ -59,7 +59,7 @@ export const mockBooks: Book[] = [
     id: "7",
     title: "The Periodic Table",
     author: "Primo Levi",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780805210415-L.jpg",
     description:
       "Each chapter named after a chemical element, Levi weaves together autobiography, war memoir, and meditations on science. From his childhood in Turin to Auschwitz and beyond, the elements become metaphors for the human experience.",
     tags: ["Nonfiction", "Memoir"],
@@ -68,7 +68,7 @@ export const mockBooks: Book[] = [
     id: "8",
     title: "Beloved",
     author: "Toni Morrison",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9781400033416-L.jpg",
     description:
       "Set in post-Civil War Ohio, a former slave is haunted by the ghost of her dead daughter. Morrison explores the physical, emotional, and spiritual devastation wrought by slavery in prose that is both lyrical and unflinching.",
     tags: ["Fiction", "Classic", "Gothic", "American"],
@@ -77,7 +77,7 @@ export const mockBooks: Book[] = [
     id: "9",
     title: "The Gene",
     author: "Siddhartha Mukherjee",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9781476733524-L.jpg",
     description:
       "A history of the gene from Mendel's garden peas to CRISPR, intertwined with Mukherjee's own family story of mental illness. A gripping account of how genetics has transformed our understanding of identity, fate, and disease.",
     tags: ["Nonfiction", "Science"],
@@ -86,7 +86,7 @@ export const mockBooks: Book[] = [
     id: "10",
     title: "Pedro Páramo",
     author: "Juan Rulfo",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780802133908-L.jpg",
     description:
       "A young man travels to the village of Comala in search of his father, only to find a ghost town populated by the murmuring dead. In barely 120 pages, Rulfo created a foundational work of Latin American literature.",
     tags: ["Fiction", "Magic Realism", "Mexican", "Novella"],
@@ -95,7 +95,7 @@ export const mockBooks: Book[] = [
     id: "11",
     title: "When Breath Becomes Air",
     author: "Paul Kalanithi",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9780812988406-L.jpg",
     description:
       "A neurosurgeon diagnosed with terminal lung cancer at thirty-six confronts the question of what makes life meaningful. Written in the final months of his life, it is a meditation on mortality, medicine, and literature.",
     tags: ["Nonfiction", "Memoir"],
@@ -104,7 +104,7 @@ export const mockBooks: Book[] = [
     id: "12",
     title: "The Vegetarian",
     author: "Han Kang",
-    coverUrl: "/og-image.png",
+    coverUrl: "https://covers.openlibrary.org/b/isbn/9781101906101-L.jpg",
     description:
       "After a disturbing dream, a quiet South Korean woman refuses to eat meat. Her seemingly minor act of rebellion spirals outward, exposing the violence that underpins her family and society. Told in three interconnected novellas.",
     tags: ["Fiction", "Literary"],
