@@ -19,14 +19,36 @@ from .crud import BookCRUD, AuthorCRUD
 logger = logging.getLogger(__name__)
 
 
-# Column mappings for generic imports
+# ── Column mappings: Goodreads dataset column → DB column ─────────────
 
+GOODREADS_BOOK_COLUMNS = {
+    "title": "title",
+    "original_title": "title",  # book_works dataset uses original_title
+    "description": "description",
+    "image_url": "image_url",
+    "publication_year": "publication_year",
+    "book_id": "book_id",
+    "similar_books": "similar_books",
+    # Columns in dataset but NOT stored in our DB:
+    # isbn, isbn13, asin, kindle_asin, text_reviews_count, series,
+    # country_code, language_code, popular_shelves, is_ebook,
+    # average_rating, format, link, publisher, num_pages,
+    # publication_day, publication_month, edition_information, url,
+    # ratings_count, work_id, title_without_series
+}
+
+GOODREADS_AUTHOR_COLUMNS = {
+    "name": "name",
+    "author_id": "external_id",
+    # Columns in dataset but NOT stored in our DB:
+    # average_rating, ratings_count, text_reviews_count
+}
+
+# Generic CSV/Parquet column mapping (used by import_dataset)
 DEFAULT_COLUMNS = {
     "title": "title",
     "authors": "authors",
-    "pages_number": "pages_number",
-    "publisher_name": "publisher_name",
-    "publish_year": "publish_year",
+    "publication_year": "publish_year",
 }
 
 
@@ -75,9 +97,7 @@ def extract_book(row: dict, columns: dict) -> tuple[dict, list[str]]:
 
     book_data = {
         "title": str(title).strip(),
-        "pages_number": safe_int(row.get(columns["pages_number"])),
-        "publisher_name": row.get(columns["publisher_name"]),
-        "publish_year": safe_int(row.get(columns["publish_year"])),
+        "publication_year": safe_int(row.get(columns["publication_year"])),
     }
 
     return book_data, authors
@@ -160,38 +180,6 @@ def preview_dataset(file_path: str | Path, n: int = 5) -> list[dict]:
     return df.head(n).to_dicts()
 
 
-# Importers for individual models (not paired)
-def parse_rating_dist(rating_str: str | None) -> dict[str, int]:
-    """
-    Parse Goodreads rating_dist string.
-    Format: "5:count|4:count|3:count|2:count|1:count|total:count"
-    """
-    result = {
-        "rating_dist_1": 0,
-        "rating_dist_2": 0,
-        "rating_dist_3": 0,
-        "rating_dist_4": 0,
-        "rating_dist_5": 0,
-        "rating_dist_total": 0,
-    }
-
-    if not rating_str:
-        return result
-
-    try:
-        for part in rating_str.split("|"):
-            key, val = part.split(":")
-            count = int(val)
-            if key == "total":
-                result["rating_dist_total"] = count
-            elif key in ("1", "2", "3", "4", "5"):
-                result[f"rating_dist_{key}"] = count
-    except (ValueError, AttributeError):
-        pass
-
-    return result
-
-
 def import_authors(
     file_path: str | Path = None,
     batch_size: int = 1000,
@@ -245,18 +233,9 @@ def import_authors(
                     seen_names.add(name_key)
 
                     author_data = {}
-                    avg = row.get("average_rating")
-                    if avg is not None:
-                        try:
-                            author_data["average_rating"] = float(avg)
-                        except (TypeError, ValueError):
-                            pass
-                    rc = safe_int(row.get("ratings_count"))
-                    if rc is not None:
-                        author_data["ratings_count"] = rc
-                    trc = safe_int(row.get("text_reviews_count"))
-                    if trc is not None:
-                        author_data["text_reviews_count"] = trc
+                    ext_id = row.get("author_id")
+                    if ext_id is not None:
+                        author_data["external_id"] = str(ext_id)
 
                     AuthorCRUD.create(session, name, **author_data)
                     stats["authors_created"] += 1
@@ -276,6 +255,25 @@ def import_authors(
     return stats
 
 
+def parse_authors_field(raw) -> list[str]:
+    """Extract author external IDs from the 'authors' column.
+
+    The column is a list of dicts like [{"author_id": "9212", "role": ""}].
+    Returns a list of author_id strings.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        ids = []
+        for entry in raw:
+            if isinstance(entry, dict):
+                aid = entry.get("author_id")
+                if aid:
+                    ids.append(str(aid))
+        return ids
+    return []
+
+
 def import_books(
     file_path: str | Path = None,
     batch_size: int = 1000,
@@ -283,15 +281,16 @@ def import_books(
     session: Session | None = None,
 ) -> dict[str, int]:
     """
-    Import books from Goodreads book works dataset.
+    Import books from Goodreads books dataset.
 
-    Expected columns: original_title, original_publication_year/month/day,
-                      rating_dist, ratings_count, reviews_count, work_id
+    Expected columns: title, publication_year, description, image_url,
+                      book_id, authors (list of {author_id, role} dicts)
     """
     stats = {
         "rows": 0,
         "books_created": 0,
         "books_skipped": 0,
+        "authors_linked": 0,
         "errors": 0,
     }
 
@@ -313,9 +312,18 @@ def import_books(
         for i in range(0, len(rows), batch_size):
             batch = rows[i : i + batch_size]
 
+            # Collect all author external IDs in this batch for bulk lookup
+            batch_author_ids: set[str] = set()
+            for row in batch:
+                batch_author_ids.update(parse_authors_field(row.get("authors")))
+
+            author_map = AuthorCRUD.bulk_get_by_external_ids(
+                session, list(batch_author_ids)
+            )
+
             for row in batch:
                 try:
-                    title = row.get("original_title")
+                    title = row.get("original_title") or row.get("title")
                     if not title or not str(title).strip():
                         stats["errors"] += 1
                         continue
@@ -329,29 +337,23 @@ def import_books(
 
                     seen_titles.add(title_key)
 
-                    # Parse rating distribution
-                    ratings = parse_rating_dist(row.get("rating_dist"))
-
                     book_data = {
                         "title": title,
-                        "publish_year": safe_int(row.get("original_publication_year")),
-                        "publish_month": safe_int(row.get("original_publication_month")),
-                        "publish_day": safe_int(row.get("original_publication_day")),
-                        "num_reviews": safe_int(row.get("reviews_count")) or 0,
-                        "text_reviews_count": safe_int(row.get("text_reviews_count")),
-                        "ratings_count": safe_int(row.get("ratings_count")),
-                        "ratings_sum": safe_int(row.get("ratings_sum")),
-                        "books_count": safe_int(row.get("books_count")),
-                        "media_type": row.get("media_type") or None,
-                        "best_book_id": row.get("best_book_id") or None,
-                        "work_id": row.get("work_id") or None,
-                        "original_language_id": row.get("original_language_id") or None,
-                        "default_description_language_code": row.get("default_description_language_code") or None,
-                        "default_chaptering_book_id": row.get("default_chaptering_book_id") or None,
-                        **ratings,
+                        "publication_year": safe_int(row.get("publication_year")),
+                        "description": row.get("description") or None,
+                        "image_url": row.get("image_url") or None,
+                        "book_id": str(row["book_id"]) if row.get("book_id") else None,
                     }
 
-                    BookCRUD.create(session, **book_data)
+                    book = BookCRUD.create(session, **book_data)
+
+                    # Link authors via junction table
+                    ext_ids = parse_authors_field(row.get("authors"))
+                    linked = [author_map[eid] for eid in ext_ids if eid in author_map]
+                    if linked:
+                        book.authors = linked
+                        stats["authors_linked"] += len(linked)
+
                     stats["books_created"] += 1
 
                 except Exception:

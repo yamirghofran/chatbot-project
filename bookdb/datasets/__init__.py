@@ -17,6 +17,8 @@ from .crud import (
     BookCRUD,
     UserCRUD,
     BookListCRUD,
+    ReviewCRUD,
+    RatingCRUD,
 )
 from .processor import (
     import_dataset,
@@ -33,6 +35,8 @@ __all__ = [
     "BookCRUD",
     "UserCRUD",
     "BookListCRUD",
+    "ReviewCRUD",
+    "RatingCRUD",
     # Repository (unified PG + ChromaDB)
     "Repository",
     # Goodreads imports

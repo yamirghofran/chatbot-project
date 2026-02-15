@@ -58,7 +58,9 @@ def _(Path, pq):
     table = pq_file.read_row_group(0).slice(0, 5)
     df = table.to_pandas()
     df
-    return
+
+    # book_file_path = DATA_DIR / "raw_goodreads_book_works.parquet"
+    return (DATA_DIR,)
 
 
 @app.cell
@@ -70,11 +72,8 @@ def _(mo):
 
 
 @app.cell
-def _(Path, preview_dataset):
+def _(DATA_DIR, preview_dataset):
     # Preview authors dataset
-    PROJECT_ROOT = Path.cwd().parent.parent
-    DATA_DIR = PROJECT_ROOT / "data"
-
     authors_file_path = DATA_DIR / "raw_goodreads_book_authors.parquet"
 
     preview = preview_dataset(authors_file_path)
@@ -93,18 +92,15 @@ def _(authors_file_path, import_authors):
 
 
 @app.cell
-def _(Path, preview_dataset):
+def _(DATA_DIR, preview_dataset):
     # Preview books dataset
-    PROJECT_ROOT = Path.cwd().parent.parent
-    DATA_DIR = PROJECT_ROOT / "data"
-
     book_file_path = DATA_DIR / "raw_goodreads_book_works.parquet"
 
-    preview = preview_dataset(book_file_path)
-    for item in preview:
-        print(item)
-        print(f"{item['original_title']}")
-    return (book_file_path,)
+    book_preview = preview_dataset(book_file_path)
+    for book in book_preview:
+        print(book)
+        print(f"{book['original_title']}")
+    return book, book_file_path
 
 
 @app.cell
@@ -136,8 +132,7 @@ def _(AuthorCRUD, BookCRUD, SessionLocal):
         session,
         author_names=["Ronald J. Fields"],
         title="W.C. Fields by Himself",
-        pages_number=510,
-        publish_year=1973,
+        publication_year=1973,
     )
     print(f"Book: {book.title} by {[a.name for a in book.authors]}")
 
@@ -151,7 +146,7 @@ def _(BookCRUD, session):
     results = BookCRUD.search_by_title(session, "W.C. Fields")
     print(f"Found {len(results)} books:")
     for b in results:
-        print(f"  - {b.title} ({b.publish_year})")
+        print(f"  - {b.title} ({b.publication_year})")
     return
 
 
@@ -183,8 +178,6 @@ def _(Path, pl):
     sample = pl.DataFrame({
         "title": ["The Great Gatsby", "1984", "Pride and Prejudice", "Brave New World"],
         "authors": ["F. Scott Fitzgerald", "George Orwell", "Jane Austen", "Aldous Huxley"],
-        "pages_number": [180, 328, 279, 268],
-        "publisher_name": ["Scribner", "Secker & Warburg", "T. Egerton", "Chatto & Windus"],
         "publish_year": [1925, 1949, 1813, 1932],
     })
 
@@ -225,8 +218,7 @@ def _(BookCRUD, SessionLocal):
         b = gatsby[0]
         print(f"{b.title}")
         print(f"  Authors: {[a.name for a in b.authors]}")
-        print(f"  Published: {b.publish_year}")
-        print(f"  Pages: {b.pages_number}")
+        print(f"  Published: {b.publication_year}")
     return (session,)
 
 

@@ -11,6 +11,8 @@ from bookdb.db.models import (
     Author,
     User,
     BookList,
+    Review,
+    Rating,
     book_authors,
 )
 
@@ -31,6 +33,11 @@ class AuthorCRUD:
         session.add(author)
         session.flush()
         return author
+
+    @staticmethod
+    def get_by_external_id(session: Session, external_id: str) -> Author | None:
+        stmt = select(Author).where(Author.external_id == external_id)
+        return session.scalar(stmt)
 
     @staticmethod
     def get_or_create(session: Session, name: str) -> Author:
@@ -58,6 +65,14 @@ class AuthorCRUD:
 
         return existing
 
+    @staticmethod
+    def bulk_get_by_external_ids(session: Session, external_ids: list[str]) -> dict[str, Author]:
+        external_ids = list(set(external_ids))
+        if not external_ids:
+            return {}
+        stmt = select(Author).where(Author.external_id.in_(external_ids))
+        return {a.external_id: a for a in session.scalars(stmt).all()}
+
 
 # Books
 class BookCRUD:
@@ -70,6 +85,11 @@ class BookCRUD:
     def get_by_title(session: Session, title: str) -> list[Book]:
         stmt = select(Book).where(Book.title == title)
         return session.scalars(stmt).all()
+
+    @staticmethod
+    def get_by_book_id(session: Session, book_id: str) -> Book | None:
+        stmt = select(Book).where(Book.book_id == book_id)
+        return session.scalar(stmt)
 
     @staticmethod
     def search_by_title(session: Session, query: str, limit: int = 100) -> list[Book]:
@@ -181,3 +201,77 @@ class BookListCRUD:
             return True
 
         return False
+
+
+class ReviewCRUD:
+    """CRUD operations for Reviews."""
+
+    @staticmethod
+    def get_by_id(session: Session, review_id: int) -> Review | None:
+        return session.get(Review, review_id)
+
+    @staticmethod
+    def get_by_user(session: Session, user_id: int, limit: int = 100) -> list[Review]:
+        stmt = select(Review).where(Review.user_id == user_id).limit(limit)
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def get_by_book(session: Session, book_id: int, limit: int = 100) -> list[Review]:
+        stmt = select(Review).where(Review.book_id == book_id).limit(limit)
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def get_by_user_and_book(
+        session: Session, user_id: int, book_id: int
+    ) -> list[Review]:
+        stmt = select(Review).where(
+            Review.user_id == user_id, Review.book_id == book_id
+        )
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def create(session: Session, user_id: int, book_id: int, text: str) -> Review:
+        review = Review(user_id=user_id, book_id=book_id, text=text)
+        session.add(review)
+        session.flush()
+        return review
+
+
+class RatingCRUD:
+    """CRUD operations for Ratings."""
+
+    @staticmethod
+    def get(session: Session, user_id: int, book_id: int) -> Rating | None:
+        return session.get(Rating, (user_id, book_id))
+
+    @staticmethod
+    def get_by_user(session: Session, user_id: int, limit: int = 100) -> list[Rating]:
+        stmt = select(Rating).where(Rating.user_id == user_id).limit(limit)
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def get_by_book(session: Session, book_id: int, limit: int = 100) -> list[Rating]:
+        stmt = select(Rating).where(Rating.book_id == book_id).limit(limit)
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def upsert(session: Session, user_id: int, book_id: int, rating: int) -> Rating:
+        """Create or update a rating. One user can only rate a book once."""
+        existing = session.get(Rating, (user_id, book_id))
+        if existing:
+            existing.rating = rating
+            session.flush()
+            return existing
+        new_rating = Rating(user_id=user_id, book_id=book_id, rating=rating)
+        session.add(new_rating)
+        session.flush()
+        return new_rating
+
+    @staticmethod
+    def delete(session: Session, user_id: int, book_id: int) -> bool:
+        existing = session.get(Rating, (user_id, book_id))
+        if not existing:
+            return False
+        session.delete(existing)
+        session.flush()
+        return True

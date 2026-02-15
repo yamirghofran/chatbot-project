@@ -1,14 +1,14 @@
 from datetime import date
 from sqlalchemy import (
     String,
+    Text,
     DateTime,
     Integer,
-    Float,
-    Boolean,
     ForeignKey,
     Table,
     func,
-    Column
+    Column,
+    CheckConstraint,
 )
 from sqlalchemy.orm import (
     Mapped,
@@ -40,6 +40,14 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255))
 
     lists: Mapped[list["BookList"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    reviews: Mapped[list["Review"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    ratings: Mapped[list["Rating"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -75,43 +83,17 @@ class Book(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    isbn: Mapped[str | None] = mapped_column(String(20))
-    isbn13: Mapped[str | None] = mapped_column(String(20))
-    asin: Mapped[str | None] = mapped_column(String(20))
-    kindle_asin: Mapped[str | None] = mapped_column(String(20))
-
     title: Mapped[str] = mapped_column(String(500), index=True)
     description: Mapped[str | None] = mapped_column(String)
-    num_pages: Mapped[int | None] = mapped_column(Integer)
-
-    publisher: Mapped[str | None] = mapped_column(String(255))
-    publisher_name: Mapped[str | None] = mapped_column(String(255))
-    publication_year: Mapped[int | None] = mapped_column(Integer)
-
-    num_reviews: Mapped[int] = mapped_column(Integer, default=0)
-
-    ratings_count: Mapped[int | None] = mapped_column(Integer)
-    rating_dist_1: Mapped[int] = mapped_column(Integer, default=0)
-    rating_dist_2: Mapped[int] = mapped_column(Integer, default=0)
-    rating_dist_3: Mapped[int] = mapped_column(Integer, default=0)
-    rating_dist_4: Mapped[int] = mapped_column(Integer, default=0)
-    rating_dist_5: Mapped[int] = mapped_column(Integer, default=0)
-    rating_dist_total: Mapped[int] = mapped_column(Integer, default=0)
-    average_rating: Mapped[float | None] = mapped_column(Float)
-
-    media_type: Mapped[str | None] = mapped_column(String(50))
-    is_ebook: Mapped[bool | None] = mapped_column(Boolean)
-
-    language_code: Mapped[str | None] = mapped_column(String(10))
-    country_code: Mapped[str | None] = mapped_column(String(10))
-
-    url: Mapped[str | None] = mapped_column(String(1000))
-    link: Mapped[str | None] = mapped_column(String(1000))
     image_url: Mapped[str | None] = mapped_column(String(1000))
+    publication_year: Mapped[int | None] = mapped_column(Integer)
 
     # External identifiers
     book_id: Mapped[str | None] = mapped_column(String(50))
     author_id: Mapped[str | None] = mapped_column(String(50))
+
+    # Similar books (JSON-serialized list of external book IDs)
+    similar_books: Mapped[str | None] = mapped_column(Text)
 
     # Relationships
     authors: Mapped[list["Author"]] = relationship(
@@ -121,6 +103,14 @@ class Book(Base):
     lists: Mapped[list["BookList"]] = relationship(
         secondary=list_books,
         back_populates="books",
+    )
+    reviews: Mapped[list["Review"]] = relationship(
+        back_populates="book",
+        cascade="all, delete-orphan",
+    )
+    ratings: Mapped[list["Rating"]] = relationship(
+        back_populates="book",
+        cascade="all, delete-orphan",
     )
 
     created_at: Mapped[DateTime] = mapped_column(
@@ -133,9 +123,7 @@ class Author(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
-    average_rating: Mapped[float | None] = mapped_column(Float)
-    ratings_count: Mapped[int | None] = mapped_column(Integer)
-    text_reviews_count: Mapped[int | None] = mapped_column(Integer)
+    external_id: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
 
     books: Mapped[list["Book"]] = relationship(
         secondary=book_authors,
@@ -145,3 +133,33 @@ class Author(Base):
         DateTime(timezone=True),
         server_default=func.now(),
     )
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    user: Mapped["User"] = relationship(back_populates="reviews")
+    book: Mapped["Book"] = relationship(back_populates="reviews")
+
+
+class Rating(Base):
+    __tablename__ = "ratings"
+    __table_args__ = (
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_ratings_rating_range"),
+    )
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), primary_key=True)
+    rating: Mapped[int] = mapped_column(Integer)
+
+    user: Mapped["User"] = relationship(back_populates="ratings")
+    book: Mapped["Book"] = relationship(back_populates="ratings")

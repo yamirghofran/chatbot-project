@@ -12,8 +12,8 @@ Usage:
         stats  = repo.import_books("books.parquet")
 
         # Single-row inserts
-        repo.insert_author(name="George Orwell", average_rating=4.5)
-        repo.insert_book(title="1984", publish_year=1949)
+        repo.insert_author(name="George Orwell")
+        repo.insert_book(title="1984", publication_year=1949)
         repo.insert_user(email="a@b.com", name="Alice")
 """
 
@@ -26,7 +26,7 @@ from bookdb.vector_db.crud import BaseVectorCRUD
 from bookdb.vector_db.schemas import CollectionNames
 
 from .crud import AuthorCRUD, BookCRUD, UserCRUD
-from .processor import read_file, safe_int, parse_rating_dist
+from .processor import read_file, safe_int, parse_authors_field
 
 # Fake embedding dimension for testing (swap out once a real model is chosen)
 FAKE_EMBEDDING_DIM = 4
@@ -94,7 +94,7 @@ class Repository:
     ) -> dict[str, int]:
         """Import authors from a CSV/Parquet file into PostgreSQL + ChromaDB.
 
-        Expected columns: name, average_rating, ratings_count, text_reviews_count
+        Expected columns: name, author_id
         """
         stats = {
             "rows": 0,
@@ -133,18 +133,9 @@ class Repository:
                     seen_names.add(name_key)
 
                     author_kwargs: dict = {}
-                    avg = row.get("average_rating")
-                    if avg is not None:
-                        try:
-                            author_kwargs["average_rating"] = float(avg)
-                        except (TypeError, ValueError):
-                            pass
-                    rc = safe_int(row.get("ratings_count"))
-                    if rc is not None:
-                        author_kwargs["ratings_count"] = rc
-                    trc = safe_int(row.get("text_reviews_count"))
-                    if trc is not None:
-                        author_kwargs["text_reviews_count"] = trc
+                    ext_id = row.get("author_id")
+                    if ext_id is not None:
+                        author_kwargs["external_id"] = str(ext_id)
 
                     author = AuthorCRUD.create(
                         self._session, name, **author_kwargs
@@ -163,12 +154,7 @@ class Repository:
                     ids=[f"author_{a.id}" for a in pg_authors],
                     documents=[f"Author: {a.name}" for a in pg_authors],
                     metadatas=[
-                        _clean_metadata({
-                            "name": a.name,
-                            "average_rating": a.average_rating,
-                            "ratings_count": a.ratings_count,
-                            "text_reviews_count": a.text_reviews_count,
-                        })
+                        _clean_metadata({"name": a.name})
                         for a in pg_authors
                     ],
                     embeddings=[_fake_embedding() for _ in pg_authors],
@@ -184,13 +170,14 @@ class Repository:
     ) -> dict[str, int]:
         """Import books from a CSV/Parquet file into PostgreSQL + ChromaDB.
 
-        Expected columns: original_title, original_publication_year/month/day,
-                          rating_dist, ratings_count, reviews_count, work_id, etc.
+        Expected columns: title, publication_year, description, image_url,
+                          book_id, authors (list of {author_id, role} dicts)
         """
         stats = {
             "rows": 0,
             "books_created": 0,
             "books_skipped": 0,
+            "authors_linked": 0,
             "errors": 0,
         }
 
@@ -206,11 +193,20 @@ class Repository:
         for i in range(0, len(rows), batch_size):
             batch_rows = rows[i : i + batch_size]
 
+            # Bulk-fetch authors for this batch
+            batch_author_ids: set[str] = set()
+            for row in batch_rows:
+                batch_author_ids.update(parse_authors_field(row.get("authors")))
+
+            author_map = AuthorCRUD.bulk_get_by_external_ids(
+                self._session, list(batch_author_ids)
+            )
+
             pg_books: list[Book] = []
 
             for row in batch_rows:
                 try:
-                    title = row.get("original_title")
+                    title = row.get("title")
                     if not title or not str(title).strip():
                         stats["errors"] += 1
                         continue
@@ -223,28 +219,23 @@ class Repository:
                         continue
                     seen_titles.add(title_key)
 
-                    ratings = parse_rating_dist(row.get("rating_dist"))
-
                     book_data = {
                         "title": title,
-                        "publish_year": safe_int(row.get("original_publication_year")),
-                        "publish_month": safe_int(row.get("original_publication_month")),
-                        "publish_day": safe_int(row.get("original_publication_day")),
-                        "num_reviews": safe_int(row.get("reviews_count")) or 0,
-                        "text_reviews_count": safe_int(row.get("text_reviews_count")),
-                        "ratings_count": safe_int(row.get("ratings_count")),
-                        "ratings_sum": safe_int(row.get("ratings_sum")),
-                        "books_count": safe_int(row.get("books_count")),
-                        "media_type": row.get("media_type") or None,
-                        "best_book_id": row.get("best_book_id") or None,
-                        "work_id": row.get("work_id") or None,
-                        "original_language_id": row.get("original_language_id") or None,
-                        "default_description_language_code": row.get("default_description_language_code") or None,
-                        "default_chaptering_book_id": row.get("default_chaptering_book_id") or None,
-                        **ratings,
+                        "publication_year": safe_int(row.get("publication_year")),
+                        "description": row.get("description") or None,
+                        "image_url": row.get("image_url") or None,
+                        "book_id": str(row["book_id"]) if row.get("book_id") else None,
                     }
 
                     book = BookCRUD.create(self._session, **book_data)
+
+                    # Link authors via junction table
+                    ext_ids = parse_authors_field(row.get("authors"))
+                    linked = [author_map[eid] for eid in ext_ids if eid in author_map]
+                    if linked:
+                        book.authors = linked
+                        stats["authors_linked"] += len(linked)
+
                     pg_books.append(book)
                     stats["books_created"] += 1
 
@@ -261,9 +252,7 @@ class Repository:
                     metadatas=[
                         _clean_metadata({
                             "title": b.title,
-                            "publish_year": b.publish_year,
-                            "media_type": b.media_type,
-                            "ratings_count": b.ratings_count,
+                            "publication_year": b.publication_year,
                         })
                         for b in pg_books
                     ],
@@ -282,12 +271,7 @@ class Repository:
         self._authors_vec.add(
             id=f"author_{author.id}",
             document=f"Author: {name}",
-            metadata=_clean_metadata({
-                "name": name,
-                "average_rating": kwargs.get("average_rating"),
-                "ratings_count": kwargs.get("ratings_count"),
-                "text_reviews_count": kwargs.get("text_reviews_count"),
-            }),
+            metadata=_clean_metadata({"name": name}),
             embedding=_fake_embedding(),
         )
         return author
@@ -302,9 +286,7 @@ class Repository:
             document=f"Title: {book.title}",
             metadata=_clean_metadata({
                 "title": book.title,
-                "publish_year": book.publish_year,
-                "media_type": book.media_type,
-                "ratings_count": book.ratings_count,
+                "publication_year": book.publication_year,
             }),
             embedding=_fake_embedding(),
         )

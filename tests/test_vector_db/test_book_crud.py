@@ -51,12 +51,11 @@ class TestBookVectorCRUD:
         metadata = call_args[1]["metadatas"][0]
         assert metadata["title"] == "Test Book"
         assert metadata["author"] == "Test Author"
-        assert metadata["language"] == "en"  # default
     
     def test_add_book_full(self, book_crud, mock_collection):
         """Test adding a book with all fields."""
         mock_collection.get.return_value = {"ids": []}
-        
+
         book_crud.add_book(
             book_id="book_456",
             title="The Great Gatsby",
@@ -64,24 +63,17 @@ class TestBookVectorCRUD:
             description="A novel about the American Dream",
             genre="Fiction",
             publication_year=1925,
-            isbn="978-0743273565",
-            language="en",
-            page_count=180,
-            average_rating=4.5,
         )
-        
+
         mock_collection.add.assert_called_once()
         call_args = mock_collection.add.call_args
-        
+
         # Check metadata
         metadata = call_args[1]["metadatas"][0]
         assert metadata["title"] == "The Great Gatsby"
         assert metadata["author"] == "F. Scott Fitzgerald"
         assert metadata["genre"] == "Fiction"
         assert metadata["publication_year"] == 1925
-        assert metadata["isbn"] == "978-0743273565"
-        assert metadata["page_count"] == 180
-        assert metadata["average_rating"] == 4.5
     
     def test_add_book_with_embedding(self, book_crud, mock_collection):
         """Test adding a book with pre-computed embedding."""
@@ -153,26 +145,25 @@ class TestBookVectorCRUD:
                     "author": "Original Author",
                     "genre": "Fiction",
                     "publication_year": 2020,
-                    "language": "en",
                 }],
                 "embeddings": [[0.1, 0.2]],
             },
             {"ids": ["book_123"]},  # exists check in update()
         ]
-        
+
         book_crud.update_book(
             book_id="book_123",
-            average_rating=4.8,
+            publication_year=2023,
         )
-        
+
         mock_collection.update.assert_called_once()
         call_args = mock_collection.update.call_args
-        
+
         # Check that only metadata was updated, not document
         assert call_args[1]["documents"] is None
-        
+
         metadata = call_args[1]["metadatas"][0]
-        assert metadata["average_rating"] == 4.8
+        assert metadata["publication_year"] == 2023
         assert metadata["title"] == "Original Title"  # Unchanged
     
     def test_update_book_content_fields(self, book_crud, mock_collection):
@@ -184,13 +175,12 @@ class TestBookVectorCRUD:
                 "metadatas": [{
                     "title": "Original Title",
                     "author": "Original Author",
-                    "language": "en",
                 }],
                 "embeddings": [[0.1]],
             },
             {"ids": ["book_123"]},  # exists check in update()
         ]
-        
+
         book_crud.update_book(
             book_id="book_123",
             title="New Title",
@@ -224,7 +214,6 @@ class TestBookVectorCRUD:
                 "metadatas": [{
                     "title": "Title",
                     "author": "Author",
-                    "language": "en",
                 }],
                 "embeddings": [[0.1]],
             },
@@ -278,17 +267,15 @@ class TestBookVectorCRUD:
         results = book_crud.search_by_metadata(
             genre="Fiction",
             author="Test Author",
-            language="en",
-            min_rating=4.0,
+            min_year=1900,
         )
-        
+
         call_args = mock_collection.get.call_args
         where_filter = call_args[1]["where"]
-        
+
         assert where_filter["genre"] == "Fiction"
         assert where_filter["author"] == "Test Author"
-        assert where_filter["language"] == "en"
-        assert where_filter["average_rating"]["$gte"] == 4.0
+        assert where_filter["publication_year"]["$gte"] == 1900
     
     def test_search_by_metadata_year_range(self, book_crud, mock_collection):
         """Test searching with year range."""

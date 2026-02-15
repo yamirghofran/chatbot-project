@@ -41,18 +41,10 @@ class BookVectorCRUD(BaseVectorCRUD):
         description: Optional[str] = None,
         genre: Optional[str] = None,
         publication_year: Optional[int] = None,
-        isbn: Optional[str] = None,
-        language: Optional[str] = "en",
-        page_count: Optional[int] = None,
-        average_rating: Optional[float] = None,
         embedding: Optional[List[float]] = None,
     ) -> None:
         """Add a book with validated metadata.
-        
-        This method validates the book metadata using the BookMetadata schema
-        and adds it to the collection. If no embedding is provided, one should
-        be generated (TODO: implement embedding generation).
-        
+
         Args:
             book_id: Unique identifier for the book
             title: Book title (required)
@@ -60,24 +52,11 @@ class BookVectorCRUD(BaseVectorCRUD):
             description: Book description or summary
             genre: Book genre/category
             publication_year: Year of publication
-            isbn: ISBN number
-            language: Language code (ISO 639-1)
-            page_count: Number of pages
-            average_rating: Average user rating (0-5)
             embedding: Optional pre-computed embedding vector
-        
+
         Raises:
             ValueError: If metadata validation fails or book already exists
             Exception: If addition fails
-        
-        Example:
-            >>> crud.add_book(
-            ...     book_id="book_123",
-            ...     title="1984",
-            ...     author="George Orwell",
-            ...     genre="Dystopian",
-            ...     publication_year=1949,
-            ... )
         """
         # Validate metadata
         metadata = BookMetadata(
@@ -85,10 +64,6 @@ class BookVectorCRUD(BaseVectorCRUD):
             author=author,
             genre=genre,
             publication_year=publication_year,
-            isbn=isbn,
-            language=language,
-            page_count=page_count,
-            average_rating=average_rating,
         )
         
         # Create document from book information
@@ -123,18 +98,10 @@ class BookVectorCRUD(BaseVectorCRUD):
         description: Optional[str] = None,
         genre: Optional[str] = None,
         publication_year: Optional[int] = None,
-        isbn: Optional[str] = None,
-        language: Optional[str] = None,
-        page_count: Optional[int] = None,
-        average_rating: Optional[float] = None,
         embedding: Optional[List[float]] = None,
     ) -> None:
         """Update a book's information.
-        
-        This method updates an existing book. If any content fields are changed
-        (title, description, author, genre), the embedding should be regenerated
-        (TODO: implement embedding regeneration).
-        
+
         Args:
             book_id: Unique identifier of the book to update
             title: New book title
@@ -142,40 +109,25 @@ class BookVectorCRUD(BaseVectorCRUD):
             description: New description
             genre: New genre
             publication_year: New publication year
-            isbn: New ISBN
-            language: New language code
-            page_count: New page count
-            average_rating: New average rating
             embedding: Optional new embedding vector
-        
+
         Raises:
             ValueError: If book doesn't exist or validation fails
             Exception: If update fails
-        
-        Example:
-            >>> crud.update_book(
-            ...     book_id="book_123",
-            ...     average_rating=4.8,
-            ...     page_count=328,
-            ... )
         """
         # Get existing item to merge with updates
         existing = self.get(book_id)
         if not existing:
             raise ValueError(f"Book with ID '{book_id}' does not exist")
-        
+
         existing_metadata = existing["metadata"]
-        
+
         # Build updated metadata (keep existing values if not provided)
         updated_data = {
             "title": title if title is not None else existing_metadata.get("title"),
             "author": author if author is not None else existing_metadata.get("author"),
             "genre": genre if genre is not None else existing_metadata.get("genre"),
             "publication_year": publication_year if publication_year is not None else existing_metadata.get("publication_year"),
-            "isbn": isbn if isbn is not None else existing_metadata.get("isbn"),
-            "language": language if language is not None else existing_metadata.get("language"),
-            "page_count": page_count if page_count is not None else existing_metadata.get("page_count"),
-            "average_rating": average_rating if average_rating is not None else existing_metadata.get("average_rating"),
         }
         
         # Validate updated metadata
@@ -215,60 +167,39 @@ class BookVectorCRUD(BaseVectorCRUD):
         author: Optional[str] = None,
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
-        language: Optional[str] = None,
-        min_rating: Optional[float] = None,
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """Search books by metadata filters.
-        
-        This performs traditional filtering based on metadata fields without
-        using vector similarity.
-        
+
         Args:
             genre: Filter by genre
             author: Filter by author name
             min_year: Minimum publication year
             max_year: Maximum publication year
-            language: Filter by language code
-            min_rating: Minimum average rating
             limit: Maximum number of results
-        
+
         Returns:
             List of matching books
-        
-        Example:
-            >>> results = crud.search_by_metadata(
-            ...     genre="Fiction",
-            ...     min_year=1900,
-            ...     max_year=2000,
-            ...     min_rating=4.0,
-            ... )
         """
         # Build where filter for ChromaDB
         where_filter = {}
-        
+
         if genre:
             where_filter["genre"] = genre
-        
+
         if author:
             where_filter["author"] = author
-        
-        if language:
-            where_filter["language"] = language
-        
+
         # ChromaDB supports comparison operators in where filters
         if min_year is not None:
             where_filter["publication_year"] = {"$gte": min_year}
-        
+
         if max_year is not None:
             if "publication_year" in where_filter:
                 # Combine with existing year filter
                 where_filter["publication_year"]["$lte"] = max_year
             else:
                 where_filter["publication_year"] = {"$lte": max_year}
-        
-        if min_rating is not None:
-            where_filter["average_rating"] = {"$gte": min_rating}
         
         # Query collection with filters
         try:

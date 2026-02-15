@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Optional
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class CollectionNames(str, Enum):
@@ -22,40 +22,24 @@ class CollectionNames(str, Enum):
 
 class BookMetadata(BaseModel):
     """Metadata schema for book embeddings.
-    
+
     This metadata is stored alongside book embeddings in ChromaDB
     and can be used for filtering during similarity search.
-    
+
     Attributes:
         title: Book title
         author: Book author(s)
         genre: Book genre/category
         publication_year: Year the book was published
-        isbn: International Standard Book Number
-        language: Book language (ISO 639-1 code)
-        page_count: Number of pages
-        average_rating: Average user rating (0-5)
         created_at: Timestamp when embedding was created
     """
-    
+
     title: str = Field(..., description="Book title")
     author: str = Field(..., description="Book author(s)")
     genre: Optional[str] = Field(None, description="Book genre/category")
     publication_year: Optional[int] = Field(None, description="Publication year", ge=1000, le=9999)
-    isbn: Optional[str] = Field(None, description="ISBN number")
-    language: Optional[str] = Field(default="en", description="Language code (ISO 639-1)")
-    page_count: Optional[int] = Field(None, description="Number of pages", ge=1)
-    average_rating: Optional[float] = Field(None, description="Average rating", ge=0.0, le=5.0)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
-    
-    @field_validator("language")
-    @classmethod
-    def validate_language(cls, v):
-        """Validate language code is 2 characters."""
-        if v and len(v) != 2:
-            raise ValueError("Language code must be 2 characters (ISO 639-1)")
-        return v.lower() if v else v
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -63,10 +47,6 @@ class BookMetadata(BaseModel):
                 "author": "F. Scott Fitzgerald",
                 "genre": "Fiction",
                 "publication_year": 1925,
-                "isbn": "978-0743273565",
-                "language": "en",
-                "page_count": 180,
-                "average_rating": 4.5,
             }
         }
     )
@@ -80,20 +60,10 @@ class AuthorMetadata(BaseModel):
 
     Attributes:
         name: Author name
-        average_rating: Average rating of author's works
-        ratings_count: Total number of ratings
-        text_reviews_count: Total number of text reviews
         created_at: Timestamp when embedding was created
     """
 
     name: str = Field(..., description="Author name")
-    average_rating: Optional[float] = Field(
-        None, description="Average rating of author's works", ge=0.0, le=5.0
-    )
-    ratings_count: Optional[int] = Field(None, description="Total number of ratings", ge=0)
-    text_reviews_count: Optional[int] = Field(
-        None, description="Total number of text reviews", ge=0
-    )
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="Creation timestamp",
@@ -103,9 +73,6 @@ class AuthorMetadata(BaseModel):
         json_schema_extra={
             "example": {
                 "name": "F. Scott Fitzgerald",
-                "average_rating": 4.2,
-                "ratings_count": 1250000,
-                "text_reviews_count": 85000,
             }
         }
     )

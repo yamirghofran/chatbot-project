@@ -32,7 +32,6 @@ class TestBookMetadata:
         
         assert metadata.title == "Test Book"
         assert metadata.author == "Test Author"
-        assert metadata.language == "en"  # default
         assert metadata.created_at is not None
     
     def test_book_metadata_full(self):
@@ -42,16 +41,11 @@ class TestBookMetadata:
             author="F. Scott Fitzgerald",
             genre="Fiction",
             publication_year=1925,
-            isbn="978-0743273565",
-            language="en",
-            page_count=180,
-            average_rating=4.5,
         )
-        
+
         assert metadata.title == "The Great Gatsby"
         assert metadata.publication_year == 1925
-        assert metadata.average_rating == 4.5
-    
+
     def test_book_metadata_invalid_year(self):
         """Test validation error for invalid publication year."""
         with pytest.raises(ValueError):
@@ -60,35 +54,7 @@ class TestBookMetadata:
                 author="Test",
                 publication_year=999,  # Too old
             )
-    
-    def test_book_metadata_invalid_rating(self):
-        """Test validation error for invalid rating."""
-        with pytest.raises(ValueError):
-            BookMetadata(
-                title="Test",
-                author="Test",
-                average_rating=6.0,  # Too high
-            )
-    
-    def test_book_metadata_invalid_language(self):
-        """Test validation error for invalid language code."""
-        with pytest.raises(ValueError, match="Language code must be 2 characters"):
-            BookMetadata(
-                title="Test",
-                author="Test",
-                language="eng",  # Should be 2 chars
-            )
-    
-    def test_book_metadata_language_lowercase(self):
-        """Test that language code is converted to lowercase."""
-        metadata = BookMetadata(
-            title="Test",
-            author="Test",
-            language="EN",
-        )
-        
-        assert metadata.language == "en"
-    
+
     def test_validate_book_metadata_function(self):
         """Test validate_book_metadata helper function."""
         data = {
