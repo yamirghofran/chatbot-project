@@ -5,15 +5,15 @@ import { Button } from "@/components/ui/button";
 
 const PREVIEW_COUNT = 3;
 
-export type FavoritesListProps = {
+export type LovedListProps = {
   books: Book[];
   onViewAll?: () => void;
 };
 
-export function FavoritesList({ books, onViewAll }: FavoritesListProps) {
+export function LovedList({ books, onViewAll }: LovedListProps) {
   if (books.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-4">No favourites yet.</p>
+      <p className="text-sm text-muted-foreground py-4">No loved books yet.</p>
     );
   }
 
@@ -35,7 +35,7 @@ export function FavoritesList({ books, onViewAll }: FavoritesListProps) {
           className="w-full mt-2 text-muted-foreground"
           onClick={onViewAll}
         >
-          View all {books.length} favourites
+          View all {books.length} loved
         </Button>
       )}
     </div>

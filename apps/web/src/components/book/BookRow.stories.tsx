@@ -28,10 +28,10 @@ export const WithActions: Story = {
   },
 };
 
-export const Favorited: Story = {
+export const Loved: Story = {
   args: {
     showActions: true,
-    isFavorited: true,
+    isLoved: true,
   },
 };
 

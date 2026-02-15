@@ -9,8 +9,8 @@ export type BookPageProps = {
   relatedBooks?: Book[];
   rating?: RatingPickerProps["value"];
   onRatingChange?: RatingPickerProps["onChange"];
-  isFavorited?: boolean;
-  onFavoriteToggle?: () => void;
+  isLoved?: boolean;
+  onLoveToggle?: () => void;
   onAddToList?: () => void;
 };
 
@@ -19,8 +19,8 @@ export function BookPage({
   relatedBooks = [],
   rating,
   onRatingChange,
-  isFavorited,
-  onFavoriteToggle,
+  isLoved,
+  onLoveToggle,
   onAddToList,
 }: BookPageProps) {
   return (
@@ -29,8 +29,8 @@ export function BookPage({
         book={book}
         rating={rating}
         onRatingChange={onRatingChange}
-        isFavorited={isFavorited}
-        onFavoriteToggle={onFavoriteToggle}
+        isLoved={isLoved}
+        onLoveToggle={onLoveToggle}
         onAddToList={onAddToList}
       />
 

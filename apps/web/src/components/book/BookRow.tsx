@@ -13,9 +13,9 @@ export type BookRowProps = {
   book: Book;
   variant?: "default" | "compact";
   showActions?: boolean;
-  onFavoriteToggle?: () => void;
+  onLoveToggle?: () => void;
   onAddToList?: () => void;
-  isFavorited?: boolean;
+  isLoved?: boolean;
 };
 
 const actionBtnClass =
@@ -25,9 +25,9 @@ export function BookRow({
   book,
   variant = "default",
   showActions = false,
-  onFavoriteToggle,
+  onLoveToggle,
   onAddToList,
-  isFavorited = false,
+  isLoved = false,
 }: BookRowProps) {
   const isCompact = variant === "compact";
 
@@ -88,15 +88,15 @@ export function BookRow({
                 <button
                   type="button"
                   className={actionBtnClass}
-                  onClick={onFavoriteToggle}
-                  aria-label={isFavorited ? "Remove from favourites" : "Add to favourites"}
+                  onClick={onLoveToggle}
+                  aria-label={isLoved ? "Remove from loved" : "Love"}
                 >
                   <Heart
-                    className={cn("size-4", isFavorited && "fill-red-500 text-red-500")}
+                    className={cn("size-4", isLoved && "fill-red-500 text-red-500")}
                   />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Favourite</TooltipContent>
+              <TooltipContent>Love</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>

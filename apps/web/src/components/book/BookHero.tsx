@@ -8,8 +8,8 @@ export type BookHeroProps = {
   book: Book;
   rating?: RatingPickerProps["value"];
   onRatingChange?: RatingPickerProps["onChange"];
-  isFavorited?: boolean;
-  onFavoriteToggle?: () => void;
+  isLoved?: boolean;
+  onLoveToggle?: () => void;
   onAddToList?: () => void;
 };
 
@@ -17,8 +17,8 @@ export function BookHero({
   book,
   rating,
   onRatingChange,
-  isFavorited = false,
-  onFavoriteToggle,
+  isLoved = false,
+  onLoveToggle,
   onAddToList,
 }: BookHeroProps) {
   return (
@@ -56,11 +56,11 @@ export function BookHero({
           <button
             type="button"
             className="size-9 inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-            onClick={onFavoriteToggle}
-            aria-label={isFavorited ? "Remove from favourites" : "Add to favourites"}
+            onClick={onLoveToggle}
+            aria-label={isLoved ? "Remove from loved" : "Love"}
           >
             <Heart
-              className={cn("size-5", isFavorited && "fill-red-500 text-red-500")}
+              className={cn("size-5", isLoved && "fill-red-500 text-red-500")}
             />
           </button>
           <button

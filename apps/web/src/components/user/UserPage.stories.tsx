@@ -7,7 +7,7 @@ const meta = {
   component: UserPage,
   args: {
     user: mockUser,
-    favorites: mockBooks.slice(0, 6),
+    loved: mockBooks.slice(0, 6),
     lists: mockLists,
     followingCount: 42,
     followersCount: 128,
@@ -22,8 +22,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
-export const EmptyFavorites: Story = {
+export const EmptyLoved: Story = {
   args: {
-    favorites: [],
+    loved: [],
   },
 };

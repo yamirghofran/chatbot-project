@@ -24,7 +24,7 @@ export type List = {
 export type ActivityItem = {
   id: string;
   user: User;
-  type: "rating" | "favourite" | "list_add";
+  type: "rating" | "love" | "list_add";
   book: Book;
   rating?: number;
   listName?: string;

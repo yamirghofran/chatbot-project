@@ -20,7 +20,7 @@ function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
   switch (type) {
     case "rating":
       return <Star className="size-3.5 text-[#FFCC00] fill-[#FFCC00] shrink-0" />;
-    case "favourite":
+    case "love":
       return <Heart className="size-3.5 text-red-500 fill-red-500 shrink-0" />;
     case "list_add":
       return <ListPlus className="size-3.5 text-muted-foreground shrink-0" />;
@@ -36,10 +36,10 @@ function ActivityDescription({ item }: { item: ActivityItem }) {
           {item.rating} stars
         </>
       );
-    case "favourite":
+    case "love":
       return (
         <>
-          favourited <span className="font-medium text-foreground">{item.book.title}</span>
+          loved <span className="font-medium text-foreground">{item.book.title}</span>
         </>
       );
     case "list_add":

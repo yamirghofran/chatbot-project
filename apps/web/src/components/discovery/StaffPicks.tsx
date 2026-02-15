@@ -6,14 +6,22 @@ export type StaffPicksProps = {
 
 export function StaffPicks({ books }: StaffPicksProps) {
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-      {books.map((book) => (
-        <img
-          key={book.id}
-          src={book.coverUrl}
-          alt={`Cover of ${book.title}`}
-          className="w-24 aspect-[2/3] rounded-sm object-cover shrink-0"
-        />
+    <div className="grid grid-cols-3 gap-2">
+      {books.slice(0, 3).map((book, i) => (
+        <div key={book.id}>
+          <div className="group relative cursor-pointer overflow-hidden rounded-sm">
+            <img
+              src={book.coverUrl}
+              alt={`Cover of ${book.title}`}
+              className="w-full aspect-[2/3] object-cover transition-[filter] duration-(--duration-normal) ease-(--ease-in-out) group-hover:brightness-[0.35]"
+            />
+            <div className="absolute inset-0 flex flex-col justify-end p-2 opacity-0 transition-opacity duration-(--duration-normal) ease-(--ease-in-out) group-hover:opacity-100">
+              <p className="text-[11px] font-semibold leading-tight text-white">{book.title}</p>
+              <p className="mt-0.5 text-[10px] text-white/70">{book.author}</p>
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">#{i + 1}</p>
+        </div>
       ))}
     </div>
   );

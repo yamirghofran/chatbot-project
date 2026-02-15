@@ -25,9 +25,9 @@ export const WithRating: Story = {
   },
 };
 
-export const Favorited: Story = {
+export const Loved: Story = {
   args: {
     rating: 4.5,
-    isFavorited: true,
+    isLoved: true,
   },
 };

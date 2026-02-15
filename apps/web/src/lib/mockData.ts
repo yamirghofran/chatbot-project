@@ -142,7 +142,7 @@ export const mockFriends: User[] = [
 export const mockLists: List[] = [
   {
     id: "l1",
-    name: "Favourites of 2025",
+    name: "Loved in 2025",
     owner: mockUser,
     books: mockBooks.slice(0, 5),
   },
@@ -172,7 +172,7 @@ export const mockActivity: ActivityItem[] = [
   {
     id: "a2",
     user: mockFriends[1],
-    type: "favourite",
+    type: "love",
     book: mockBooks[11],
     timestamp: "5h ago",
   },
@@ -187,7 +187,7 @@ export const mockActivity: ActivityItem[] = [
   {
     id: "a4",
     user: mockFriends[0],
-    type: "favourite",
+    type: "love",
     book: mockBooks[3],
     timestamp: "1d ago",
   },

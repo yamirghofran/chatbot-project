@@ -35,12 +35,12 @@ export function DiscoveryPage({
                 Welcome back, Matt. What are you reading?
               </h2>
               <p className="mt-2 text-base text-muted-foreground">
-                Log a book to keep your library updated and get better picks.
+                Track a book to keep your library updated and get better picks.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" type="button">
                   <BookPlus className="mr-1" />
-                  Log a book
+                  Track a book
                 </Button>
                 <Button size="sm" variant="outline" type="button">
                   <ListPlus className="mr-1" />
@@ -63,21 +63,27 @@ export function DiscoveryPage({
         <aside className="w-72 shrink-0 space-y-6">
           {staffPicks.length > 0 && (
             <section>
-              <h2 className="font-heading text-lg font-semibold mb-2">Staff Picks</h2>
+              <h2 className="font-heading text-lg font-semibold mb-2">
+                BookDB Picks
+              </h2>
               <StaffPicks books={staffPicks} />
             </section>
           )}
 
           {activity.length > 0 && (
             <section>
-              <h2 className="font-heading text-lg font-semibold mb-2">Friend Activity</h2>
+              <h2 className="font-heading text-lg font-semibold mb-2">
+                Friend Activity
+              </h2>
               <ActivityFeed items={activity} />
             </section>
           )}
 
           {trendingLists.length > 0 && (
             <section>
-              <h2 className="font-heading text-lg font-semibold mb-2">Trending Lists</h2>
+              <h2 className="font-heading text-lg font-semibold mb-2">
+                Trending Lists
+              </h2>
               <TrendingLists lists={trendingLists} />
             </section>
           )}
