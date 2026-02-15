@@ -2,6 +2,23 @@ import type { Preview } from "@storybook/react-vite";
 import "../src/styles/globals.css";
 
 const preview: Preview = {
+  decorators: [
+    (Story, context) => {
+      const withContainer = context.parameters?.withContainer !== false;
+
+      return (
+        <div className="min-h-dvh bg-background text-foreground">
+          {withContainer ? (
+            <main className="mx-auto max-w-5xl px-4 py-8">
+              <Story />
+            </main>
+          ) : (
+            <Story />
+          )}
+        </div>
+      );
+    },
+  ],
   parameters: {
     controls: {
       matchers: {

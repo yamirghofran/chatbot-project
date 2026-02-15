@@ -1,0 +1,63 @@
+import { UserPlus } from "lucide-react";
+import type { User } from "@/lib/types";
+import { SearchBar } from "@/components/search/SearchBar";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+export type NavbarProps = {
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  brand?: string;
+  user?: User;
+};
+
+export function Navbar({
+  searchValue,
+  onSearchChange,
+  brand = "BookDB",
+  user,
+}: NavbarProps) {
+  const initials = user?.displayName
+    .split(" ")
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <header className="sticky top-0 z-40 bg-background">
+      <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-2 lg:flex-row lg:items-center">
+        <div className="flex items-center">
+          <img src="/logo.svg" alt={`${brand} logo`} className="h-auto w-32" />
+        </div>
+        <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
+          <div className="w-full sm:w-72">
+            <SearchBar value={searchValue} onChange={onSearchChange} />
+          </div>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button type="button" aria-label="Profile">
+                <Avatar size="lg">
+                  {user.avatarUrl && (
+                    <AvatarImage src={user.avatarUrl} alt={user.displayName} />
+                  )}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+              </button>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" type="button">
+                  Log in
+                </Button>
+                <Button size="sm" type="button">
+                  <UserPlus className="mr-1" />
+                  Sign up
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
