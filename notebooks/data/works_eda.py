@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.19.9"
-app = marimo.App(layout_file="layouts/works_eda.slides.json")
+__generated_with = "0.19.7"
+app = marimo.App()
 
 
 @app.cell
@@ -12,15 +12,27 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
     from scipy import stats
+    import json
 
-    return mo, np, pl, plt, sns, stats
+    return json, mo, np, pl, plt, sns, stats
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    # Preliminary EDA for Goodreads Works Dataset
+    """)
+    return
 
 
 @app.cell
 def _(pl):
     import os
+
     # Use absolute path from project root
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    project_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_works.parquet")
     df = pl.read_parquet(data_path)
 
@@ -56,7 +68,7 @@ def _(pl):
     )
 
     df.head()
-    return (df,)
+    return df, os, project_root
 
 
 @app.cell
@@ -89,26 +101,25 @@ def _(df, mo):
         df["original_publication_month"].is_null().sum() / df.shape[0] * 100
     )
 
-    missing_day_pct = (
-        df["original_publication_day"].is_null().sum() / df.shape[0] * 100
-    )
+    missing_day_pct = df["original_publication_day"].is_null().sum() / df.shape[0] * 100
 
-    mo.vstack([
-        mo.md(f"{missing_year_pct:.1f}% of works missing publication year"),
-        mo.md(f"{missing_month_pct:.1f}% of works missing publication month"),
-        mo.md(f"{missing_day_pct:.1f}% of works missing publication day"),
-        mo.md("### Missing values per column:"),
-        null_counts,
-        mo.md(r"""
+    mo.vstack(
+        [
+            mo.md(f"{missing_year_pct:.1f}% of works missing publication year"),
+            mo.md(f"{missing_month_pct:.1f}% of works missing publication month"),
+            mo.md(f"{missing_day_pct:.1f}% of works missing publication day"),
+            mo.md("### Missing values per column:"),
+            null_counts,
+            mo.md(r"""
         Original publication dates have a lot of missing values, will need imputation or filtering strategies
-        """)
-    ])
+        """),
+        ]
+    )
     return
 
 
 @app.cell
 def _(df):
-
     df["media_type"].unique_counts()
     return
 
@@ -126,12 +137,14 @@ def _(df, mo):
             "original_publication_year",
         ]
     ).describe()
-    mo.vstack([
-        summary,
-        mo.md(r"""
+    mo.vstack(
+        [
+            summary,
+            mo.md(r"""
         Extreme outliers present: negative review counts (-6069), unrealistic publication years (-2600, 32767), and highly skewed rating counts
-        """)
-    ])
+        """),
+        ]
+    )
     return
 
 
@@ -143,42 +156,49 @@ def _(df, mo, pl):
     neg_year = df.filter(pl.col("original_publication_year") < 1000).shape[0]
     future_year = df.filter(pl.col("original_publication_year") > 2026).shape[0]
 
-
     # Check rating_sum consistency
     rating_issues = df.filter(
         pl.col("ratings_sum") > pl.col("ratings_count") * 5
     ).shape[0]
 
-    mo.vstack([mo.md(f"Works with negative reviews: {neg_reviews}"),
-    mo.md(f"Works with publication year < 1000: {neg_year}"),
-    mo.md(f"Works with publication year > 2026: {future_year}"),
-    mo.md(
-        f"\nWorks where rating_sum exceeds max possible (ratings_count * 5): {rating_issues}"
-    ),
-    mo.md(r"""
+    mo.vstack(
+        [
+            mo.md(f"Works with negative reviews: {neg_reviews}"),
+            mo.md(f"Works with publication year < 1000: {neg_year}"),
+            mo.md(f"Works with publication year > 2026: {future_year}"),
+            mo.md(
+                f"\nWorks where rating_sum exceeds max possible (ratings_count * 5): {rating_issues}"
+            ),
+            mo.md(r"""
     Data contains negative review counts and impossible publication years, requiring cleaning before modeling
-    """)])
+    """),
+        ]
+    )
     return
 
 
 @app.cell
 def _(df, mo):
     """Distribution Analysis"""
-    mo.vstack([mo.md(
-        f"Books per work: median {df['books_count'].median():.0f}, max {df['books_count'].max():.0f}"
-    ),
-    mo.md(
-        f"Ratings per work: median {df['ratings_count'].median():.0f}, max {df['ratings_count'].max():,.0f}"
-    ),
-    mo.md(
-        f"Text reviews per work: median {df['text_reviews_count'].median():.0f}, max {df['text_reviews_count'].max():,.0f}"
-    ),
-    mo.md(
-        f"Publication year: {df['original_publication_year'].min():.0f} to {df['original_publication_year'].max():.0f}"
-    ),
-    mo.md(r"""
+    mo.vstack(
+        [
+            mo.md(
+                f"Books per work: median {df['books_count'].median():.0f}, max {df['books_count'].max():.0f}"
+            ),
+            mo.md(
+                f"Ratings per work: median {df['ratings_count'].median():.0f}, max {df['ratings_count'].max():,.0f}"
+            ),
+            mo.md(
+                f"Text reviews per work: median {df['text_reviews_count'].median():.0f}, max {df['text_reviews_count'].max():,.0f}"
+            ),
+            mo.md(
+                f"Publication year: {df['original_publication_year'].min():.0f} to {df['original_publication_year'].max():.0f}"
+            ),
+            mo.md(r"""
     Metrics are extremely right-skewed with long tails, requiring log-transformation for analysis
-    """)])
+    """),
+        ]
+    )
     return
 
 
@@ -195,10 +215,14 @@ def _(df, mo, plt):
     ax_ratings.set_xlim(0, 1000)
     plt.tight_layout()
 
-    mo.vstack([
-        fig_ratings,
-        mo.md("The raw distribution is heavily right-skewed, with most works having very few ratings")
-    ])
+    mo.vstack(
+        [
+            fig_ratings,
+            mo.md(
+                "The raw distribution is heavily right-skewed, with most works having very few ratings"
+            ),
+        ]
+    )
     return
 
 
@@ -235,10 +259,14 @@ def _(df, mo, np, plt):
 
     plt.tight_layout()
 
-    mo.vstack([
-        fig_log,
-        mo.md("Log-transformation reveals approximately normal distributions, suggesting it's appropriate for modeling")
-    ])
+    mo.vstack(
+        [
+            fig_log,
+            mo.md(
+                "Log-transformation reveals approximately normal distributions, suggesting it's appropriate for modeling"
+            ),
+        ]
+    )
     return
 
 
@@ -259,12 +287,18 @@ def _(df, mo, pl):
         .select(["original_title", "ratings_count", "ratings_sum"])
         .head(10)
     )
-    mo.vstack([mo.md(
-        f"Using 3x IQR method, {outliers_count:,} works ({outliers_count / df.shape[0] * 100:.2f}%) are outliers"
-    ),
-    mo.md("\nTop 10 works by total ratings count:"),
-    mo.md("Small percentage of extreme outliers dominate the metrics, consider cap or separate treatment"),
-    top_works])
+    mo.vstack(
+        [
+            mo.md(
+                f"Using 3x IQR method, {outliers_count:,} works ({outliers_count / df.shape[0] * 100:.2f}%) are outliers"
+            ),
+            mo.md("\nTop 10 works by total ratings count:"),
+            mo.md(
+                "Small percentage of extreme outliers dominate the metrics, consider cap or separate treatment"
+            ),
+            top_works,
+        ]
+    )
     return
 
 
@@ -286,10 +320,14 @@ def _(df, mo, pl, plt):
     ax_year.set_xlim(1800, 2026)
     plt.tight_layout()
 
-    mo.vstack([
-        fig_year,
-        mo.md("Most works are from recent decades (2000-2020), with fewer older classics available")
-    ])
+    mo.vstack(
+        [
+            fig_year,
+            mo.md(
+                "Most works are from recent decades (2000-2020), with fewer older classics available"
+            ),
+        ]
+    )
     return
 
 
@@ -299,15 +337,21 @@ def _(df, mo, pl):
     media_counts = df.group_by("media_type").len().sort("len", descending=True)
     # Count works with non-empty language
     has_language = df.filter(pl.col("original_language_id") != "").shape[0]
-    mo.vstack([
-        mo.md("Distribution of media types:"),
-        media_counts,
-        mo.md(
-        f"\nWorks with language specified: {has_language:,} ({has_language / df.shape[0] * 100:.1f}%)"
-    ),
-        mo.md("Most entries are 'book' type. Consider getting rid of other media types"),
-        mo.md("Both `original_language_id` and `default_description_language_code` have empty values (same for all). Consider droppig later")
-    ])
+    mo.vstack(
+        [
+            mo.md("Distribution of media types:"),
+            media_counts,
+            mo.md(
+                f"\nWorks with language specified: {has_language:,} ({has_language / df.shape[0] * 100:.1f}%)"
+            ),
+            mo.md(
+                "Most entries are 'book' type. Consider getting rid of other media types"
+            ),
+            mo.md(
+                "Both `original_language_id` and `default_description_language_code` have empty values (same for all). Consider droppig later"
+            ),
+        ]
+    )
     return
 
 
@@ -334,13 +378,15 @@ def _(df, mo, plt, sns):
     ax_corr.set_title("Correlation Matrix")
     plt.tight_layout()
 
-    mo.vstack([
-        fig_corr,
-        mo.md("""Very high correlation between ratings_count and ratings_sum (r=0.99) suggests redundancy, consider removing one
+    mo.vstack(
+        [
+            fig_corr,
+            mo.md("""Very high correlation between ratings_count and ratings_sum (r=0.99) suggests redundancy, consider removing one
     Same with review_count and text_reviews_count.
 
-    Consider dropping _count/_sum variables for later, all redundant.""")
-    ])
+    Consider dropping _count/_sum variables for later, all redundant."""),
+        ]
+    )
     return
 
 
@@ -364,10 +410,14 @@ def _(df, mo, pl, plt):
     ax_rating_hist.set_title("Distribution of Calculated Average Ratings")
     plt.tight_layout()
 
-    mo.vstack([
-        fig_rating_hist,
-        mo.md("Ratings are normally distributed around 3.5-4.0 with slight left skew, typical for user-generated content")
-    ])
+    mo.vstack(
+        [
+            fig_rating_hist,
+            mo.md(
+                "Ratings are normally distributed around 3.5-4.0 with slight left skew, typical for user-generated content"
+            ),
+        ]
+    )
     return
 
 
@@ -390,12 +440,14 @@ def _(df, mo, np, pl, plt):
     ax_pop.set_title("Average Rating vs Popularity")
     plt.tight_layout()
 
-    mo.vstack([
-        fig_pop,
-        mo.md(r"""
+    mo.vstack(
+        [
+            fig_pop,
+            mo.md(r"""
         Weak relationship between popularity and rating quality, popular works don't consistently have higher ratings
-        """)
-    ])
+        """),
+        ]
+    )
     return
 
 
@@ -405,15 +457,17 @@ def _(df, mo):
     # Parse a sample of rating_dist to understand the format
     sample_dists = df["rating_dist"].head(10).to_list()
 
-    mo.vstack([
-        mo.md("Sample rating distributions (format: 5:X|4:Y|3:Z|2:W|1:V|total:N):"),
-        *[mo.md(f"- `{dist}`") for dist in sample_dists],
-        mo.md(r"""
+    mo.vstack(
+        [
+            mo.md("Sample rating distributions (format: 5:X|4:Y|3:Z|2:W|1:V|total:N):"),
+            *[mo.md(f"- `{dist}`") for dist in sample_dists],
+            mo.md(r"""
         Rating_dist field provides granular rating breakdown that could enable weighted scoring or preference modeling
 
         Can be used for weighted averaging or sentiment analysis
-        """)
-    ])
+        """),
+        ]
+    )
     return
 
 
@@ -423,16 +477,20 @@ def _(df, mo, pl):
     multi_book = df.filter(pl.col("books_count") > 1).shape[0]
 
     books_distribution = df.group_by("books_count").len().sort("books_count")
-    mo.vstack([
-        mo.md(f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"),
-        mo.md("\nDistribution of books count:"),
-        books_distribution.head(20),
-        mo.md(r"""
+    mo.vstack(
+        [
+            mo.md(
+                f"Works with multiple book editions: {multi_book:,} ({multi_book / df.shape[0] * 100:.1f}%)"
+            ),
+            mo.md("\nDistribution of books count:"),
+            books_distribution.head(20),
+            mo.md(r"""
         Most works have a single book edition, but 4.4% have multiple editions requiring deduplication or ranking.
 
         Best solution is to keep the best version based on book id
-        """)
-    ])
+        """),
+        ]
+    )
     return
 
 
@@ -446,18 +504,24 @@ def _(df, mo, np, stats):
     # Log-transform for better normality
     log_ratings2 = np.log1p(ratings_count)
     log_reviews2 = np.log1p(text_reviews)
-    log_reviews_count = np.log1p(np.maximum(0, reviews_count))  # Clip negative values at 0
+    log_reviews_count = np.log1p(
+        np.maximum(0, reviews_count)
+    )  # Clip negative values at 0
 
     corr1, p1 = stats.pearsonr(log_ratings2, log_reviews2)
     corr2, p2 = stats.pearsonr(log_ratings2, log_reviews_count)
     corr3, p3 = stats.pearsonr(log_reviews2, log_reviews_count)
 
-    mo.vstack([
-        mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr1:.4f}, p={p1:.2e}"),
-        mo.md(f"Log(Ratings) vs Log(Reviews): r={corr2:.4f}, p={p2:.2e}"),
-        mo.md(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}"),
-        mo.md("All three popularity metrics are highly correlated, suggesting they measure similar underlying construct")
-    ])
+    mo.vstack(
+        [
+            mo.md(f"Log(Ratings) vs Log(Text Reviews): r={corr1:.4f}, p={p1:.2e}"),
+            mo.md(f"Log(Ratings) vs Log(Reviews): r={corr2:.4f}, p={p2:.2e}"),
+            mo.md(f"Log(Text Reviews) vs Log(Reviews): r={corr3:.4f}, p={p3:.2e}"),
+            mo.md(
+                "All three popularity metrics are highly correlated, suggesting they measure similar underlying construct"
+            ),
+        ]
+    )
     return
 
 
@@ -501,13 +565,17 @@ def _(df, mo, pl):
     # Filter to keep only books
     df_books = df.filter(pl.col("media_type") == "book")
 
-    mo.vstack([
-        mo.md("### Filter by Media Type"),
-        mo.md(f"Original dataset: {df.shape[0]:,} works"),
-        media_dist,
-        mo.md(f"\nAfter filtering to 'book' only: {df_books.shape[0]:,} works"),
-        mo.md(f"Rows removed: {df.shape[0] - df_books.shape[0]:,} ({(1 - df_books.shape[0]/df.shape[0])*100:.1f}%)")
-        ])
+    mo.vstack(
+        [
+            mo.md("### Filter by Media Type"),
+            mo.md(f"Original dataset: {df.shape[0]:,} works"),
+            media_dist,
+            mo.md(f"\nAfter filtering to 'book' only: {df_books.shape[0]:,} works"),
+            mo.md(
+                f"Rows removed: {df.shape[0] - df_books.shape[0]:,} ({(1 - df_books.shape[0] / df.shape[0]) * 100:.1f}%)"
+            ),
+        ]
+    )
     return (df_books,)
 
 
@@ -522,8 +590,8 @@ def _(df_books, mo, pl):
     # Fix invalid years by setting them to null
     df_cleaned = df_books.with_columns(
         pl.when(
-            (pl.col("original_publication_year") < 1000) | 
-            (pl.col("original_publication_year") > 2026)
+            (pl.col("original_publication_year") < 1000)
+            | (pl.col("original_publication_year") > 2026)
         )
         .then(None)
         .otherwise(pl.col("original_publication_year"))
@@ -532,14 +600,22 @@ def _(df_books, mo, pl):
 
     year_null_after = df_cleaned["original_publication_year"].is_null().sum()
 
-    mo.vstack([
-        mo.md("### Fix Invalid Publication Years"),
-        mo.md(f"Years < 1000: {year_too_old:,} rows → set to null"),
-        mo.md(f"Years > 2026: {year_too_new:,} rows → set to null"),
-        mo.md(f"Null years before: {year_null_before:,} ({year_null_before/df_books.shape[0]*100:.1f}%)"),
-        mo.md(f"Null years after: {year_null_after:,} ({year_null_after/df_cleaned.shape[0]*100:.1f}%)"),
-        mo.md(f"Valid years (1000-2026): {df_cleaned.shape[0] - year_null_after:,} rows")
-    ])
+    mo.vstack(
+        [
+            mo.md("### Fix Invalid Publication Years"),
+            mo.md(f"Years < 1000: {year_too_old:,} rows → set to null"),
+            mo.md(f"Years > 2026: {year_too_new:,} rows → set to null"),
+            mo.md(
+                f"Null years before: {year_null_before:,} ({year_null_before / df_books.shape[0] * 100:.1f}%)"
+            ),
+            mo.md(
+                f"Null years after: {year_null_after:,} ({year_null_after / df_cleaned.shape[0] * 100:.1f}%)"
+            ),
+            mo.md(
+                f"Valid years (1000-2026): {df_cleaned.shape[0] - year_null_after:,} rows"
+            ),
+        ]
+    )
     return (df_cleaned,)
 
 
@@ -548,40 +624,137 @@ def _(df_cleaned, mo):
     """Drop redundant and unused columns"""
     # Define columns to drop
     columns_to_drop = [
-        "original_publication_month", 
-        "original_publication_day",     
-        "original_language_id",         
-        "default_description_language_code",  
-        "reviews_count",                
-        "ratings_sum",                  
-        "media_type",                   
-        "default_chaptering_book_id",  
+        "original_publication_month",
+        "original_publication_day",
+        "original_language_id",
+        "default_description_language_code",
+        "reviews_count",
+        "ratings_sum",
+        "media_type",
+        "default_chaptering_book_id",
     ]
 
     # Drop the columns
     df_final = df_cleaned.drop(columns_to_drop)
 
-    mo.vstack([
-        mo.md("### Drop Redundant Columns"),
-        mo.md("Columns dropped:"),
-        mo.md("- `original_publication_month` - Too many missing values"),
-        mo.md("- `original_publication_day` - Too many missing values"),
-        mo.md("- `original_language_id` - All empty values"),
-        mo.md("- `default_description_language_code` - All empty values"),
-        mo.md("- `reviews_count` - Redundant with text_reviews_count"),
-        mo.md("- `ratings_sum` - Redundant with ratings_count"),
-        mo.md("- `media_type` - All values are 'book' after filtering"),
-        mo.md("- `default_chaptering_book_id` - Mostly empty"),
-        mo.md(f"\nColumns before: {df_cleaned.shape[1]}"),
-        mo.md(f"Columns after: {df_final.shape[1]}"),
-        mo.md(f"Final dataset: {df_final.shape[0]:,} works × {df_final.shape[1]} columns")
-    ])
+    mo.vstack(
+        [
+            mo.md("### Drop Redundant Columns"),
+            mo.md("Columns dropped:"),
+            mo.md("- `original_publication_month` - Too many missing values"),
+            mo.md("- `original_publication_day` - Too many missing values"),
+            mo.md("- `original_language_id` - All empty values"),
+            mo.md("- `default_description_language_code` - All empty values"),
+            mo.md("- `reviews_count` - Redundant with text_reviews_count"),
+            mo.md("- `ratings_sum` - Redundant with ratings_count"),
+            mo.md("- `media_type` - All values are 'book' after filtering"),
+            mo.md("- `default_chaptering_book_id` - Mostly empty"),
+            mo.md(f"\nColumns before: {df_cleaned.shape[1]}"),
+            mo.md(f"Columns after: {df_final.shape[1]}"),
+            mo.md(
+                f"Final dataset: {df_final.shape[0]:,} works × {df_final.shape[1]} columns"
+            ),
+        ]
+    )
+    return (df_final,)
+
+
+@app.cell
+def _(df_final, json, mo, os, pl, project_root):
+    """Generate Best Book ID Mapping"""
+
+    # Load books dataset to get all book IDs per work
+    books_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
+    books_df = pl.read_parquet(books_path).with_columns(
+        pl.col("work_id").cast(pl.Int64, strict=False),
+        pl.col("book_id").cast(pl.Int64, strict=False),
+    )
+
+    # Group books by work_id to get all book IDs
+    books_per_work = (
+        books_df.filter(pl.col("work_id").is_not_null())
+        .group_by("work_id")
+        .agg(pl.col("book_id").alias("all_book_ids"))
+    )
+
+    # Join with works dataset to get best_book_id and all book IDs
+    mapping_df = (
+        df_final.join(books_per_work, on="work_id", how="left")
+        .filter(
+            pl.col("all_book_ids").is_not_null()
+            & (pl.col("all_book_ids").list.len() > 1)
+        )  # Keep only works with multiple books
+        .select(["best_book_id", "all_book_ids"])
+    )
+
+    # Convert to dictionary using Python lists to ensure JSON serializability
+    best_book_id_map = {}
+    for row in mapping_df.iter_rows(named=True):
+        best_id = int(row["best_book_id"])
+        all_ids = row["all_book_ids"]
+        # Handle Polars Series or list - convert to Python list
+        if hasattr(all_ids, "to_list"):
+            all_ids = all_ids.to_list()
+        # Convert to Python ints and filter out best_book_id
+        other_ids = sorted([int(id) for id in all_ids if int(id) != best_id])
+        best_book_id_map[str(best_id)] = other_ids
+
+    output_path = os.path.join(project_root, "data", "best_book_id_map.json")
+    with open(output_path, "w") as f:
+        json.dump(best_book_id_map, f, indent=2)
+
+    mo.vstack(
+        [
+            mo.md("### Best Book ID Mapping"),
+            mo.md(
+                f"Total works with multiple book editions: {len(best_book_id_map):,}"
+            ),
+            mo.md(
+                f"Works skipped (single book): {df_final.shape[0] - len(best_book_id_map):,}"
+            ),
+            mo.md(f"Mapping saved to: `{output_path}`"),
+            mo.md("\nSample mappings:"),
+            mo.md(f"- First 5 keys: {list(best_book_id_map.keys())[:5]}"),
+            mo.md(f"- Example mapping: {list(best_book_id_map.items())[0]}"),
+        ]
+    )
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Best Book ID Mapping
+
+    The `best_book_id_map.json` file maps each `best_book_id` to a list of other book IDs
+    that belong to the same work (i.e., different editions of the same book).
+
+    **Format:**
+    ```json
+    {
+      "25717": [123456, 789012, 345678],
+      "7327624": [111222],
+      ...
+    }
+    ```
+
+    **Usage:**
+    - Find alternative editions of a book by looking up its `best_book_id`
+    - Deduplicate books at the work level
+    - Aggregate data across all editions of a work
+
+    **Notes:**
+    - Only works with 2+ book editions are included
+    - `best_book_id` is the most popular/representative edition
+    - Values are sorted lists of alternative book IDs
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
     1. Impute Missing Publication Years
     14.8% of works have null original_publication_year after cleaning.
     - Drop rows: Simple but lose 14.8% of data
