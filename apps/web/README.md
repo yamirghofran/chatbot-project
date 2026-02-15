@@ -1,73 +1,70 @@
-# React + TypeScript + Vite
+# BookDB Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 SPA built with Vite, TypeScript, TanStack Router, TanStack React Query, shadcn/ui, and Tailwind CSS v4. Component development and testing via Storybook.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- [Bun](https://bun.sh/) (package manager and runtime)
+- [Node.js](https://nodejs.org/) >= 18
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Clone the repository and navigate to the web app
+cd apps/web
 
-## Expanding the ESLint configuration
+# Install dependencies
+bun install
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Install Playwright browsers (required for browser tests)
+bunx playwright install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+# Start the Vite dev server with HMR
+bun run dev
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The app will be available at [http://localhost:5173](http://localhost:5173).
+
+## Storybook
+
+```bash
+# Start Storybook dev server
+bun run storybook
+```
+
+Storybook will be available at [http://localhost:6006](http://localhost:6006).
+
+To build a static Storybook site:
+
+```bash
+bun run build-storybook
+```
+
+## Other Scripts
+
+```bash
+# Type-check and build for production
+bun run build
+
+# Preview the production build
+bun run preview
+
+# Run ESLint
+bun run lint
+```
+
+## Project Structure
+
+```
+src/
+├── components/ui/   # shadcn/ui components
+├── lib/             # Utilities (cn helper, etc.)
+├── routes/          # File-based routes (TanStack Router)
+├── assets/          # Static assets
+├── index.css        # Tailwind CSS + theme config
+└── main.tsx         # App entry point
 ```
