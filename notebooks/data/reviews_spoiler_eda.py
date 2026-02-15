@@ -28,15 +28,17 @@ def _(mo):
 
 
 @app.cell
-def _(pl):
+def _(mo, pl):
     import os
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     df_all = pl.read_parquet(os.path.join(project_root, "data", "raw_goodreads_reviews_dedup.parquet"))
     df_spoiler = pl.read_parquet(os.path.join(project_root, "data", "raw_goodreads_reviews_spoiler.parquet"))
 
-    print(f"Reviews dedup: {df_all.height:,}")
-    print(f"Reviews spoiler: {df_spoiler.height:,}")
+    mo.vstack([
+        mo.md(f"Reviews dedup: {df_all.height:,}"),
+        mo.md(f"Reviews spoiler: {df_spoiler.height:,}")
+    ])
     return df_all, df_spoiler
 
 
@@ -73,13 +75,14 @@ def _(mo):
 
 
 @app.cell
-def _(df_all, df_spoiler):
+def _(df_all, df_spoiler, mo):
     # Verify schemas match
     _schemas_match = df_all.schema == df_spoiler.schema
-    print(f"Schemas match: {_schemas_match}")
+    output = [mo.md(f"**Schemas match:** {_schemas_match}")]
     if not _schemas_match:
-        print(f"  Dedup columns: {list(df_all.schema.keys())}")
-        print(f"  Spoiler columns: {list(df_spoiler.schema.keys())}")
+        output.append(mo.md(f"  Dedup columns: {list(df_all.schema.keys())}"))
+        output.append(mo.md(f"  Spoiler columns: {list(df_spoiler.schema.keys())}"))
+    mo.vstack(output)
     return
 
 

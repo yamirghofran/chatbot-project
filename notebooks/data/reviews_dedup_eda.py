@@ -92,23 +92,25 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
-    print(f"Shape: {df.shape}")
-    print()
-    print("Nulls per column:")
-    print(f"  {df.null_count().to_dicts()[0]}")
-    print()
-    print("Empty strings per column:")
+def _(df, mo, pl):
     _empty_counts = {}
     for _col in df.columns:
         if df[_col].dtype == pl.Utf8:
             _empty_counts[_col] = df.filter(pl.col(_col) == "").height
-    print(f"  {_empty_counts}")
+    pl.from_dict(_empty_counts)
+
+    mo.vstack([
+        mo.md(f"Shape: {df.shape}"),
+        mo.md("Nulls per column:"),
+        df.null_count(),
+        mo.md("Empty strings per column:"),
+        pl.from_dict(_empty_counts)
+    ])
     return
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     # Rating range validation
     _min_rating = df['rating'].min()
     _max_rating = df['rating'].max()
@@ -116,30 +118,36 @@ def _(df, pl):
 
     _invalid_ratings = df.filter((pl.col("rating") < 0) | (pl.col("rating") > 5)).height
 
-    print("Rating Validation:")
-    print(f"  Range: {_min_rating} to {_max_rating}")
-    print(f"  Unique values: {_unique_ratings}")
-    print(f"  Invalid ratings (outside 0-5): {_invalid_ratings}")
+    mo.vstack([
+        mo.md("Rating Validation:"),
+        mo.md(f"""
+        - Range: {_min_rating} to {_max_rating}
+        - Unique values: {_unique_ratings}
+        - Invalid ratings (outside 0-5): {_invalid_ratings}""")
+    ])
     return
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     # Votes and comments validation - check for negative values
     _negative_votes = df.filter(pl.col("n_votes") < 0).height
     _negative_comments = df.filter(pl.col("n_comments") < 0).height
 
-    print("Numeric Columns Validation:")
-    print(f"  n_votes range: {df['n_votes'].min()} to {df['n_votes'].max()}")
-    print(f"  Negative n_votes: {_negative_votes}")
-    print()
-    print(f"  n_comments range: {df['n_comments'].min()} to {df['n_comments'].max()}")
-    print(f"  Negative n_comments: {_negative_comments}")
+    mo.vstack([
+        mo.md("Numeric Columns Validation:"),
+        mo.md(f"""
+        - n_votes range: {df['n_votes'].min()} to {df['n_votes'].max()}
+        - Negative n_votes: {_negative_votes}"""),
+        mo.md(f"""
+        - n_comments range: {df['n_comments'].min()} to {df['n_comments'].max()}
+        - Negative n_comments: {_negative_comments}""")
+    ])
     return
 
 
 @app.cell
-def _(df, pl, plt):
+def _(df, mo, pl, plt):
     # Focus on lower range to see negative values
     _votes_low = df.filter(pl.col("n_votes") <= 20)["n_votes"].to_numpy()
     _comments_low = df.filter(pl.col("n_comments") <= 20)["n_comments"].to_numpy()
@@ -163,16 +171,13 @@ def _(df, pl, plt):
     _axes[1].axvline(x=0, color='red', linestyle='--', linewidth=1)
 
     plt.tight_layout()
-    _fig
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    - n_votes and n_comments contain negative values, which are invalid.
-    - These negative values should be cleaned (clip to 0) or excluded during analysis.
-    """)
+    mo.vstack([
+        mo.md("""
+        - n_votes and n_comments contain negative values, which are invalid.
+        - These negative values should be cleaned (clip to 0) or excluded during analysis."""),
+        _fig
+    ])
     return
 
 
@@ -243,18 +248,22 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _total = df.height
     _zero_ratings = df.filter(pl.col("rating") == 0).height
     _nonzero_ratings = df.filter(pl.col("rating") > 0).height
 
-    print(f"Total reviews: {_total:,}")
-    print(f"Rating = 0 (unrated): {_zero_ratings:,} ({_zero_ratings/_total*100:.1f}%)")
-    print(f"Rating > 0 (rated): {_nonzero_ratings:,} ({_nonzero_ratings/_total*100:.1f}%)")
+    output = [
+        mo.md(f"**Total reviews:** {_total:,}"),
+        mo.md(f"**Rating = 0 (unrated):** {_zero_ratings:,} ({_zero_ratings/_total*100:.1f}%)"),
+        mo.md(f"**Rating > 0 (rated):** {_nonzero_ratings:,} ({_nonzero_ratings/_total*100:.1f}%)")
+    ]
 
     if _nonzero_ratings > 0:
         _mean_rated = df.filter(pl.col("rating") > 0)["rating"].mean()
-        print(f"Mean rating (excluding 0): {_mean_rated:.2f}")
+        output.append(mo.md(f"**Mean rating (excluding 0):** {_mean_rated:.2f}"))
+
+    mo.vstack(output)
     return
 
 
@@ -312,7 +321,7 @@ def _(df, plt):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     # Analyze relationship between rating, votes, and comments
     _engagement_by_rating = (
         df.filter(pl.col("rating") > 0)
@@ -325,8 +334,10 @@ def _(df, pl):
         .sort("rating")
     )
 
-    print("Engagement by Rating:")
-    print(_engagement_by_rating)
+    mo.vstack([
+        mo.md("Engagement by Rating:"),
+        _engagement_by_rating
+    ])
     return
 
 
@@ -350,7 +361,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _df_text = df.with_columns([
         pl.col("review_text").str.len_chars().alias("char_count"),
         pl.col("review_text").str.split(" ").list.len().alias("word_count"),
@@ -366,21 +377,27 @@ def _(df, pl):
         pl.col("word_count").max().alias("max_words"),
     ])
 
-    print("Review Text Statistics:")
-    print(f"  Avg characters: {_text_stats['avg_chars'][0]:,.0f}")
-    print(f"  Median characters: {_text_stats['median_chars'][0]:,.0f}")
-    print(f"  Max characters: {_text_stats['max_chars'][0]:,}")
-    print(f"  Avg words: {_text_stats['avg_words'][0]:,.0f}")
-    print(f"  Median words: {_text_stats['median_words'][0]:,.0f}")
-    print(f"  Max words: {_text_stats['max_words'][0]:,}")
+    stats_display = mo.vstack([
+        mo.md("**Review Text Statistics:**"),
+        mo.md(f"  Avg characters: {_text_stats['avg_chars'][0]:,.0f}"),
+        mo.md(f"  Median characters: {_text_stats['median_chars'][0]:,.0f}"),
+        mo.md(f"  Max characters: {_text_stats['max_chars'][0]:,}"),
+        mo.md(f"  Avg words: {_text_stats['avg_words'][0]:,.0f}"),
+        mo.md(f"  Median words: {_text_stats['median_words'][0]:,.0f}"),
+        mo.md(f"  Max words: {_text_stats['max_words'][0]:,}")
+    ])
 
     _empty = _df_text.filter(pl.col("char_count") == 0).height
     _short = _df_text.filter(pl.col("word_count") < 10).height
     _long = _df_text.filter(pl.col("word_count") > 500).height
 
-    print(f"\nEmpty reviews: {_empty:,} ({_empty/df.height*100:.2f}%)")
-    print(f"Short reviews (<10 words): {_short:,} ({_short/df.height*100:.1f}%)")
-    print(f"Long reviews (>500 words): {_long:,} ({_long/df.height*100:.1f}%)")
+    counts_display = mo.vstack([
+        mo.md(f"\nEmpty reviews: {_empty:,} ({_empty/df.height*100:.2f}%)"),
+        mo.md(f"Short reviews (<10 words): {_short:,} ({_empty/df.height*100:.1f}%)"),
+        mo.md(f"Long reviews (>500 words): {_long:,} ({_long/df.height*100:.1f}%)")
+    ])
+
+    mo.vstack([stats_display, counts_display])
     return
 
 
@@ -573,7 +590,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _vote_stats = df.select([
         pl.col("n_votes").mean().alias("avg_votes"),
         pl.col("n_votes").median().alias("median_votes"),
@@ -585,14 +602,16 @@ def _(df, pl):
     _has_votes = df.filter(pl.col("n_votes") > 0).height
     _high_votes = df.filter(pl.col("n_votes") >= 10).height
 
-    print("Vote Statistics:")
-    print(f"  Avg votes/review: {_vote_stats['avg_votes'][0]:.2f}")
-    print(f"  Median votes: {_vote_stats['median_votes'][0]:.0f}")
-    print(f"  Max votes: {_vote_stats['max_votes'][0]:,}")
-    print(f"  Total votes: {_vote_stats['total_votes'][0]:,}")
-    print(f"\nReviews with 0 votes: {_no_votes:,} ({_no_votes/df.height*100:.1f}%)")
-    print(f"Reviews with 1+ votes: {_has_votes:,} ({_has_votes/df.height*100:.1f}%)")
-    print(f"Reviews with 10+ votes: {_high_votes:,} ({_high_votes/df.height*100:.2f}%)")
+    mo.vstack([
+        mo.md("**Vote Statistics:**"),
+        mo.md(f"  Avg votes/review: {_vote_stats['avg_votes'][0]:.2f}"),
+        mo.md(f"  Median votes: {_vote_stats['median_votes'][0]:.0f}"),
+        mo.md(f"  Max votes: {_vote_stats['max_votes'][0]:,}"),
+        mo.md(f"  Total votes: {_vote_stats['total_votes'][0]:,}"),
+        mo.md(f"\nReviews with 0 votes: {_no_votes:,} ({_no_votes/df.height*100:.1f}%)"),
+        mo.md(f"Reviews with 1+ votes: {_has_votes:,} ({_has_votes/df.height*100:.1f}%)"),
+        mo.md(f"Reviews with 10+ votes: {_high_votes:,} ({_high_votes/df.height*100:.2f}%)")
+    ])
     return
 
 
@@ -621,7 +640,7 @@ def _(df, np, plt):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _votes_by_rating = (
         df.filter(pl.col("rating") > 0)
         .group_by("rating")
@@ -634,13 +653,15 @@ def _(df, pl):
         .sort("rating")
     )
 
-    print("Votes by Rating:")
-    _votes_by_rating
+    mo.vstack([
+        mo.md("Votes by Rating:"),
+        _votes_by_rating
+    ])
     return
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     # Filter reviews with 10+ votes
     high_vote_reviews = df.filter(pl.col("n_votes") >= 10)
 
@@ -652,8 +673,10 @@ def _(df, pl):
     total_books = df["book_id"].n_unique()
     pct_books = n_unique_books / total_books * 100
 
-    print(f"Reviews with 10+ votes: {n_high_vote_reviews:,}")
-    print(f"Unique books among these reviews: {n_unique_books:,} ({pct_books:.2f}% of all books)")
+    mo.vstack([
+        mo.md(f"Reviews with 10+ votes: {n_high_vote_reviews:,}"),
+        mo.md(f"Unique books among these reviews: {n_unique_books:,} ({pct_books:.2f}% of all books)")
+    ])
     return
 
 
@@ -676,7 +699,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _reviews_per_user = df.group_by("user_id").len().rename({"len": "review_count"})
 
     _q1 = _reviews_per_user["review_count"].quantile(0.25)
@@ -686,18 +709,20 @@ def _(df, pl):
 
     _upper_outliers = _reviews_per_user.filter(pl.col("review_count") > _upper_bound)
 
-    print(f"Unique users: {_reviews_per_user.height:,}")
-    print(f"Mean reviews/user: {_reviews_per_user['review_count'].mean():.1f}")
-    print(f"Median reviews/user: {_reviews_per_user['review_count'].median():.0f}")
-    print(f"Max reviews/user: {_reviews_per_user['review_count'].max():,}")
-    print(f"\nIQR: Q1={_q1:.0f}, Q3={_q3:.0f}")
-    print(f"Upper outlier threshold: >{_upper_bound:.0f} reviews")
-    print(f"Upper outliers: {_upper_outliers.height:,} users ({_upper_outliers.height/_reviews_per_user.height*100:.1f}%)")
+    mo.vstack([
+        mo.md(f"**Unique users:** {_reviews_per_user.height:,}"),
+        mo.md(f"**Mean reviews/user:** {_reviews_per_user['review_count'].mean():.1f}"),
+        mo.md(f"**Median reviews/user:** {_reviews_per_user['review_count'].median():.0f}"),
+        mo.md(f"**Max reviews/user:** {_reviews_per_user['review_count'].max():,}"),
+        mo.md(f"\n**IQR:** Q1={_q1:.0f}, Q3={_q3:.0f}"),
+        mo.md(f"**Upper outlier threshold:** >{_upper_bound:.0f} reviews"),
+        mo.md(f"**Upper outliers:** {_upper_outliers.height:,} users ({_upper_outliers.height/_reviews_per_user.height*100:.1f}%)")
+    ])
     return
 
 
 @app.cell
-def _(df, np, plt):
+def _(df, mo, np, plt):
     _reviews_per_user = df.group_by("user_id").len().rename({"len": "review_count"})
     _counts = _reviews_per_user["review_count"].to_pandas()
 
@@ -714,17 +739,12 @@ def _(df, np, plt):
     _axes[1].set_title("User Activity Distribution (Log Scale)")
 
     plt.tight_layout()
-    _fig
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Most users write only a few reviews.
+    mo.vstack([
+        mo.md("""Most users write only a few reviews.
     13.4% of users are highly active, with more than 52 reviews each.
-    Care should be taken to avoid biasing suggestions toward their preferences.
-    """)
+    Care should be taken to avoid biasing suggestions toward their preferences."""),
+        _fig
+    ])
     return
 
 
@@ -758,7 +778,7 @@ def _(df, pl):
 
 
 @app.cell
-def _(df, np, plt):
+def _(df, mo, np, plt):
     _reviews_per_book = df.group_by("book_id").len().rename({"len": "review_count"})
     _counts = _reviews_per_book["review_count"].to_pandas()
 
@@ -775,17 +795,12 @@ def _(df, np, plt):
     _axes[1].set_title("Book Popularity Distribution (Log Scale)")
 
     plt.tight_layout()
-    _fig
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Most books receive only a little amount of reviews, but a small subset (12.2%) are highly popular with more than 8 reviews each.
+    mo.vstack([
+        mo.md("""Most books receive only a little amount of reviews, but a small subset (12.2%) are highly popular with more than 8 reviews each.
     A higher review count provides a more stable estimate of overall reader sentiment.
-    However, review volume does not imply positive reception, and care should be taken to avoid overlooking books with fewer reviews.
-    """)
+    However, review volume does not imply positive reception, and care should be taken to avoid overlooking books with fewer reviews."""),
+        _fig
+    ])
     return
 
 
@@ -798,7 +813,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl):
+def _(df, mo, pl):
     _user_counts = df.group_by("user_id").len()
     _book_counts = df.group_by("book_id").len()
 
@@ -810,11 +825,13 @@ def _(df, pl):
     _n_users = _user_counts.height
     _n_books = _book_counts.height
 
-    print("Cold Start Analysis:")
-    print(f"\nUsers with only 1 review: {_cold_users_1:,} ({_cold_users_1/_n_users*100:.1f}%)")
-    print(f"Users with <=5 reviews: {_cold_users_5:,} ({_cold_users_5/_n_users*100:.1f}%)")
-    print(f"\nBooks with only 1 review: {_cold_books_1:,} ({_cold_books_1/_n_books*100:.1f}%)")
-    print(f"Books with <=5 reviews: {_cold_books_5:,} ({_cold_books_5/_n_books*100:.1f}%)")
+    mo.vstack([
+        mo.md("**Cold Start Analysis:**"),
+        mo.md(f"\n**Users with only 1 review:** {_cold_users_1:,} ({_cold_users_1/_n_users*100:.1f}%)"),
+        mo.md(f"**Users with ≤5 reviews:** {_cold_users_5:,} ({_cold_users_5/_n_users*100:.1f}%)"),
+        mo.md(f"\n**Books with only 1 review:** {_cold_books_1:,} ({_cold_books_1/_n_books*100:.1f}%)"),
+        mo.md(f"**Books with ≤5 reviews:** {_cold_books_5:,} ({_cold_books_5/_n_books*100:.1f}%)")
+    ])
     return
 
 
@@ -835,7 +852,7 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl, plt, sns):
+def _(df, mo, mod, pl, plt, sns):
     _numeric_df = df.select([
         pl.col("rating"),
         pl.col("n_votes"),
@@ -848,15 +865,11 @@ def _(df, pl, plt, sns):
     sns.heatmap(_corr_matrix, annot=True, cmap="coolwarm", center=0,
                 fmt=".3f", square=True, ax=_ax)
     _ax.set_title("Correlation Heatmap: Rating, Votes, Review Length")
-    _fig
-    return
 
-
-@app.cell
-def _(mo):
-    mo.md(r"""
-    Weak correlations.
-    """)
+    mo.vstack([
+        _fig,
+        mod.md("Weak correlations.")
+    ])
     return
 
 
