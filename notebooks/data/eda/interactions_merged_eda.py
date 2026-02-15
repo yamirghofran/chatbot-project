@@ -28,9 +28,7 @@ def _(mo):
 
 @app.cell
 def _(mo, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
     data_dir = os.path.join(project_root, "data")
 
     merged_lf = pl.scan_parquet(os.path.join(data_dir, "goodreads_interactions_merged.parquet"))

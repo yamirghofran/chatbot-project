@@ -30,20 +30,18 @@ def _(mo):
 
 @app.cell
 def _(json, mo, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
     data_dir = os.path.join(project_root, "data")
 
     with open(os.path.join(data_dir, "best_book_id_map.json")) as f:
         best_book_id_map = json.load(f)
 
     # invert: edition -> best (goodreads IDs)
-    edition_to_best_gr = {}
-    for best_id, edition_ids in best_book_id_map.items():
-        best_id_int = int(best_id)
-        for eid in edition_ids:
-            edition_to_best_gr[int(eid)] = best_id_int
+    edition_to_best_gr = {
+        int(eid): int(best_id)
+        for best_id, edition_ids in best_book_id_map.items()
+        for eid in edition_ids
+    }
 
     gr_lookup = pl.DataFrame({
         "edition_book_id": list(edition_to_best_gr.keys()),
@@ -109,7 +107,7 @@ def _(data_dir, lookup_df, mo, os, pl):
         .drop("best_csv_id")
     )
 
-    _merged.collect(engine="streaming").write_parquet(_output)
+    _merged.sink_parquet(_output, engine="streaming")
     _n_out = pl.scan_parquet(_output).select(pl.len()).collect().item()
 
     mo.md(f"""
