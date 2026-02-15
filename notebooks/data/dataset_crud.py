@@ -54,9 +54,10 @@ def _(Path, pq):
     books_file_path = DATA_DIR / "raw_goodreads_books.parquet"
 
     pq_file = pq.ParquetFile(books_file_path)
-    pq_file.schema.names
-    # df = pd.read_parquet(books_file_path)
-    # df
+
+    table = pq_file.read_row_group(0).slice(0, 5)
+    df = table.to_pandas()
+    df
     return
 
 
