@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.7"
+__generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
 
@@ -14,6 +14,7 @@ def _():
     from scipy import stats
     import json
     import os
+
     return json, mo, os, pl
 
 
@@ -223,6 +224,26 @@ def _(df_cleaned, mo, os, pl, project_root):
             ),
         ]
     )
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    Uncomment the code below to save the cleaned dataset in the data directory.
+    """)
+    return
+
+
+@app.cell
+def _():
+    # Save the final cleaned and standardized dataset to parquet
+    # output_path = os.path.join(project_root, "data", "goodreads_books_cleaned.parquet")
+    # df_mapped.write_parquet(output_path)
+    # mo.md(f"**Dataset saved successfully!**")
+    # mo.md(f"**Location:** `{output_path}`")
+    # mo.md(f"**File size:** {os.path.getsize(output_path) / 1024 / 1024:.1f} MB")
+    # mo.md(f"**Final dataset:** {df_mapped.shape[0]:,} books × {df_mapped.shape[1]} columns")
     return
 
 
