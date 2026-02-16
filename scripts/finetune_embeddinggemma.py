@@ -506,6 +506,12 @@ def evaluate_retrieval_model(
     first_rank_sum = 0.0
     evaluated_queries = 0
 
+    # Additional metric accumulators
+    ndcg_sum = 0.0
+    map_sum = 0.0
+    precision_sum = 0.0
+    hit_rate_hits = 0
+
     for query_id in query_ids:
         query_idx = id_to_index[query_id]
         relevant_indices = [
@@ -535,6 +541,36 @@ def evaluate_retrieval_model(
         first_relevant_rank = int(np.sum(similarities > best_relevant_similarity) + 1)
         mrr_sum += 1.0 / first_relevant_rank
         first_rank_sum += first_relevant_rank
+
+        # Calculate NDCG@k (Normalized Discounted Cumulative Gain)
+        # Using binary relevance (1 if relevant, 0 otherwise)
+        dcg = 0.0
+        for rank, idx in enumerate(top_indices[:top_k], start=1):
+            if idx in relevant_set:
+                dcg += 1.0 / np.log2(rank + 1)
+        # Ideal DCG: all relevant items at the top
+        ideal_dcg = sum(1.0 / np.log2(r + 1) for r in range(1, min(len(relevant_indices), top_k) + 1))
+        ndcg_sum += dcg / ideal_dcg if ideal_dcg > 0 else 0.0
+
+        # Calculate AP (Average Precision) for MAP
+        # AP = sum of (precision at rank k * relevance at rank k) / total relevant docs
+        num_relevant_found = 0
+        precision_at_positions = 0.0
+        for rank, idx in enumerate(top_indices[:top_k], start=1):
+            if idx in relevant_set:
+                num_relevant_found += 1
+                precision_at_positions += num_relevant_found / rank
+        # Consider relevant items beyond top_k as not retrieved
+        ap = precision_at_positions / len(relevant_indices) if relevant_indices else 0.0
+        map_sum += ap
+
+        # Calculate Precision@k
+        hits_in_top_k = sum(1 for idx in top_indices[:top_k] if idx in relevant_set)
+        precision_sum += hits_in_top_k / top_k
+
+        # Calculate Hit Rate (whether any relevant item is in top-k, same as recall@k for binary)
+        hit_rate_hits += int(hits_in_top_k > 0)
+
         evaluated_queries += 1
 
     if evaluated_queries == 0:
@@ -545,6 +581,10 @@ def evaluate_retrieval_model(
             "recall_at_k": 0.0,
             "mrr": 0.0,
             "mean_first_positive_rank": 0.0,
+            "ndcg_at_k": 0.0,
+            "map_at_k": 0.0,
+            "precision_at_k": 0.0,
+            "hit_rate_at_k": 0.0,
         }
 
     return {
@@ -554,6 +594,10 @@ def evaluate_retrieval_model(
         "recall_at_k": float(recall_hits / evaluated_queries),
         "mrr": float(mrr_sum / evaluated_queries),
         "mean_first_positive_rank": float(first_rank_sum / evaluated_queries),
+        "ndcg_at_k": float(ndcg_sum / evaluated_queries),
+        "map_at_k": float(map_sum / evaluated_queries),
+        "precision_at_k": float(precision_sum / evaluated_queries),
+        "hit_rate_at_k": float(hit_rate_hits / evaluated_queries),
     }
 
 
