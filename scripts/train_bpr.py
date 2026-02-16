@@ -405,7 +405,7 @@ def log_to_mlflow(
                 logger.warning("Artifact saved locally but not uploaded to MLFlow")
 
         # Save recommendations as artifact
-        recommendations_path = artifacts_dir / "recommendations.parquet"
+        recommendations_path = artifacts_dir / "bpr_recommendations.parquet"
         recommendations.write_parquet(recommendations_path)
         safe_log_artifact(recommendations_path, "recommendations")
 
