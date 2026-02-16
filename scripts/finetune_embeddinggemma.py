@@ -565,6 +565,7 @@ def log_to_mlflow(
     finetuned_metrics: Optional[Dict[str, float]],
     baseline_metrics: Optional[Dict[str, float]],
     output_path: Path,
+    dataset_paths: Optional[list[Path]] = None,
     run_name: Optional[str] = None,
 ) -> str:
     """
@@ -578,6 +579,7 @@ def log_to_mlflow(
         finetuned_metrics: Evaluation metrics for finetuned model (can be None)
         baseline_metrics: Evaluation metrics for baseline model (can be None)
         output_path: Path to saved model
+        dataset_paths: Optional list of dataset file paths to log as artifacts
         run_name: Optional run name
 
     Returns:
@@ -683,6 +685,12 @@ def log_to_mlflow(
             for artifact_file in output_path.glob("*"):
                 if artifact_file.is_file():
                     safe_log_artifact(artifact_file, f"model/{artifact_file.name}")
+
+        # Log dataset files if provided
+        if dataset_paths:
+            for dataset_path in dataset_paths:
+                if dataset_path.exists():
+                    safe_log_artifact(dataset_path, f"dataset/{dataset_path.name}")
 
         # Save training configuration
         config_path = artifacts_dir / "training_config.json"
@@ -934,6 +942,7 @@ def main() -> None:
 
     # Log to MLFlow
     run_name = f"embeddinggemma_e{args.epochs}_bs{args.batch_size}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    dataset_paths = [Path(raw_source), Path(text_source)]
     mlflow_run_id = log_to_mlflow(
         args=args,
         runtime=runtime,
@@ -942,6 +951,7 @@ def main() -> None:
         finetuned_metrics=finetuned_metrics,
         baseline_metrics=baseline_metrics,
         output_path=output_path,
+        dataset_paths=dataset_paths,
         run_name=run_name,
     )
 
