@@ -228,7 +228,7 @@ def _(df, json, mo, os, pl, plt):
     _ax.invert_yaxis()
 
     # Add value labels on bars
-    for i, (bar, pct) in enumerate(zip(bars, results_df["empty_percentage"])):
+    for bar, pct in zip(bars, results_df["empty_percentage"]):
         _ax.text(
             pct + 0.5,
             bar.get_y() + bar.get_height() / 2,
