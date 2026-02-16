@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download-inputs", action="store_true")
     parser.add_argument("--cache-dir", default="data/cache")
 
-    parser.add_argument("--max-pairs", type=int, default=50000)
+    parser.add_argument("--max-pairs", type=int, default=20000)
     parser.add_argument("--min-text-chars", type=int, default=120)
     parser.add_argument("--min-support", type=int, default=1)
     parser.add_argument("--val-fraction", type=float, default=10.0)
