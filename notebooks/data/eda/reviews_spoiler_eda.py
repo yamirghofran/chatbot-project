@@ -30,7 +30,7 @@ def _(mo):
 @app.cell
 def _(mo, pl):
     import os
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
 
     df_all = pl.read_parquet(os.path.join(project_root, "data", "raw_goodreads_reviews_dedup.parquet"))
     df_spoiler = pl.read_parquet(os.path.join(project_root, "data", "raw_goodreads_reviews_spoiler.parquet"))
