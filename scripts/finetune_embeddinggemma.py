@@ -20,6 +20,7 @@ import numpy as np
 import polars as pl
 import torch
 from dotenv import load_dotenv
+from huggingface_hub import login
 from sentence_transformers import InputExample, SentenceTransformer, losses
 from torch.utils.data import DataLoader, Dataset, Sampler
 
@@ -37,6 +38,12 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Login to HuggingFace Hub if token is available
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    login(token=hf_token)
+    logger.info("Logged in to HuggingFace Hub")
 
 
 # Verify MLflow environment variables are set (without exposing secrets)
@@ -136,7 +143,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--warmup-ratio", type=float, default=10.0)
     parser.add_argument("--max-seq-length", type=int, default=512)
