@@ -19,7 +19,7 @@ def _():
 @app.cell
 def _(pl):
     import os
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     data_path = os.path.join(project_root, "data", "raw_goodreads_interactions.parquet")
     df = pl.read_parquet(data_path)
     df.head()
