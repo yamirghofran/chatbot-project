@@ -56,8 +56,8 @@ def _check_mlflow_env() -> bool:
         logger.warning(f"Make sure .env file exists at {env_path}")
     return len(missing) == 0
 
-raw_books_url = "https://pub-eecdafb53cc84b659949b513e40369d2.r2.dev/files/md5/68/4227dbfdbc026e431d64df236e3428"
-book_texts_url = "https://pub-eecdafb53cc84b659949b513e40369d2.r2.dev/files/md5/46/22eb2357c0cdca856808f638ac5726"
+standardized_books_path = os.path.join(project_root, "data", "goodreads_books_with_metrics.parquet")
+books_texts_path = os.path.join(project_root, "data", "books_embedding_texts.parquet")
 
 
 class PairDataset(Dataset):
@@ -110,8 +110,8 @@ def parse_args() -> argparse.Namespace:
         description="Finetune google/embeddinggemma-300m with component-safe MNRL batching."
     )
 
-    parser.add_argument("--raw-books-source", default=raw_books_url)
-    parser.add_argument("--book-texts-source", default=book_texts_url)
+    parser.add_argument("--raw-books-source", default=standardized_books_path)
+    parser.add_argument("--book-texts-source", default=books_texts_path)
     parser.add_argument("--download-inputs", action="store_true")
     parser.add_argument("--cache-dir", default="data/cache")
 
@@ -120,6 +120,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-support", type=int, default=1)
     parser.add_argument("--val-fraction", type=float, default=10.0)
     parser.add_argument("--seed", type=int, default=42)
+
+    # Book selection parameters
+    parser.add_argument(
+        "--top-popular-books",
+        type=int,
+        default=15000,
+        help="Number of top popular books (by num_interactions) to include",
+    )
+    parser.add_argument(
+        "--random-sampled-books",
+        type=int,
+        default=15000,
+        help="Number of randomly sampled books (excluding top popular) to include",
+    )
 
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=4)
@@ -242,7 +256,10 @@ def detect_runtime(num_workers_arg: int) -> dict[str, object]:
 
 
 def build_training_frames(args: argparse.Namespace, raw_source: str, text_source: str):
-    raw_books_lf = pl.scan_parquet(raw_source).select(["book_id", "similar_books"])
+    # Load books with num_interactions for filtering
+    raw_books_lf = pl.scan_parquet(raw_source).select(
+        ["book_id", "similar_books", "num_interactions"]
+    )
     book_texts_lf = pl.scan_parquet(text_source).select(["book_id", "book_embedding_text"])
 
     valid_texts_lf = (
@@ -259,6 +276,56 @@ def build_training_frames(args: argparse.Namespace, raw_source: str, text_source
 
     valid_book_ids_lf = valid_texts_lf.select("book_id").unique()
 
+    # Filter books by popularity and random sampling
+    # Get valid book_ids with their num_interactions
+    books_with_interactions_lf = (
+        raw_books_lf.select(["book_id", "num_interactions"])
+        .with_columns(pl.col("book_id").cast(pl.Utf8))
+        .join(valid_book_ids_lf, on="book_id", how="inner")
+        .with_columns(
+            pl.col("num_interactions").fill_null(0)
+        )  # Handle nulls by defaulting to 0
+    )
+
+    # Get top X popular books (by num_interactions)
+    top_popular_books_lf = books_with_interactions_lf.sort(
+        "num_interactions", descending=True
+    ).limit(args.top_popular_books)
+
+    # Get the remaining books (excluding top popular)
+    remaining_books_lf = books_with_interactions_lf.join(
+        top_popular_books_lf.select("book_id"), on="book_id", how="anti"
+    )
+
+    # Randomly sample Y books from the remaining
+    # Use a hash-based approach for reproducible random sampling
+    remaining_count = remaining_books_lf.select(pl.len().alias("n")).collect().item()
+    random_sample_size = min(args.random_sampled_books, remaining_count)
+
+    if random_sample_size > 0:
+        random_sampled_books_lf = (
+            remaining_books_lf.with_columns(
+                pl.col("book_id").hash(seed=int(args.seed)).alias("_sample_key")
+            )
+            .sort("_sample_key")
+            .limit(random_sample_size)
+            .drop("_sample_key")
+        )
+    else:
+        random_sampled_books_lf = remaining_books_lf.limit(0)  # Empty dataframe
+
+    # Combine selected book_ids
+    selected_book_ids_lf = pl.concat(
+        [top_popular_books_lf.select("book_id"), random_sampled_books_lf.select("book_id")]
+    ).unique("book_id")
+
+    # Collect to get count for logging
+    selected_book_count = selected_book_ids_lf.select(pl.len().alias("n")).collect().item()
+    logger.info(f"Selected {selected_book_count} books for training:")
+    logger.info(f"  - Top popular: {args.top_popular_books}")
+    logger.info(f"  - Random sampled: {random_sample_size}")
+
+    # Filter pairs to only include books from the selected set
     candidate_pairs_lf = (
         raw_books_lf.filter(pl.col("similar_books").list.len() > 0)
         .explode("similar_books")
@@ -271,13 +338,14 @@ def build_training_frames(args: argparse.Namespace, raw_source: str, text_source
             pl.col("target_book_id").is_not_null() & (pl.col("target_book_id") != "")
         )
         .filter(pl.col("source_book_id") != pl.col("target_book_id"))
+        # Filter to only include pairs where both books are in the selected set
         .join(
-            valid_book_ids_lf.rename({"book_id": "source_book_id"}),
+            selected_book_ids_lf.rename({"book_id": "source_book_id"}),
             on="source_book_id",
             how="inner",
         )
         .join(
-            valid_book_ids_lf.rename({"book_id": "target_book_id"}),
+            selected_book_ids_lf.rename({"book_id": "target_book_id"}),
             on="target_book_id",
             how="inner",
         )
@@ -441,6 +509,9 @@ def build_training_frames(args: argparse.Namespace, raw_source: str, text_source
         "val_pairs": val_pairs_text_df.height,
         "train_components": train_pairs_text_df["component_id"].n_unique(),
         "val_components": len(val_component_ids),
+        "selected_books_count": selected_book_count,
+        "top_popular_books": args.top_popular_books,
+        "random_sampled_books": random_sample_size,
     }
 
     return train_pairs_text_df, val_pairs_text_df, stats
@@ -654,6 +725,8 @@ def log_to_mlflow(
             "min_text_chars": args.min_text_chars,
             "min_support": args.min_support,
             "val_fraction": args.val_fraction,
+            "top_popular_books": args.top_popular_books,
+            "random_sampled_books": args.random_sampled_books,
         })
 
         # Log runtime configuration
@@ -672,6 +745,7 @@ def log_to_mlflow(
             "val_pairs": stats["val_pairs"],
             "train_components": stats["train_components"],
             "val_components": stats["val_components"],
+            "selected_books_count": stats["selected_books_count"],
         })
 
         # Log training time
