@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.19.7"
 app = marimo.App()
 
 
@@ -12,8 +12,9 @@ def _():
     import polars as pl
     import seaborn as sns
     from scipy import stats
-
-    return mo, pl, plt, sns
+    import json
+    import os
+    return json, mo, os, pl, plt, sns
 
 
 @app.cell
@@ -25,9 +26,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, pl):
-    import os
-
+def _(mo, os, pl):
     project_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
@@ -112,6 +111,175 @@ def _(df, mo, pl):
 
 
 @app.cell
+def _(df, json, mo, os, pl, plt):
+    """Empty String Analysis for Kept Features"""
+    # Apply the same filtering and dropping logic as clean_books.py
+
+    # Load best_book_id_map.json
+    _project_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    best_book_map_path = os.path.join(_project_root, "data", "best_book_id_map.json")
+
+    with open(best_book_map_path, "r") as f:
+        best_book_map = json.load(f)
+
+    # Extract non-best book IDs (values from the JSON to drop)
+    non_best_book_ids = set()
+    for book_id_list in best_book_map.values():
+        non_best_book_ids.update(str(book_id) for book_id in book_id_list)
+
+    # Filter to EXCLUDE non-best book IDs
+    df_filtered = df.filter(~pl.col("book_id").is_in(non_best_book_ids))
+
+    # Define columns to drop (same as clean_books.py)
+    columns_to_drop = [
+        "text_reviews_count",
+        "series",
+        "country_code",
+        "asin",
+        "is_ebook",
+        "average_rating",
+        "kindle_asin",
+        "publication_day",
+        "publication_month",
+        "edition_information",
+        "ratings_count",
+        "title_without_series",
+        "isbn",
+    ]
+
+    # Drop the specified columns
+    df_cleaned = df_filtered.drop(columns_to_drop)
+
+    # Define the 16 kept columns
+    kept_columns = [
+        "isbn13",
+        "popular_shelves",
+        "similar_books",
+        "description",
+        "link",
+        "authors",
+        "publisher",
+        "num_pages",
+        "publication_year",
+        "url",
+        "image_url",
+        "book_id",
+        "work_id",
+        "title",
+        "format",
+        "language_code",
+    ]
+
+    # Define list columns that need special handling
+    list_columns = ["popular_shelves", "similar_books", "authors"]
+
+    # Check for empty strings in each column
+    empty_string_results = []
+    for col in kept_columns:
+        col_type = df_cleaned.schema[col]
+
+        if col in list_columns:
+            # For list columns: check for empty lists
+            if col_type == pl.List:
+                empty_count = df_cleaned.filter(pl.col(col).list.len() == 0).shape[0]
+            else:
+                empty_count = 0
+        else:
+            # For non-list columns: check for empty strings
+            if col_type == pl.String:
+                empty_count = df_cleaned.filter(pl.col(col) == "").shape[0]
+            else:
+                empty_count = 0
+
+        empty_percentage = (empty_count / df_cleaned.shape[0]) * 100
+        empty_string_results.append(
+            {
+                "column": col,
+                "type": str(col_type),
+                "empty_count": empty_count,
+                "empty_percentage": empty_percentage,
+            }
+        )
+
+    # Convert to DataFrame for easier display
+    results_df = pl.DataFrame(empty_string_results).sort("empty_count", descending=True)
+
+    # Create visualization
+    _fig, _ax = plt.subplots(figsize=(12, 6))
+    colors = [
+        "coral" if x > 10 else "steelblue" for x in results_df["empty_percentage"]
+    ]
+    bars = _ax.barh(
+        results_df["column"],
+        results_df["empty_percentage"],
+        color=colors,
+        alpha=0.7,
+        edgecolor="black",
+    )
+    _ax.set_xlabel("Empty String Percentage (%)", fontsize=12)
+    _ax.set_ylabel("Column Name", fontsize=12)
+    _ax.set_title(
+        "Empty String Percentage in Kept Features", fontsize=14, fontweight="bold"
+    )
+    _ax.set_xlim(0, max(results_df["empty_percentage"]) * 1.1)
+    _ax.grid(True, alpha=0.3, axis="x")
+    _ax.invert_yaxis()
+
+    # Add value labels on bars
+    for bar, pct in zip(bars, results_df["empty_percentage"]):
+        _ax.text(
+            pct + 0.5,
+            bar.get_y() + bar.get_height() / 2,
+            f"{pct:.1f}%",
+            va="center",
+            fontsize=9,
+        )
+
+    # Highlight columns with high empty string rates (>10%)
+    high_empty = results_df.filter(pl.col("empty_percentage") > 10)
+    high_empty_cols = high_empty["column"].to_list()
+
+    mo.vstack(
+        [
+            mo.md("### Empty String Analysis for Kept Features"),
+            mo.md(f"**Total books after filtering:** {df_cleaned.shape[0]:,}"),
+            mo.md(f"**Total kept columns:** {len(kept_columns)}"),
+            mo.md("#### Empty String Summary Table"),
+            results_df,
+            mo.md("#### Empty String Visualization"),
+            _fig,
+            mo.md("#### Key Findings"),
+            mo.md(
+                f"- **Columns with >10% empty strings:** {len(high_empty)} "
+                f"({', '.join([f'`{col}`' for col in high_empty_cols])})"
+            ),
+            mo.md(
+                f"- **Highest empty string rate:** `{results_df[0, 'column']}` "
+                f"with {results_df[0, 'empty_percentage']:.1f}% empty strings"
+            ),
+            mo.md(
+                f"- **Lowest empty string rate:** `{results_df[-1, 'column']}` "
+                f"with {results_df[-1, 'empty_percentage']:.1f}% empty strings"
+            ),
+            mo.md("#### Recommendations"),
+            mo.md(r"""
+        - Consider dropping columns with very high empty string rates (>50%)
+        - For columns with moderate empty string rates (10-50%), consider:
+          * Imputation strategies (if appropriate)
+          * Creating a separate "missing" category
+          * Dropping if not critical for analysis
+        - For columns with low empty string rates (<10%), consider:
+          * Dropping rows with missing values (if few)
+          * Simple imputation (mean, median, mode)
+        """),
+        ]
+    )
+    return
+
+
+@app.cell
 def _(df, mo, pl, plt):
     """Rating Distribution"""
     ratings = df.filter(pl.col("average_rating").is_not_null())["average_rating"]
@@ -144,9 +312,7 @@ def _(df, mo, pl, plt):
     # Create rating bins using qcut for quantile-based binning
     rating_binned = (
         pl.DataFrame({"rating": ratings.cast(pl.Float64)})
-        .with_columns(
-            rating=pl.col("rating").clip(0.0, 5.0)
-        )
+        .with_columns(rating=pl.col("rating").clip(0.0, 5.0))
         .with_columns(
             bin=pl.col("rating").cut(breaks=[0, 1, 2, 3, 4, 5], include_breaks=True)
         )
@@ -168,8 +334,6 @@ def _(df, mo, pl, plt):
         .agg(pl.len().alias("count"))
         .sort("bin")
     )
-
-
 
     _ax2.bar(
         rating_binned["bin"],
@@ -243,8 +407,9 @@ def _(df, mo, pl, plt):
             mo.md("""- Popularity is highly unequal
             - The dataset is dominated by low-engagement books
             - Ratings > text reviews --> Star ratings are cheap vs written reviews are costly
-            """)
-        ])
+            """),
+        ]
+    )
     return
 
 
@@ -296,8 +461,9 @@ def _(df, mo, pl, plt):
             mo.md("""- Popularity drives engagement but unevenly
             - Ratings scale faster than reviews makes sense because writing is effort. Same findings as previous plot
             - Books with more ratings tend to have more text reviews.
-            - Each text review is also a rating but not every rating is a text review""")
-        ])
+            - Each text review is also a rating but not every rating is a text review"""),
+        ]
+    )
     return
 
 
@@ -309,7 +475,6 @@ def _(df, mo, pl, plt):
         & (pl.col("num_pages") > 0)
         & (pl.col("num_pages") <= 10000)
     )["num_pages"]
-
 
     _fig, (_ax1, _ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -341,7 +506,6 @@ def _(df, mo, pl, plt):
     _ax2.set_title("Box Plot of Page Counts")
     _ax2.grid(True, alpha=0.3)
 
-
     plt.tight_layout()
 
     mo.vstack(
@@ -354,9 +518,9 @@ def _(df, mo, pl, plt):
             mo.md(f"- **Min**: {pages.min():.0f} | **Max**: {pages.max():.0f}"),
             mo.md("### Findings:"),
             mo.md("""- Page counts follow a highly right-skewed distribution
-            - Most books are around 250 pages long while a small number of extremely long books create a long tail and inflate the mean""")
-    ])
-
+            - Most books are around 250 pages long while a small number of extremely long books create a long tail and inflate the mean"""),
+        ]
+    )
     return
 
 
@@ -387,7 +551,6 @@ def _(df, mo, pl, plt):
     )
 
     _fig, (_ax2, _ax3) = plt.subplots(1, 2, figsize=(16, 5))
-
 
     _ax2.bar(
         century_stats["century"].cast(str),
@@ -427,7 +590,7 @@ def _(df, mo, pl, plt):
             mo.md("""- Book publishing increases dramatically over time
             - Vast majority of books come from the 20th and 21st centuries. 
             - Early publication years are sparsely represented 
-            """)
+            """),
         ]
     )
     return
@@ -465,8 +628,11 @@ def _(df, mo, pl, plt, sns):
         [
             mo.md("### Correlations Heatmap"),
             _fig,
-            mo.md("Only `text_reviews_count` and `ratings_count` appear to be correlated, consider dropping one.")
-        ])
+            mo.md(
+                "Only `text_reviews_count` and `ratings_count` appear to be correlated, consider dropping one."
+            ),
+        ]
+    )
     return
 
 
@@ -529,7 +695,9 @@ def _(df, mo, pl, plt):
             mo.md(
                 f"- **Books with Series**: {df.filter(pl.col('series').list.len() > 0).shape[0]:,} ({df.filter(pl.col('series').list.len() > 0).shape[0] / df.shape[0] * 100:.1f}%)"
             ),
-            mo.md("Only book related formats are relevant, consider dropping works of other types.")
+            mo.md(
+                "Only book related formats are relevant, consider dropping works of other types."
+            ),
         ]
     )
     return
@@ -599,19 +767,30 @@ def _(df, mo, pl, plt):
             _i, _row["avg_rating"] + 0.02, f"{_row['avg_rating']:.3f}", ha="center"
         )
 
-
     plt.tight_layout()
 
-    mo.vstack([
-        mo.md("### Key Relationships"),
-        _fig,
-        mo.md("### Findings:"),
-        mo.md("""- Length alone does not predict rating quality
+    mo.vstack(
+        [
+            mo.md("### Key Relationships"),
+            _fig,
+            mo.md("### Findings:"),
+            mo.md("""- Length alone does not predict rating quality
         - Popular books aren’t necessarily better rated but their ratings are more reliable
         - Series benefit from reader investment and familiarity
-        """)
+        """),
+        ]
+    )
+    return
 
-    ])
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Cleaning
+    1. filter format for paperback, Hardcover, Mass market paperback then drop column
+    2. drop text_reviews_count and ratings_counts and series asin, is_ebook, language, average_rating, kindle_asin, format, publication_day, publication_month, edition_information, ratings_count, title_witout_series
+    3. Drop non best books id
+    """)
     return
 
 
