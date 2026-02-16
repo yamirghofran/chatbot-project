@@ -141,6 +141,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-max-queries", type=int, default=0)
     parser.add_argument("--eval-k", type=int, default=10)
     parser.add_argument("--eval-batch-size", type=int, default=0)
+    parser.add_argument(
+        "--eval-baseline",
+        action="store_true",
+        default=True,
+        help="Evaluate baseline model for comparison (default: True)",
+    )
+    parser.add_argument(
+        "--no-eval-baseline",
+        action="store_false",
+        dest="eval_baseline",
+        help="Skip baseline model evaluation",
+    )
 
     # MLflow settings
     parser.add_argument(
@@ -541,7 +553,8 @@ def log_to_mlflow(
     runtime: dict[str, object],
     stats: dict[str, int],
     training_time: float,
-    metrics: Optional[Dict[str, float]],
+    finetuned_metrics: Optional[Dict[str, float]],
+    baseline_metrics: Optional[Dict[str, float]],
     output_path: Path,
     run_name: Optional[str] = None,
 ) -> str:
@@ -553,7 +566,8 @@ def log_to_mlflow(
         runtime: Runtime configuration dictionary
         stats: Data statistics dictionary
         training_time: Training time in seconds
-        metrics: Evaluation metrics dictionary (can be None)
+        finetuned_metrics: Evaluation metrics for finetuned model (can be None)
+        baseline_metrics: Evaluation metrics for baseline model (can be None)
         output_path: Path to saved model
         run_name: Optional run name
 
@@ -608,11 +622,38 @@ def log_to_mlflow(
         # Log training time
         mlflow.log_metric("training_time_seconds", training_time)
 
-        # Log evaluation metrics if available
-        if metrics:
-            for metric_name, metric_value in metrics.items():
+        # Log baseline evaluation metrics if available
+        if baseline_metrics:
+            for metric_name, metric_value in baseline_metrics.items():
                 if isinstance(metric_value, (int, float)):
-                    mlflow.log_metric(metric_name, float(metric_value))
+                    mlflow.log_metric(f"baseline_{metric_name}", float(metric_value))
+
+        # Log finetuned evaluation metrics if available
+        if finetuned_metrics:
+            for metric_name, metric_value in finetuned_metrics.items():
+                if isinstance(metric_value, (int, float)):
+                    mlflow.log_metric(f"finetuned_{metric_name}", float(metric_value))
+
+        # Calculate and log improvement deltas (finetuned - baseline)
+        if baseline_metrics and finetuned_metrics:
+            improvement_metrics = {}
+            for metric_name in baseline_metrics.keys():
+                if metric_name in finetuned_metrics:
+                    baseline_val = baseline_metrics[metric_name]
+                    finetuned_val = finetuned_metrics[metric_name]
+                    if isinstance(baseline_val, (int, float)) and isinstance(finetuned_val, (int, float)):
+                        # Absolute improvement
+                        improvement = finetuned_val - baseline_val
+                        mlflow.log_metric(f"improvement_{metric_name}", float(improvement))
+                        improvement_metrics[metric_name] = {
+                            "baseline": baseline_val,
+                            "finetuned": finetuned_val,
+                            "improvement": improvement,
+                        }
+            
+            logger.info("=== Improvement Summary ===")
+            for metric_name, values in improvement_metrics.items():
+                logger.info(f"  {metric_name}: {values['baseline']:.4f} -> {values['finetuned']:.4f} (Δ={values['improvement']:+.4f})")
 
         # Create artifacts directory
         artifacts_dir = Path("mlflow_artifacts")
@@ -658,12 +699,30 @@ def log_to_mlflow(
             json.dump(stats, f, indent=2)
         safe_log_artifact(stats_path, "data stats")
 
-        # Save evaluation metrics if available
-        if metrics:
-            metrics_path = artifacts_dir / "evaluation_metrics.json"
-            with open(metrics_path, "w") as f:
-                json.dump(metrics, f, indent=2)
-            safe_log_artifact(metrics_path, "evaluation metrics")
+        # Save baseline evaluation metrics if available
+        if baseline_metrics:
+            baseline_metrics_path = artifacts_dir / "baseline_metrics.json"
+            with open(baseline_metrics_path, "w") as f:
+                json.dump(baseline_metrics, f, indent=2)
+            safe_log_artifact(baseline_metrics_path, "baseline metrics")
+
+        # Save finetuned evaluation metrics if available
+        if finetuned_metrics:
+            finetuned_metrics_path = artifacts_dir / "finetuned_metrics.json"
+            with open(finetuned_metrics_path, "w") as f:
+                json.dump(finetuned_metrics, f, indent=2)
+            safe_log_artifact(finetuned_metrics_path, "finetuned metrics")
+
+        # Save comparison summary if both are available
+        if baseline_metrics and finetuned_metrics:
+            comparison = {
+                "baseline": baseline_metrics,
+                "finetuned": finetuned_metrics,
+            }
+            comparison_path = artifacts_dir / "metrics_comparison.json"
+            with open(comparison_path, "w") as f:
+                json.dump(comparison, f, indent=2)
+            safe_log_artifact(comparison_path, "metrics comparison")
 
         # Log the training script
         safe_log_artifact(Path(__file__), "training script")
@@ -800,19 +859,39 @@ def main() -> None:
     training_time = time.time() - start_time
     logger.info(f"Training completed in {training_time:.2f} seconds")
 
-    metrics = None
+    baseline_metrics = None
+    finetuned_metrics = None
     eval_batch_size = (
         args.eval_batch_size
         if args.eval_batch_size > 0
         else int(runtime["default_eval_batch_size"])
     )
+    
     if args.eval_max_queries > 0 and val_pairs_text_df.height > 0:
         candidate_ids, neighbors_by_id, text_by_id = build_eval_graph(
             val_pairs_text_df=val_pairs_text_df,
             seed=int(args.seed),
         )
         if candidate_ids:
-            metrics = evaluate_retrieval_model(
+            # Evaluate baseline model first (if enabled)
+            if args.eval_baseline:
+                logger.info("=== Evaluating Baseline Model ===")
+                baseline_metrics = evaluate_retrieval_model(
+                    model_name_or_path=args.model_name,
+                    candidate_ids=candidate_ids,
+                    neighbors_by_id=neighbors_by_id,
+                    text_by_id=text_by_id,
+                    max_queries=int(args.eval_max_queries),
+                    k=int(args.eval_k),
+                    device=str(runtime["device"]),
+                    encode_batch_size=eval_batch_size,
+                )
+                print("=== Baseline eval ===")
+                print(json.dumps(baseline_metrics, indent=2))
+
+            # Evaluate finetuned model
+            logger.info("=== Evaluating Finetuned Model ===")
+            finetuned_metrics = evaluate_retrieval_model(
                 model_name_or_path=output_path,
                 candidate_ids=candidate_ids,
                 neighbors_by_id=neighbors_by_id,
@@ -823,7 +902,18 @@ def main() -> None:
                 encode_batch_size=eval_batch_size,
             )
             print("=== Finetuned eval ===")
-            print(json.dumps(metrics, indent=2))
+            print(json.dumps(finetuned_metrics, indent=2))
+
+            # Print comparison summary
+            if baseline_metrics and finetuned_metrics:
+                print("=== Improvement Summary ===")
+                for metric_name in baseline_metrics.keys():
+                    if metric_name in finetuned_metrics:
+                        baseline_val = baseline_metrics[metric_name]
+                        finetuned_val = finetuned_metrics[metric_name]
+                        if isinstance(baseline_val, (int, float)) and isinstance(finetuned_val, (int, float)):
+                            improvement = finetuned_val - baseline_val
+                            print(f"  {metric_name}: {baseline_val:.4f} -> {finetuned_val:.4f} (Δ={improvement:+.4f})")
 
     # Log to MLFlow
     run_name = f"embeddinggemma_e{args.epochs}_bs{args.batch_size}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -832,7 +922,8 @@ def main() -> None:
         runtime=runtime,
         stats=stats,
         training_time=training_time,
-        metrics=metrics,
+        finetuned_metrics=finetuned_metrics,
+        baseline_metrics=baseline_metrics,
         output_path=output_path,
         run_name=run_name,
     )
@@ -841,7 +932,8 @@ def main() -> None:
         "args": vars(args),
         "runtime": runtime,
         "data_stats": stats,
-        "finetuned_eval": metrics,
+        "baseline_eval": baseline_metrics,
+        "finetuned_eval": finetuned_metrics,
         "mlflow_run_id": mlflow_run_id,
         "training_time_seconds": training_time,
     }
