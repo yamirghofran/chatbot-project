@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 
 # Default column names
-DEFAULT_USER_COL = "userID"
-DEFAULT_ITEM_COL = "itemID"
+DEFAULT_USER_COL = "user_id"
+DEFAULT_ITEM_COL = "item_id"
 DEFAULT_RATING_COL = "rating"
 DEFAULT_LABEL_COL = "label"
 DEFAULT_TITLE_COL = "title"
