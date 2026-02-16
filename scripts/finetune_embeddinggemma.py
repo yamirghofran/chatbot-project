@@ -125,7 +125,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--warmup-ratio", type=float, default=10.0)
-    parser.add_argument("--max-seq-length", type=int, default=256)
+    parser.add_argument("--max-seq-length", type=int, default=512)
     parser.add_argument(
         "--gradient-checkpointing",
         action=argparse.BooleanOptionalAction,
@@ -650,7 +650,7 @@ def log_to_mlflow(
                             "finetuned": finetuned_val,
                             "improvement": improvement,
                         }
-            
+
             logger.info("=== Improvement Summary ===")
             for metric_name, values in improvement_metrics.items():
                 logger.info(f"  {metric_name}: {values['baseline']:.4f} -> {values['finetuned']:.4f} (Δ={values['improvement']:+.4f})")
@@ -866,7 +866,7 @@ def main() -> None:
         if args.eval_batch_size > 0
         else int(runtime["default_eval_batch_size"])
     )
-    
+
     if args.eval_max_queries > 0 and val_pairs_text_df.height > 0:
         candidate_ids, neighbors_by_id, text_by_id = build_eval_graph(
             val_pairs_text_df=val_pairs_text_df,
