@@ -91,6 +91,9 @@ class BPR:
         self._user_item_matrix: Optional[csr_matrix] = None
         self._col_user: str = DEFAULT_USER_COL
         self._col_item: str = DEFAULT_ITEM_COL
+        # Store original dtypes to preserve types in output
+        self._user_dtype: Optional[pl.DataType] = None
+        self._item_dtype: Optional[pl.DataType] = None
 
     @property
     def n_users(self) -> int:
@@ -211,9 +214,11 @@ class BPR:
         logger.info("Fitting BPR model...")
         logger.info(f"  factors={self.factors}, iterations={self.iterations}, lr={self.learning_rate}")
 
-        # Store column names for later use
+        # Store column names and original dtypes for later use
         self._col_user = col_user
         self._col_item = col_item
+        self._user_dtype = df.schema[col_user]
+        self._item_dtype = df.schema[col_item]
 
         # Create ID mappings
         self._user_id_map, self._item_id_map = self._create_mappings(df, col_user, col_item)
@@ -273,11 +278,19 @@ class BPR:
         original_user_ids = [user_id] * len(ids)
         original_item_ids = [self._reverse_item_map[iid] for iid in ids]
 
-        return pl.DataFrame({
+        df = pl.DataFrame({
             self._col_user: original_user_ids,
             self._col_item: original_item_ids,
             DEFAULT_PREDICTION_COL: scores.astype(np.float32),
         })
+
+        # Cast columns to original dtypes to match input data types
+        if self._user_dtype is not None:
+            df = df.with_columns(pl.col(self._col_user).cast(self._user_dtype))
+        if self._item_dtype is not None:
+            df = df.with_columns(pl.col(self._col_item).cast(self._item_dtype))
+
+        return df
 
     def recommend_k_items(
         self,
@@ -344,7 +357,7 @@ class BPR:
                 # Convert to original IDs
                 for item_idx, score in zip(ids, scores):
                     batch_recs.append({
-                        col_user: user_id_str,
+                        col_user: user_id,  # Preserve original user_id type
                         col_item: self._reverse_item_map[item_idx],
                         col_prediction: float(score),
                     })
@@ -365,6 +378,16 @@ class BPR:
 
         # Concatenate all batches
         recommendations = pl.concat(all_recommendations)
+
+        # Cast columns to original dtypes to match input data types
+        if self._user_dtype is not None:
+            recommendations = recommendations.with_columns(
+                pl.col(col_user).cast(self._user_dtype)
+            )
+        if self._item_dtype is not None:
+            recommendations = recommendations.with_columns(
+                pl.col(col_item).cast(self._item_dtype)
+            )
 
         logger.info(f"Generated {len(recommendations)} recommendations for {recommendations.select(col_user).n_unique()} users")
 
