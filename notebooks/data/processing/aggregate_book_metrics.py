@@ -6,10 +6,11 @@ app = marimo.App()
 
 @app.cell
 def _():
+    import os
+
+    import duckdb
     import marimo as mo
     import polars as pl
-    import duckdb
-    import os
 
     return duckdb, mo, os, pl
 
@@ -19,18 +20,22 @@ def _(mo, os, pl):
     project_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
-    books_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
+    books_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet") # replace this with cleaned remapped books dataset
     books_df = pl.read_parquet(books_path)
 
-    interactions_path = os.path.join(project_root, "data", "goodreads_interactions_merged.parquet")
+    interactions_path = os.path.join(
+        project_root, "data", "goodreads_interactions_merged.parquet"
+    )
     interactions_df = pl.read_parquet(interactions_path)
 
-    mo.vstack([
-        mo.md("## Books Dataset"),
-        books_df.head(),
-        mo.md("## Interactions Dataset"),
-        interactions_df.head()
-    ])
+    mo.vstack(
+        [
+            mo.md("## Books Dataset"),
+            books_df.head(),
+            mo.md("## Interactions Dataset"),
+            interactions_df.head(),
+        ]
+    )
     return books_df, project_root
 
 
@@ -51,7 +56,8 @@ def _(mo):
 
 @app.cell
 def _(duckdb):
-    book_metrics_df = duckdb.sql("""
+    book_metrics_df = duckdb.sql(
+        """
         SELECT
             book_id,
             COUNT(*) AS num_interactions,
@@ -60,7 +66,8 @@ def _(duckdb):
             SUM(CASE WHEN is_reviewed = 1 THEN 1 ELSE 0 END) AS num_reviews
         FROM interactions_df
         GROUP BY book_id
-    """).pl()
+    """
+    ).pl()
 
     book_metrics_df.head()
     return (book_metrics_df,)
@@ -80,9 +87,7 @@ def _(mo):
 @app.cell
 def _(book_metrics_df, books_df, pl):
     books_with_metrics_df = books_df.join(
-        book_metrics_df,
-        on="book_id",
-        how="left"
+        book_metrics_df, on="book_id", how="left"
     ).with_columns(
         pl.col("num_interactions").fill_null(0).cast(pl.Int64),
         pl.col("num_read").fill_null(0).cast(pl.Int64),
