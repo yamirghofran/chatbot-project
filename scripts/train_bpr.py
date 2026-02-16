@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 # Default configuration
 DEFAULT_CONFIG = {
     # Data paths
-    "data_path": "data/sar_interactions_small.parquet",
+    "data_path": "data/bpr_interactions_merged.parquet",
     "output_path": "predictions/bpr_recommendations.parquet",
 
     # MLflow settings (loaded from environment if not specified)
@@ -91,7 +91,7 @@ DEFAULT_CONFIG = {
     "col_rating": "weight",
 
     # Data splitting
-    "test_size_ratio": 0.2,
+    "test_size_ratio": 0.15,
     "min_user_interactions": 5,
 
     # BPR model hyperparameters (implicit library naming)
