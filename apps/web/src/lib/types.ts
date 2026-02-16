@@ -17,6 +17,7 @@ export type User = {
 export type List = {
   id: string;
   name: string;
+  description?: string;
   owner: User;
   books: Book[];
 };

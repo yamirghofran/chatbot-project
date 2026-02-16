@@ -21,7 +21,11 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "title", label: "Title" },
 ];
 
-function sortBooks(books: RatedBook[], key: SortKey, dir: SortDir): RatedBook[] {
+function sortBooks(
+  books: RatedBook[],
+  key: SortKey,
+  dir: SortDir,
+): RatedBook[] {
   const sorted = [...books];
   sorted.sort((a, b) => {
     switch (key) {
@@ -121,12 +125,21 @@ export function AllBooksPage({ ratedBooks }: AllBooksPageProps) {
           onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
           aria-label={sortDir === "asc" ? "Sort descending" : "Sort ascending"}
         >
-          {sortDir === "desc" ? <ArrowDown className="size-3.5" /> : <ArrowUp className="size-3.5" />}
+          {sortDir === "desc" ? (
+            <ArrowDown className="size-3.5" />
+          ) : (
+            <ArrowUp className="size-3.5" />
+          )}
         </Button>
       </div>
 
       {results.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">No books match the selected filters.</p>
+        <div className="flex flex-col items-center rounded-xl  bg-card p-8">
+          <img src="/brand/cartoon-sitting.jpg" alt="" className="w-32" />
+          <p className="text-sm text-muted-foreground mt-4">
+            No books match the selected filters.
+          </p>
+        </div>
       ) : (
         <div>
           {results.map((rb, i) => (

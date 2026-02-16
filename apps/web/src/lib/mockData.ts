@@ -143,12 +143,14 @@ export const mockLists: List[] = [
   {
     id: "l1",
     name: "Loved in 2025",
+    description: "The books that completely took over my year. Each one left a mark.",
     owner: mockUser,
     books: mockBooks.slice(0, 5),
   },
   {
     id: "l2",
     name: "To Read This Summer",
+    description: "My ambitious summer reading pile. Let's see how far I get.",
     owner: mockUser,
     books: mockBooks.slice(3, 9),
   },

@@ -60,7 +60,9 @@ export function BookPage({
             <div className="grid grid-cols-2 gap-8">
               <FriendActivity items={friendActivity} />
               <div>
-                <h2 className="font-heading text-lg font-semibold mb-2">Related</h2>
+                <h2 className="font-heading text-lg font-semibold mb-2">
+                  Similar
+                </h2>
                 <div>
                   {relatedBooks.map((b, i) => (
                     <div key={b.id}>
@@ -75,7 +77,9 @@ export function BookPage({
             <FriendActivity items={friendActivity} />
           ) : (
             <>
-              <h2 className="font-heading text-lg font-semibold mb-2">Related</h2>
+              <h2 className="font-heading text-lg font-semibold mb-2">
+                Related
+              </h2>
               <div>
                 {relatedBooks.map((b, i) => (
                   <div key={b.id}>

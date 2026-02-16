@@ -26,7 +26,7 @@ export function DiscoveryPage({
         <section className="flex-1 min-w-0">
           <div className="mb-6 flex flex-col gap-5 rounded-xl border bg-card p-5 sm:flex-row sm:items-center">
             <img
-              src="/brand/cartoon-reading.jpg"
+              src="/brand/cartoon-dancing.jpg"
               alt="Person reading with books"
               className="h-40 w-auto max-w-full rounded-lg object-contain"
             />
