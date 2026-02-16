@@ -2,19 +2,59 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import os
 import random
+import sys
+import time
 import urllib.parse
 import urllib.request
 from collections import defaultdict, deque
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
+import mlflow
 import numpy as np
 import polars as pl
 import torch
+from dotenv import load_dotenv
 from sentence_transformers import InputExample, SentenceTransformer, losses
 from torch.utils.data import DataLoader, Dataset, Sampler
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Load environment variables from .env file
+env_path = project_root / ".env"
+load_dotenv(env_path)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# Verify MLflow environment variables are set (without exposing secrets)
+def _check_mlflow_env() -> bool:
+    """Check that required MLflow environment variables are set."""
+    required_vars = [
+        "MLFLOW_TRACKING_URI",
+        "MLFLOW_TRACKING_USERNAME",
+        "MLFLOW_TRACKING_PASSWORD",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "MLFLOW_S3_ENDPOINT_URL",
+    ]
+    missing = [v for v in required_vars if not os.getenv(v)]
+    if missing:
+        logger.warning(f"Missing MLflow environment variables: {missing}")
+        logger.warning(f"Make sure .env file exists at {env_path}")
+    return len(missing) == 0
 
 raw_books_url = "https://pub-eecdafb53cc84b659949b513e40369d2.r2.dev/files/md5/68/4227dbfdbc026e431d64df236e3428"
 book_texts_url = "https://pub-eecdafb53cc84b659949b513e40369d2.r2.dev/files/md5/46/22eb2357c0cdca856808f638ac5726"
@@ -101,6 +141,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-max-queries", type=int, default=0)
     parser.add_argument("--eval-k", type=int, default=10)
     parser.add_argument("--eval-batch-size", type=int, default=0)
+
+    # MLflow settings
+    parser.add_argument(
+        "--mlflow-tracking-uri",
+        type=str,
+        default=os.getenv("MLFLOW_TRACKING_URI", "https://mlflow.yousef.gg"),
+        help="MLflow tracking URI",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default="EmbeddingGemma_Finetuning",
+        help="MLflow experiment name",
+    )
 
     return parser.parse_args()
 
@@ -482,7 +536,165 @@ def evaluate_retrieval_model(
     }
 
 
+def log_to_mlflow(
+    args: argparse.Namespace,
+    runtime: dict[str, object],
+    stats: dict[str, int],
+    training_time: float,
+    metrics: Optional[Dict[str, float]],
+    output_path: Path,
+    run_name: Optional[str] = None,
+) -> str:
+    """
+    Log all training artifacts to MLFlow.
+
+    Args:
+        args: Command line arguments
+        runtime: Runtime configuration dictionary
+        stats: Data statistics dictionary
+        training_time: Training time in seconds
+        metrics: Evaluation metrics dictionary (can be None)
+        output_path: Path to saved model
+        run_name: Optional run name
+
+    Returns:
+        MLflow run ID
+    """
+    logger.info("Logging to MLFlow...")
+
+    # Set up MLFlow
+    mlflow.set_tracking_uri(args.mlflow_tracking_uri)
+    mlflow.set_experiment(args.experiment_name)
+
+    with mlflow.start_run(run_name=run_name):
+        # Log model hyperparameters
+        mlflow.log_params({
+            "model_name": args.model_name,
+            "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "learning_rate": args.learning_rate,
+            "warmup_ratio": args.warmup_ratio,
+            "max_seq_length": args.max_seq_length,
+            "gradient_checkpointing": args.gradient_checkpointing,
+            "seed": args.seed,
+        })
+
+        # Log data processing parameters
+        mlflow.log_params({
+            "max_pairs": args.max_pairs,
+            "min_text_chars": args.min_text_chars,
+            "min_support": args.min_support,
+            "val_fraction": args.val_fraction,
+        })
+
+        # Log runtime configuration
+        mlflow.log_params({
+            "device": runtime["device"],
+            "use_amp": runtime["use_amp"],
+            "num_workers": runtime["num_workers"],
+        })
+
+        # Log dataset statistics
+        mlflow.log_params({
+            "candidate_pair_count": stats["candidate_pair_count"],
+            "sampled_pair_count": stats["sampled_pair_count"],
+            "component_count": stats["component_count"],
+            "train_pairs": stats["train_pairs"],
+            "val_pairs": stats["val_pairs"],
+            "train_components": stats["train_components"],
+            "val_components": stats["val_components"],
+        })
+
+        # Log training time
+        mlflow.log_metric("training_time_seconds", training_time)
+
+        # Log evaluation metrics if available
+        if metrics:
+            for metric_name, metric_value in metrics.items():
+                if isinstance(metric_value, (int, float)):
+                    mlflow.log_metric(metric_name, float(metric_value))
+
+        # Create artifacts directory
+        artifacts_dir = Path("mlflow_artifacts")
+        artifacts_dir.mkdir(exist_ok=True)
+
+        def safe_log_artifact(path: Path, description: Optional[str] = None):
+            """Safely log an artifact, handling missing boto3 for S3 backends."""
+            try:
+                mlflow.log_artifact(str(path))
+                if description:
+                    logger.info(f"Logged artifact: {description}")
+            except Exception as e:
+                logger.warning(f"Could not log artifact {path}: {e}")
+                logger.warning("Artifact saved locally but not uploaded to MLFlow")
+
+        # Log the saved model directory
+        if output_path.exists():
+            for artifact_file in output_path.glob("*"):
+                if artifact_file.is_file():
+                    safe_log_artifact(artifact_file, f"model/{artifact_file.name}")
+
+        # Save training configuration
+        config_path = artifacts_dir / "training_config.json"
+        config_data = {
+            "model_name": args.model_name,
+            "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "learning_rate": args.learning_rate,
+            "warmup_ratio": args.warmup_ratio,
+            "max_seq_length": args.max_seq_length,
+            "gradient_checkpointing": args.gradient_checkpointing,
+            "seed": args.seed,
+            "device": runtime["device"],
+            "use_amp": runtime["use_amp"],
+        }
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=2)
+        safe_log_artifact(config_path, "training config")
+
+        # Save data statistics
+        stats_path = artifacts_dir / "data_stats.json"
+        with open(stats_path, "w") as f:
+            json.dump(stats, f, indent=2)
+        safe_log_artifact(stats_path, "data stats")
+
+        # Save evaluation metrics if available
+        if metrics:
+            metrics_path = artifacts_dir / "evaluation_metrics.json"
+            with open(metrics_path, "w") as f:
+                json.dump(metrics, f, indent=2)
+            safe_log_artifact(metrics_path, "evaluation metrics")
+
+        # Log the training script
+        safe_log_artifact(Path(__file__), "training script")
+
+        # Log tags
+        mlflow.set_tags({
+            "model_type": "EmbeddingGemma",
+            "framework": "sentence-transformers",
+            "training_date": datetime.now().isoformat(),
+            "device": str(runtime["device"]),
+        })
+
+        # Get run ID safely
+        active_run = mlflow.active_run()
+        run_id = active_run.info.run_id if active_run else "unknown"
+        logger.info(f"MLFlow run ID: {run_id}")
+
+        # Clean up artifacts directory
+        for artifact in artifacts_dir.glob("*"):
+            if artifact.is_file():
+                artifact.unlink()
+        if artifacts_dir.exists():
+            artifacts_dir.rmdir()
+
+        return run_id
+
+
 def main() -> None:
+    # Check MLflow environment before starting
+    _check_mlflow_env()
+
     args = parse_args()
 
     random.seed(args.seed)
@@ -574,6 +786,8 @@ def main() -> None:
         )
     )
 
+    logger.info("Starting model training...")
+    start_time = time.time()
     model.old_fit(
         train_objectives=[(train_dataloader, train_loss)],
         epochs=int(args.epochs),
@@ -583,6 +797,8 @@ def main() -> None:
         use_amp=bool(runtime["use_amp"]),
         show_progress_bar=True,
     )
+    training_time = time.time() - start_time
+    logger.info(f"Training completed in {training_time:.2f} seconds")
 
     metrics = None
     eval_batch_size = (
@@ -609,14 +825,33 @@ def main() -> None:
             print("=== Finetuned eval ===")
             print(json.dumps(metrics, indent=2))
 
+    # Log to MLFlow
+    run_name = f"embeddinggemma_e{args.epochs}_bs{args.batch_size}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    mlflow_run_id = log_to_mlflow(
+        args=args,
+        runtime=runtime,
+        stats=stats,
+        training_time=training_time,
+        metrics=metrics,
+        output_path=output_path,
+        run_name=run_name,
+    )
+
     run_summary = {
         "args": vars(args),
         "runtime": runtime,
         "data_stats": stats,
         "finetuned_eval": metrics,
+        "mlflow_run_id": mlflow_run_id,
+        "training_time_seconds": training_time,
     }
     with (output_path / "run_summary.json").open("w", encoding="utf-8") as f:
         json.dump(run_summary, f, indent=2)
+
+    logger.info("=" * 60)
+    logger.info("Training Pipeline Complete!")
+    logger.info(f"MLFlow Run ID: {mlflow_run_id}")
+    logger.info("=" * 60)
 
     print("=== Done ===")
     print(f"model_saved_to={output_path}")

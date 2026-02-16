@@ -7,23 +7,40 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import importlib.util as importlib_util
+    import json
+    import logging
     import math
     import os
     import random
     from collections import defaultdict, deque
+    from datetime import datetime
     from pathlib import Path
 
     import marimo as mo
     import matplotlib.pyplot as plt
+    import mlflow
     import numpy as np
     import polars as pl
+    from dotenv import load_dotenv
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
     return (
         Path,
+        datetime,
         defaultdict,
         deque,
         importlib_util,
+        json,
+        logger,
+        logging,
         math,
+        mlflow,
         mo,
         np,
         pl,
@@ -72,6 +89,41 @@ def _(book_texts_path, mo, raw_books_path):
 
 
 @app.cell
+def _(Path, logger, mo, project_root):
+    # Load environment variables from .env file
+    env_path = project_root / ".env"
+    from dotenv import load_dotenv
+    load_dotenv(env_path)
+
+    def _check_mlflow_env():
+        """Check that required MLflow environment variables are set."""
+        required_vars = [
+            "MLFLOW_TRACKING_URI",
+            "MLFLOW_TRACKING_USERNAME",
+            "MLFLOW_TRACKING_PASSWORD",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "MLFLOW_S3_ENDPOINT_URL",
+        ]
+        missing = [v for v in required_vars if not os.getenv(v)]
+        if missing:
+            logger.warning(f"Missing MLflow environment variables: {missing}")
+            logger.warning(f"Make sure .env file exists at {env_path}")
+        return len(missing) == 0
+
+    import os
+
+    mlflow_env_ok = _check_mlflow_env()
+    default_mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "https://mlflow.yousef.gg")
+
+    mlflow_status_md = mo.md(
+        f"**MLflow Status:** {'✅ Configured' if mlflow_env_ok else '⚠️ Missing env vars'}\n\n"
+        f"Default tracking URI: `{default_mlflow_uri}`"
+    )
+    return _check_mlflow_env, default_mlflow_uri, mlflow_env_ok, mlflow_status_md, os
+
+
+@app.cell
 def _(mo):
     mo.md("""
     ## Step 1. Configure sampling and training
@@ -82,7 +134,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _(default_mlflow_uri, mlflow_status_md, mo):
     max_pairs_ui = mo.ui.slider(
         start=2000,
         stop=300000,
@@ -164,6 +216,19 @@ def _(mo):
     run_baseline_eval_ui = mo.ui.run_button(label="Run baseline evaluation")
     run_finetuned_eval_ui = mo.ui.run_button(label="Run finetuned evaluation")
 
+    # MLflow configuration UI
+    enable_mlflow_ui = mo.ui.checkbox(
+        label="Enable MLflow logging", value=True
+    )
+    mlflow_tracking_uri_ui = mo.ui.text(
+        value=default_mlflow_uri,
+        label="MLflow Tracking URI",
+    )
+    experiment_name_ui = mo.ui.text(
+        value="EmbeddingGemma_Finetuning",
+        label="MLflow Experiment Name",
+    )
+
     mo.vstack(
         [
             mo.md("### Pair construction"),
@@ -189,6 +254,10 @@ def _(mo):
             ),
             mo.hstack([gradient_checkpointing_ui]),
             mo.hstack([model_name_ui, output_dir_ui]),
+            mo.md("### MLflow Configuration"),
+            mlflow_status_md,
+            mo.hstack([enable_mlflow_ui]),
+            mo.hstack([mlflow_tracking_uri_ui, experiment_name_ui]),
             run_training_ui,
             mo.md("### Evaluation"),
             mo.hstack([eval_queries_ui, eval_k_ui]),
@@ -197,15 +266,18 @@ def _(mo):
     )
     return (
         batch_size_ui,
+        enable_mlflow_ui,
         epochs_ui,
         eval_k_ui,
         eval_queries_ui,
+        experiment_name_ui,
         gradient_checkpointing_ui,
         learning_rate_ui,
         max_pairs_ui,
         max_seq_length_ui,
         min_support_ui,
         min_text_chars_ui,
+        mlflow_tracking_uri_ui,
         model_name_ui,
         output_dir_ui,
         preview_rows_ui,
@@ -761,12 +833,15 @@ def _(np):
 
 @app.cell
 def _(
+    enable_mlflow_ui,
     eval_candidate_ids,
     eval_k_ui,
     eval_neighbors_by_id,
     eval_queries_ui,
     eval_text_by_id,
     evaluate_retrieval_model,
+    logger,
+    mlflow,
     missing_packages,
     mo,
     model_name_ui,
@@ -811,6 +886,22 @@ def _(
                 pl.lit("baseline").alias("model_stage")
             )
             baseline_eval_status_md = mo.md("Baseline evaluation completed.")
+
+            # Log baseline metrics to MLflow if enabled
+            if enable_mlflow_ui.value:
+                try:
+                    mlflow.log_metrics({
+                        "baseline/queries_evaluated": baseline_metrics["queries_evaluated"],
+                        "baseline/corpus_size": baseline_metrics["corpus_size"],
+                        "baseline/k": baseline_metrics["k"],
+                        "baseline/recall_at_k": baseline_metrics["recall_at_k"],
+                        "baseline/mrr": baseline_metrics["mrr"],
+                        "baseline/mean_first_positive_rank": baseline_metrics["mean_first_positive_rank"],
+                    })
+                    logger.info("Logged baseline metrics to MLflow")
+                except Exception as e:
+                    logger.warning(f"Could not log baseline metrics to MLflow: {e}")
+
         except Exception as exc:
             baseline_eval_status_md = mo.md(
                 "Baseline evaluation failed.\n" f"```text\n{exc}\n```"
@@ -947,16 +1038,30 @@ def _(mo):
 @app.cell
 def _(
     DataLoader,
+    batch_size_ui,
     component_sampler,
+    datetime,
+    enable_mlflow_ui,
     epochs_ui,
+    experiment_name_ui,
     gradient_checkpointing_ui,
+    json,
     learning_rate_ui,
+    logger,
+    max_pairs_ui,
     max_seq_length_ui,
+    min_support_ui,
+    min_text_chars_ui,
+    mlflow,
+    mlflow_tracking_uri_ui,
     mo,
     model_name_ui,
     resolved_output_path,
     run_training_ui,
+    seed_ui,
     train_dataset,
+    train_pairs_text_df,
+    val_fraction_ui,
     warmup_ratio_ui,
 ):
     mo.stop(
@@ -965,6 +1070,7 @@ def _(
     )
 
     import os
+    import time
 
     import torch
     from sentence_transformers import SentenceTransformer, losses
@@ -1030,11 +1136,89 @@ def _(
     total_steps = steps_per_epoch * epochs_ui.value
     warmup_steps = int(total_steps * (warmup_ratio_ui.value / 100))
 
+    # Training configuration for MLflow
+    training_config = {
+        "model_name": model_name_ui.value,
+        "batch_size": batch_size_ui.value,
+        "epochs": epochs_ui.value,
+        "learning_rate": float(learning_rate_ui.value),
+        "max_seq_length": int(max_seq_length_ui.value),
+        "warmup_ratio": warmup_ratio_ui.value / 100,
+        "warmup_steps": warmup_steps,
+        "gradient_checkpointing": gradient_checkpointing_enabled,
+        "use_amp": use_amp,
+        "device": training_device,
+        "seed": int(seed_ui.value),
+        "max_pairs": max_pairs_ui.value,
+        "min_text_chars": min_text_chars_ui.value,
+        "min_support": min_support_ui.value,
+        "val_fraction": val_fraction_ui.value / 100,
+        "steps_per_epoch": steps_per_epoch,
+        "total_steps": total_steps,
+    }
+
+    # Setup MLflow run if enabled
+    mlflow_run_id = None
+    mlflow_active_run = None
+
+    if enable_mlflow_ui.value:
+        try:
+            mlflow.set_tracking_uri(mlflow_tracking_uri_ui.value)
+            mlflow.set_experiment(experiment_name_ui.value)
+            run_name = f"embeddinggemma_e{epochs_ui.value}_bs{batch_size_ui.value}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            mlflow_active_run = mlflow.start_run(run_name=run_name)
+
+            # Log model hyperparameters
+            mlflow.log_params({
+                "model_name": model_name_ui.value,
+                "batch_size": batch_size_ui.value,
+                "epochs": epochs_ui.value,
+                "learning_rate": float(learning_rate_ui.value),
+                "max_seq_length": int(max_seq_length_ui.value),
+                "warmup_ratio": warmup_ratio_ui.value / 100,
+                "warmup_steps": warmup_steps,
+                "gradient_checkpointing": gradient_checkpointing_enabled,
+                "use_amp": use_amp,
+                "device": training_device,
+                "seed": int(seed_ui.value),
+            })
+
+            # Log data processing parameters
+            mlflow.log_params({
+                "max_pairs": max_pairs_ui.value,
+                "min_text_chars": min_text_chars_ui.value,
+                "min_support": min_support_ui.value,
+                "val_fraction": val_fraction_ui.value / 100,
+                "n_train_pairs": train_pairs_text_df.height,
+            })
+
+            # Log dataset statistics
+            mlflow.log_params({
+                "steps_per_epoch": steps_per_epoch,
+                "total_steps": total_steps,
+            })
+
+            # Log tags
+            mlflow.set_tags({
+                "model_type": "SentenceTransformer",
+                "base_model": model_name_ui.value,
+                "loss_function": "MultipleNegativesRankingLoss",
+                "training_date": datetime.now().isoformat(),
+                "framework": "sentence-transformers",
+            })
+
+            mlflow_run_id = mlflow_active_run.info.run_id
+            logger.info(f"MLflow run started: {mlflow_run_id}")
+        except Exception as e:
+            logger.warning(f"Could not start MLflow run: {e}")
+            mlflow_active_run = None
+
     # `fit()` in sentence-transformers v3 rebuilds datasets from dataloaders and
     # expects `data_loader.batch_size` to be an integer. With a custom
     # `batch_sampler`, PyTorch sets `batch_size=None`, which breaks `fit()` and
     # also bypasses our component-aware batching constraint. `old_fit()` keeps
     # the provided dataloader behavior, so we use it here intentionally.
+    training_start_time = time.time()
     model.old_fit(
         train_objectives=[(train_dataloader, train_loss)],
         epochs=epochs_ui.value,
@@ -1044,6 +1228,18 @@ def _(
         use_amp=use_amp,
         show_progress_bar=True,
     )
+    training_time = time.time() - training_start_time
+
+    # Log training time to MLflow
+    if mlflow_active_run is not None:
+        try:
+            mlflow.log_metric("training_time_seconds", training_time)
+            mlflow.log_metric("n_train_pairs", train_pairs_text_df.height)
+        except Exception as e:
+            logger.warning(f"Could not log training metrics to MLflow: {e}")
+
+    mlflow_run_id_final = mlflow_run_id
+    training_time_final = training_time
 
     mo.md(
         "### Finetuning complete\n"
@@ -1055,9 +1251,17 @@ def _(
         f"- Gradient checkpointing: `{'enabled' if gradient_checkpointing_enabled else 'disabled'}`\n"
         f"- Steps per epoch: `{steps_per_epoch}`\n"
         f"- Total steps: `{total_steps}`\n"
-        f"- Warmup steps: `{warmup_steps}`"
+        f"- Warmup steps: `{warmup_steps}`\n"
+        f"- Training time: `{training_time:.2f}s`\n"
+        f"- MLflow Run ID: `{mlflow_run_id_final or 'Not logged'}`"
     )
-    return
+    return (
+        mlflow_active_run,
+        mlflow_run_id_final,
+        output_path,
+        training_config,
+        training_time_final,
+    )
 
 
 @app.cell
@@ -1070,12 +1274,15 @@ def _(mo):
 
 @app.cell
 def _(
+    enable_mlflow_ui,
     eval_candidate_ids,
     eval_k_ui,
     eval_neighbors_by_id,
     eval_queries_ui,
     eval_text_by_id,
     evaluate_retrieval_model,
+    logger,
+    mlflow,
     missing_packages,
     mo,
     pl,
@@ -1124,6 +1331,32 @@ def _(
                 pl.lit("finetuned").alias("model_stage")
             )
             finetuned_eval_status_md = mo.md("Finetuned-model evaluation completed.")
+
+            # Log finetuned metrics to MLflow if enabled
+            if enable_mlflow_ui.value:
+                try:
+                    mlflow.log_metrics({
+                        "finetuned/queries_evaluated": finetuned_metrics["queries_evaluated"],
+                        "finetuned/corpus_size": finetuned_metrics["corpus_size"],
+                        "finetuned/k": finetuned_metrics["k"],
+                        "finetuned/recall_at_k": finetuned_metrics["recall_at_k"],
+                        "finetuned/mrr": finetuned_metrics["mrr"],
+                        "finetuned/mean_first_positive_rank": finetuned_metrics["mean_first_positive_rank"],
+                    })
+                    # Calculate improvement deltas
+                    try:
+                        baseline_recall = mlflow.get_run(mlflow.active_run().info.run_id).data.metrics.get("baseline/recall_at_k", 0)
+                        baseline_mrr = mlflow.get_run(mlflow.active_run().info.run_id).data.metrics.get("baseline/mrr", 0)
+                        mlflow.log_metrics({
+                            "delta/recall_at_k": finetuned_metrics["recall_at_k"] - baseline_recall,
+                            "delta/mrr": finetuned_metrics["mrr"] - baseline_mrr,
+                        })
+                    except Exception:
+                        pass
+                    logger.info("Logged finetuned metrics to MLflow")
+                except Exception as e:
+                    logger.warning(f"Could not log finetuned metrics to MLflow: {e}")
+
         except Exception as exc:
             finetuned_eval_status_md = mo.md(
                 "Finetuned-model evaluation failed.\n" f"```text\n{exc}\n```"
@@ -1230,7 +1463,134 @@ def _(comparison_eval_metrics_df, mo, np, pl, plt):
 @app.cell
 def _(mo):
     mo.md("""
-    ## Step 9. Next checks
+    ## Step 9. Finalize MLflow logging
+
+    This step saves all artifacts to MLflow and ends the run. Run this after all evaluations
+    are complete to ensure all metrics and artifacts are logged.
+    """)
+    return
+
+
+@app.cell
+def _(
+    baseline_eval_metrics_df,
+    comparison_eval_metrics_df,
+    enable_mlflow_ui,
+    finetuned_eval_metrics_df,
+    json,
+    logger,
+    mlflow,
+    mlflow_active_run,
+    mlflow_run_id_final,
+    mo,
+    output_path,
+    Path,
+    training_config,
+    training_time_final,
+):
+    finalize_mlflow_button = mo.ui.run_button(label="Finalize MLflow Run")
+    mo.stop(
+        not finalize_mlflow_button.value,
+        mo.md("Press **Finalize MLflow Run** after training and evaluations are complete."),
+    )
+
+    mlflow_finalization_status = ""
+
+    if not enable_mlflow_ui.value:
+        mlflow_finalization_status = mo.md("MLflow logging is disabled. Skipping finalization.")
+    elif mlflow_active_run is None:
+        mlflow_finalization_status = mo.md("No active MLflow run to finalize.")
+    else:
+        try:
+            # Create artifacts directory
+            artifacts_dir = Path("mlflow_artifacts")
+            artifacts_dir.mkdir(exist_ok=True)
+
+            def safe_log_artifact(path, description=None):
+                """Safely log an artifact, handling missing boto3 for S3 backends."""
+                try:
+                    mlflow.log_artifact(str(path))
+                    if description:
+                        logger.info(f"Logged artifact: {description}")
+                except Exception as e:
+                    logger.warning(f"Could not log artifact {path}: {e}")
+                    logger.warning("Artifact saved locally but not uploaded to MLflow")
+
+            # Save training configuration
+            config_path = artifacts_dir / "training_config.json"
+            with open(config_path, "w") as f:
+                json.dump(training_config, f, indent=2)
+            safe_log_artifact(config_path, "training config")
+
+            # Save evaluation metrics
+            if baseline_eval_metrics_df.height > 0:
+                baseline_metrics_path = artifacts_dir / "baseline_eval_metrics.json"
+                baseline_dict = baseline_eval_metrics_df.to_dicts()[0] if baseline_eval_metrics_df.height > 0 else {}
+                with open(baseline_metrics_path, "w") as f:
+                    json.dump(baseline_dict, f, indent=2, default=str)
+                safe_log_artifact(baseline_metrics_path, "baseline evaluation metrics")
+
+            if finetuned_eval_metrics_df.height > 0:
+                finetuned_metrics_path = artifacts_dir / "finetuned_eval_metrics.json"
+                finetuned_dict = finetuned_eval_metrics_df.to_dicts()[0] if finetuned_eval_metrics_df.height > 0 else {}
+                with open(finetuned_metrics_path, "w") as f:
+                    json.dump(finetuned_dict, f, indent=2, default=str)
+                safe_log_artifact(finetuned_metrics_path, "finetuned evaluation metrics")
+
+            # Save comparison metrics
+            if comparison_eval_metrics_df.height > 0:
+                comparison_path = artifacts_dir / "comparison_eval_metrics.json"
+                comparison_list = comparison_eval_metrics_df.to_dicts()
+                with open(comparison_path, "w") as f:
+                    json.dump(comparison_list, f, indent=2, default=str)
+                safe_log_artifact(comparison_path, "comparison evaluation metrics")
+
+            # Log model artifacts if the output path exists
+            if output_path.exists():
+                for model_file in output_path.glob("*"):
+                    if model_file.is_file():
+                        safe_log_artifact(model_file, f"model/{model_file.name}")
+                    elif model_file.is_dir():
+                        for sub_file in model_file.glob("**/*"):
+                            if sub_file.is_file():
+                                relative_path = sub_file.relative_to(output_path)
+                                safe_log_artifact(sub_file, f"model/{relative_path}")
+
+            # Log summary metrics
+            mlflow.log_metric("training_time_seconds_final", training_time_final)
+
+            # Clean up artifacts directory
+            for artifact in artifacts_dir.glob("*"):
+                if artifact.is_file():
+                    artifact.unlink()
+            artifacts_dir.rmdir()
+
+            # End the MLflow run
+            mlflow.end_run()
+
+            mlflow_finalization_status = mo.md(
+                f"### MLflow Run Finalized ✅\n\n"
+                f"- **Run ID:** `{mlflow_run_id_final}`\n"
+                f"- **Training Time:** `{training_time_final:.2f}s`\n"
+                f"- **Artifacts logged:** training config, evaluation metrics, model files"
+            )
+            logger.info(f"MLflow run finalized: {mlflow_run_id_final}")
+
+        except Exception as e:
+            logger.error(f"Error finalizing MLflow run: {e}")
+            mlflow_finalization_status = mo.md(
+                f"### MLflow Finalization Error ⚠️\n\n"
+                f"```\n{e}\n```"
+            )
+
+    mlflow_finalization_status
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ## Step 10. Next steps
 
     1. Evaluate retrieval quality on held-out components.
     2. Export embeddings for all books and compare nearest-neighbor quality before/after finetuning.
