@@ -20,7 +20,7 @@ def _(mo, os, pl):
     project_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
-    books_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet") # replace this with cleaned remapped books dataset
+    books_path = os.path.join(project_root, "data", "goodreads_books_standardized.parquet") # replace this with cleaned remapped books dataset (standardized)
     books_df = pl.read_parquet(books_path)
 
     interactions_path = os.path.join(
@@ -131,7 +131,7 @@ def _(mo):
 
 @app.cell
 def _(books_with_metrics_df, mo, os, project_root):
-    output_path = os.path.join(project_root, "data", "books_with_metrics.parquet")
+    output_path = os.path.join(project_root, "data", "goodreads_books_with_metrics.parquet")
     books_with_metrics_df.write_parquet(output_path)
 
     mo.md(f"✅ Saved enriched books dataset to: `{output_path}`")
