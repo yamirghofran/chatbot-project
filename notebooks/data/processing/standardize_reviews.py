@@ -164,12 +164,15 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     )
 
     _cleaned.sink_parquet(_output_path)
-    _n_out = pl.scan_parquet(_output_path).select(pl.len()).collect().item()
 
-    # Count nulls (failed mappings)
-    _result = pl.read_parquet(_output_path)
-    _null_books = _result.filter(pl.col("book_id").is_null()).height
-    _null_users = _result.filter(pl.col("user_id").is_null()).height
+    _stats_df = pl.scan_parquet(_output_path).select(
+        pl.len().alias("n_out"),
+        pl.col("book_id").is_null().sum().alias("null_books"),
+        pl.col("user_id").is_null().sum().alias("null_users"),
+    ).collect()
+    _n_out = _stats_df.item(0, "n_out")
+    _null_books = _stats_df.item(0, "null_books")
+    _null_users = _stats_df.item(0, "null_users")
 
     mo.md(f"""
     ### raw_goodreads_reviews_dedup.parquet
@@ -230,12 +233,15 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     )
 
     _cleaned.sink_parquet(_output_path)
-    _n_out = pl.scan_parquet(_output_path).select(pl.len()).collect().item()
 
-    # Count nulls (failed mappings)
-    _result = pl.read_parquet(_output_path)
-    _null_books = _result.filter(pl.col("book_id").is_null()).height
-    _null_users = _result.filter(pl.col("user_id").is_null()).height
+    _stats_df = pl.scan_parquet(_output_path).select(
+        pl.len().alias("n_out"),
+        pl.col("book_id").is_null().sum().alias("null_books"),
+        pl.col("user_id").is_null().sum().alias("null_users"),
+    ).collect()
+    _n_out = _stats_df.item(0, "n_out")
+    _null_books = _stats_df.item(0, "null_books")
+    _null_users = _stats_df.item(0, "null_users")
 
     mo.md(f"""
     ### raw_goodreads_reviews_spoiler.parquet
