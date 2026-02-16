@@ -714,10 +714,20 @@ def log_to_mlflow(
         artifacts_dir = Path("mlflow_artifacts")
         artifacts_dir.mkdir(exist_ok=True)
 
-        def safe_log_artifact(path: Path, description: Optional[str] = None):
-            """Safely log an artifact, handling missing boto3 for S3 backends."""
+        def safe_log_artifact(
+            path: Path,
+            artifact_path: Optional[str] = None,
+            description: Optional[str] = None
+        ):
+            """Safely log an artifact, handling missing boto3 for S3 backends.
+
+            Args:
+                path: Path to the artifact file
+                artifact_path: Subdirectory in MLFlow (e.g., "model", "dataset")
+                description: Optional description for logging
+            """
             try:
-                mlflow.log_artifact(str(path))
+                mlflow.log_artifact(str(path), artifact_path=artifact_path)
                 if description:
                     logger.info(f"Logged artifact: {description}")
             except Exception as e:
@@ -728,13 +738,21 @@ def log_to_mlflow(
         if output_path.exists():
             for artifact_file in output_path.glob("*"):
                 if artifact_file.is_file():
-                    safe_log_artifact(artifact_file, f"model/{artifact_file.name}")
+                    safe_log_artifact(
+                        artifact_file,
+                        artifact_path="model",
+                        description=f"model/{artifact_file.name}"
+                    )
 
         # Log dataset files if provided
         if dataset_paths:
             for dataset_path in dataset_paths:
                 if dataset_path.exists():
-                    safe_log_artifact(dataset_path, f"dataset/{dataset_path.name}")
+                    safe_log_artifact(
+                        dataset_path,
+                        artifact_path="dataset",
+                        description=f"dataset/{dataset_path.name}"
+                    )
 
         # Save training configuration
         config_path = artifacts_dir / "training_config.json"
@@ -752,27 +770,27 @@ def log_to_mlflow(
         }
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
-        safe_log_artifact(config_path, "training config")
+        safe_log_artifact(config_path, artifact_path="config", description="config/training_config.json")
 
         # Save data statistics
         stats_path = artifacts_dir / "data_stats.json"
         with open(stats_path, "w") as f:
             json.dump(stats, f, indent=2)
-        safe_log_artifact(stats_path, "data stats")
+        safe_log_artifact(stats_path, artifact_path="stats", description="stats/data_stats.json")
 
         # Save baseline evaluation metrics if available
         if baseline_metrics:
             baseline_metrics_path = artifacts_dir / "baseline_metrics.json"
             with open(baseline_metrics_path, "w") as f:
                 json.dump(baseline_metrics, f, indent=2)
-            safe_log_artifact(baseline_metrics_path, "baseline metrics")
+            safe_log_artifact(baseline_metrics_path, artifact_path="metrics", description="metrics/baseline_metrics.json")
 
         # Save finetuned evaluation metrics if available
         if finetuned_metrics:
             finetuned_metrics_path = artifacts_dir / "finetuned_metrics.json"
             with open(finetuned_metrics_path, "w") as f:
                 json.dump(finetuned_metrics, f, indent=2)
-            safe_log_artifact(finetuned_metrics_path, "finetuned metrics")
+            safe_log_artifact(finetuned_metrics_path, artifact_path="metrics", description="metrics/finetuned_metrics.json")
 
         # Save comparison summary if both are available
         if baseline_metrics and finetuned_metrics:
@@ -783,10 +801,10 @@ def log_to_mlflow(
             comparison_path = artifacts_dir / "metrics_comparison.json"
             with open(comparison_path, "w") as f:
                 json.dump(comparison, f, indent=2)
-            safe_log_artifact(comparison_path, "metrics comparison")
+            safe_log_artifact(comparison_path, artifact_path="metrics", description="metrics/metrics_comparison.json")
 
         # Log the training script
-        safe_log_artifact(Path(__file__), "training script")
+        safe_log_artifact(Path(__file__), artifact_path="code", description="code/finetune_embeddinggemma.py")
 
         # Log tags
         mlflow.set_tags({
