@@ -121,15 +121,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-fraction", type=float, default=10.0)
     parser.add_argument("--seed", type=int, default=42)
 
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--epochs", type=int, default=2)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--warmup-ratio", type=float, default=10.0)
     parser.add_argument("--max-seq-length", type=int, default=512)
     parser.add_argument(
         "--gradient-checkpointing",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
     )
     parser.add_argument("--num-workers", type=int, default=-1)
 
@@ -138,7 +138,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", default="data/models/embeddinggemma_mnrl")
 
-    parser.add_argument("--eval-max-queries", type=int, default=0)
+    parser.add_argument(
+        "--eval-max-queries",
+        type=int,
+        default=-1,
+        help="Max queries to evaluate (-1 = auto, use all validation pairs)",
+    )
     parser.add_argument("--eval-k", type=int, default=10)
     parser.add_argument("--eval-batch-size", type=int, default=0)
     parser.add_argument(
