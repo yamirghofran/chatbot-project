@@ -494,7 +494,11 @@ def evaluate_retrieval_model(
     )
 
     id_to_index = {book_id: idx for idx, book_id in enumerate(corpus_ids)}
-    query_count = min(max_queries, len(corpus_ids))
+    # Handle max_queries: -1 means use all queries, otherwise limit to specified value
+    if max_queries < 0:
+        query_count = len(corpus_ids)
+    else:
+        query_count = min(max_queries, len(corpus_ids))
     query_ids = corpus_ids[:query_count]
 
     recall_hits = 0
@@ -872,7 +876,15 @@ def main() -> None:
         else int(runtime["default_eval_batch_size"])
     )
 
-    if args.eval_max_queries > 0 and val_pairs_text_df.height > 0:
+    # Determine if we should run evaluation
+    # eval_max_queries == -1 means "auto" (evaluate if validation pairs exist)
+    # eval_max_queries == 0 means "skip evaluation"
+    # eval_max_queries > 0 means "evaluate with specific query limit"
+    should_run_eval = (
+        args.eval_max_queries != 0 and val_pairs_text_df.height > 0
+    )
+
+    if should_run_eval:
         candidate_ids, neighbors_by_id, text_by_id = build_eval_graph(
             val_pairs_text_df=val_pairs_text_df,
             seed=int(args.seed),
