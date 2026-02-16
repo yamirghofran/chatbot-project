@@ -16,14 +16,14 @@ def _():
 @app.cell
 def _(os):
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
-    raw_books_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
+    standardized_books_path = os.path.join(project_root, "data", "goodreads_books_standardized.parquet")
     raw_authors_path = os.path.join(
         project_root, "data", "raw_goodreads_book_authors.parquet"
     )
     output_path = os.path.join(project_root, "data", "books_embedding_texts.parquet")
-    return output_path, raw_authors_path, raw_books_path
+    return output_path, raw_authors_path, standardized_books_path
 
 
 @app.cell
@@ -123,12 +123,11 @@ def _(pl):
 
 
 @app.cell
-def _(pl, raw_authors_path, raw_books_path):
-    books_lf = pl.scan_parquet(raw_books_path).select(
+def _(pl, raw_authors_path, standardized_books_path):
+    books_lf = pl.scan_parquet(standardized_books_path).select(
         [
             "book_id",
             "title",
-            "title_without_series",
             "description",
             "popular_shelves",
             "authors",
@@ -174,18 +173,11 @@ def _(book_authors_lf, books_lf, clean_text, extract_genres_expr, pl):
         books_lf.select(
             "book_id",
             "title",
-            "title_without_series",
             "description",
             "popular_shelves",
         )
         .with_columns(
-            title_without_series_text=clean_text(pl.col("title_without_series")),
-            title_fallback_text=clean_text(pl.col("title")),
-        )
-        .with_columns(
-            title_text=pl.when(pl.col("title_without_series_text").str.len_chars() > 0)
-            .then(pl.col("title_without_series_text"))
-            .otherwise(pl.col("title_fallback_text")),
+            title_text=clean_text(pl.col("title")),
             description_text=clean_text(pl.col("description")),
             genre_list=extract_genres_expr(),
         )
