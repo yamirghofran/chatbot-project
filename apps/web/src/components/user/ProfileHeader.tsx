@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 
 export type ProfileHeaderProps = {
   user: User;
+  isOwnProfile?: boolean;
   followingCount?: number;
   followersCount?: number;
   onFollow?: () => void;
+  onEditProfile?: () => void;
 };
 
 function getInitials(name: string) {
@@ -19,7 +21,7 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export function ProfileHeader({ user, followingCount = 0, followersCount = 0, onFollow }: ProfileHeaderProps) {
+export function ProfileHeader({ user, isOwnProfile, followingCount = 0, followersCount = 0, onFollow, onEditProfile }: ProfileHeaderProps) {
   return (
     <div className="flex items-center gap-4">
       <Avatar size="xl">
@@ -45,12 +47,20 @@ export function ProfileHeader({ user, followingCount = 0, followersCount = 0, on
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Button variant="outline" size="sm" onClick={onFollow}>
-          Follow
-        </Button>
-        <Button variant="outline" size="icon-sm" aria-label="More actions">
-          <Ellipsis />
-        </Button>
+        {isOwnProfile ? (
+          <Button variant="outline" size="sm" onClick={onEditProfile}>
+            Edit Profile
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" onClick={onFollow}>
+              Follow
+            </Button>
+            <Button variant="outline" size="icon-sm" aria-label="More actions">
+              <Ellipsis />
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

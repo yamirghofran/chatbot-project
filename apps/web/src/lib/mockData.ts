@@ -1,4 +1,4 @@
-import type { Book, User, List, ActivityItem } from "./types";
+import type { Book, User, List, ActivityItem, RatedBook, BookStats, Review } from "./types";
 
 export const mockBooks: Book[] = [
   {
@@ -201,6 +201,68 @@ export const mockActivity: ActivityItem[] = [
   },
 ];
 
+export const mockRatedBooks: RatedBook[] = [
+  { book: mockBooks[0], rating: 5, ratedAt: "2025-12-01" },
+  { book: mockBooks[1], rating: 4, ratedAt: "2025-11-28" },
+  { book: mockBooks[2], rating: 5, ratedAt: "2025-11-20" },
+  { book: mockBooks[3], rating: 4.5, ratedAt: "2025-11-15" },
+  { book: mockBooks[4], rating: 3, ratedAt: "2025-11-10" },
+  { book: mockBooks[5], rating: 5, ratedAt: "2025-10-30" },
+  { book: mockBooks[6], rating: 4, ratedAt: "2025-10-22" },
+  { book: mockBooks[7], rating: 5, ratedAt: "2025-10-15" },
+  { book: mockBooks[8], rating: 3, ratedAt: "2025-10-08" },
+  { book: mockBooks[9], rating: 4, ratedAt: "2025-09-25" },
+  { book: mockBooks[10], rating: 2, ratedAt: "2025-09-18" },
+  { book: mockBooks[11], rating: 3.5, ratedAt: "2025-09-10" },
+];
+
+export const mockFavorites: Book[] = [
+  mockBooks[0],
+  mockBooks[2],
+  mockBooks[5],
+];
+
+export const mockUserActivity: ActivityItem[] = [
+  {
+    id: "ua1",
+    user: mockUser,
+    type: "rating",
+    book: mockBooks[0],
+    rating: 5,
+    timestamp: "1d ago",
+  },
+  {
+    id: "ua2",
+    user: mockUser,
+    type: "love",
+    book: mockBooks[2],
+    timestamp: "3d ago",
+  },
+  {
+    id: "ua3",
+    user: mockUser,
+    type: "list_add",
+    book: mockBooks[5],
+    listName: "Loved in 2025",
+    timestamp: "5d ago",
+  },
+  {
+    id: "ua4",
+    user: mockUser,
+    type: "rating",
+    book: mockBooks[7],
+    rating: 5,
+    timestamp: "1w ago",
+  },
+  {
+    id: "ua5",
+    user: mockUser,
+    type: "love",
+    book: mockBooks[9],
+    timestamp: "2w ago",
+  },
+];
+
 export const mockStaffPicks: Book[] = [
   mockBooks[0],
   mockBooks[2],
@@ -208,4 +270,91 @@ export const mockStaffPicks: Book[] = [
   mockBooks[7],
   mockBooks[9],
   mockBooks[11],
+];
+
+export const mockBookStats: BookStats = {
+  averageRating: 4.3,
+  ratingCount: 128,
+  loveCount: 47,
+};
+
+export const mockBookActivity: ActivityItem[] = [
+  {
+    id: "ba1",
+    user: mockFriends[0],
+    type: "rating",
+    book: mockBooks[0],
+    rating: 5,
+    timestamp: "3h ago",
+  },
+  {
+    id: "ba2",
+    user: mockFriends[1],
+    type: "love",
+    book: mockBooks[0],
+    timestamp: "1d ago",
+  },
+  {
+    id: "ba3",
+    user: mockFriends[2],
+    type: "list_add",
+    book: mockBooks[0],
+    listName: "All-time Favourites",
+    timestamp: "3d ago",
+  },
+];
+
+export const mockReviews: Review[] = [
+  {
+    id: "r1",
+    user: mockFriends[0],
+    text: "An extraordinary novel that blends satire, fantasy, and philosophy into something completely unique. The scenes in Moscow are laugh-out-loud funny, while the Pilate chapters carry real weight. Bulgakov was decades ahead of his time.",
+    likes: 12,
+    isLikedByMe: true,
+    timestamp: "2d ago",
+    replies: [
+      {
+        id: "rp1",
+        user: mockFriends[1],
+        text: "Completely agree about the Pilate chapters. They hit differently on a second read.",
+        likes: 3,
+        timestamp: "1d ago",
+      },
+    ],
+  },
+  {
+    id: "r2",
+    user: mockFriends[2],
+    text: "Started slow for me but by Part 2 I couldn't put it down. The ending is genuinely moving. One of those books that stays with you.",
+    likes: 5,
+    timestamp: "1w ago",
+  },
+  {
+    id: "r3",
+    user: {
+      id: "u5",
+      handle: "elliot",
+      displayName: "Elliot Vance",
+    },
+    text: "I think this is one of the greatest novels of the 20th century. The way Bulgakov weaves multiple timelines and genres together is masterful. Woland is one of literature's best characters.",
+    likes: 8,
+    timestamp: "2w ago",
+    replies: [
+      {
+        id: "rp2",
+        user: mockFriends[0],
+        text: "Woland steals every scene he's in. The ball chapter is unforgettable.",
+        likes: 2,
+        isLikedByMe: true,
+        timestamp: "2w ago",
+      },
+      {
+        id: "rp3",
+        user: mockFriends[2],
+        text: "Have you read the Pevear and Volokhonsky translation? Curious how it compares.",
+        likes: 1,
+        timestamp: "1w ago",
+      },
+    ],
+  },
 ];

@@ -25,10 +25,10 @@ export function Navbar({
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-40 bg-background">
+    <header className="sticky top-0 z-40 bg-background border-b ">
       <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-2 lg:flex-row lg:items-center">
         <div className="flex items-center">
-          <img src="/logo.svg" alt={`${brand} logo`} className="h-auto w-32" />
+          <img src="/logo.svg" alt={`${brand} logo`} className="h-auto w-28" />
         </div>
         <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
           <div className="w-full sm:w-72">

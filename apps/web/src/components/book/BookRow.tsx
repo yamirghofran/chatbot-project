@@ -33,17 +33,14 @@ export function BookRow({
 
   return (
     <div
-      className={cn(
-        "flex items-center gap-4 py-3",
-        isCompact && "gap-3 py-2"
-      )}
+      className={cn("flex items-center gap-4 py-3", isCompact && "gap-3 py-2")}
     >
       <img
         src={book.coverUrl}
         alt={`Cover of ${book.title}`}
         className={cn(
           "rounded-sm object-cover shrink-0",
-          isCompact ? "h-10 w-7" : "h-16 w-11"
+          isCompact ? "h-10 w-7" : "h-20 w-16",
         )}
       />
 
@@ -51,7 +48,7 @@ export function BookRow({
         <p
           className={cn(
             "font-medium text-foreground truncate",
-            isCompact ? "text-sm" : "text-base"
+            isCompact ? "text-sm" : "text-base",
           )}
         >
           {book.title}
@@ -59,7 +56,7 @@ export function BookRow({
         <p
           className={cn(
             "text-muted-foreground truncate",
-            isCompact ? "text-xs" : "text-sm"
+            isCompact ? "text-xs" : "text-sm",
           )}
         >
           {book.author}
@@ -92,7 +89,10 @@ export function BookRow({
                   aria-label={isLoved ? "Remove from loved" : "Love"}
                 >
                   <Heart
-                    className={cn("size-4", isLoved && "fill-red-500 text-red-500")}
+                    className={cn(
+                      "size-4",
+                      isLoved && "fill-red-500 text-red-500",
+                    )}
                   />
                 </button>
               </TooltipTrigger>

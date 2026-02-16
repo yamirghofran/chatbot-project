@@ -49,7 +49,9 @@ export function DiscoveryPage({
               </div>
             </div>
           </div>
-          <h2 className="font-heading text-lg font-semibold mb-2">For You</h2>
+          <h2 className="font-heading text-lg font-semibold mb-2">
+            Reccomended For You
+          </h2>
           <div>
             {books.map((book, i) => (
               <div key={book.id}>
