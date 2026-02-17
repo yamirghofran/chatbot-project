@@ -21,17 +21,18 @@ The script:
 """
 
 import argparse
+import gc
 import json
 import logging
 import os
 import sys
 import time
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
 
 import mlflow
-import numpy as np
 import polars as pl
 from dotenv import load_dotenv
 
@@ -65,6 +66,7 @@ from bookdb.models.bpr import BPR
 from bookdb.utils.constants import (
     DEFAULT_USER_COL,
     DEFAULT_ITEM_COL,
+    DEFAULT_RATING_COL,
     DEFAULT_PREDICTION_COL,
 )
 
@@ -114,10 +116,39 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_data(data_path: str) -> pl.DataFrame:
+def load_data(
+    data_path: str,
+    required_columns: Optional[list[str]] = None,
+    optional_columns: Optional[list[str]] = None,
+) -> pl.DataFrame:
     """Load interaction data from parquet file."""
     logger.info(f"Loading data from {data_path}")
-    df = pl.read_parquet(data_path)
+
+    lazy_df = pl.scan_parquet(data_path)
+
+    required_columns = list(dict.fromkeys([col for col in (required_columns or []) if col]))
+    optional_columns = list(dict.fromkeys([col for col in (optional_columns or []) if col]))
+
+    if required_columns:
+        available_columns = set(lazy_df.collect_schema().names())
+        missing_columns = [col for col in required_columns if col not in available_columns]
+        if missing_columns:
+            raise ValueError(
+                f"Missing required columns in {data_path}: {missing_columns}"
+            )
+        selected_columns = required_columns + [
+            col for col in optional_columns if col in available_columns and col not in required_columns
+        ]
+        if optional_columns:
+            missing_optional_columns = [col for col in optional_columns if col not in available_columns]
+            if missing_optional_columns:
+                logger.info(
+                    f"Optional columns not found in {data_path}: {missing_optional_columns}"
+                )
+        lazy_df = lazy_df.select(selected_columns)
+
+    # Streaming collect reduces peak memory during parquet load.
+    df = lazy_df.collect(streaming=True)
     logger.info(f"Loaded {df.height} interactions with schema: {df.schema}")
     return df
 
@@ -126,6 +157,7 @@ def preprocess_data(
     df: pl.DataFrame,
     col_user: str,
     col_item: str,
+    col_rating: Optional[str] = None,
     min_user_interactions: int = 5,
 ) -> pl.DataFrame:
     """
@@ -141,6 +173,8 @@ def preprocess_data(
         col_user: DEFAULT_USER_COL,
         col_item: DEFAULT_ITEM_COL,
     }
+    if col_rating:
+        column_mapping[col_rating] = DEFAULT_RATING_COL
     df = df.rename({k: v for k, v in column_mapping.items() if k in df.columns})
 
     initial_count = df.height
@@ -155,6 +189,10 @@ def preprocess_data(
     # Remove duplicates (keep one interaction per user-item pair)
     df = df.unique(subset=[DEFAULT_USER_COL, DEFAULT_ITEM_COL], keep="first")
     logger.info(f"After deduplication: {df.height} interactions")
+
+    # Use Float32 for ratings to reduce memory footprint on large datasets.
+    if DEFAULT_RATING_COL in df.columns:
+        df = df.with_columns(pl.col(DEFAULT_RATING_COL).cast(pl.Float32))
 
     # Log statistics
     n_users = df.select(DEFAULT_USER_COL).n_unique()
@@ -172,12 +210,12 @@ def train_test_split_by_user(
     random_seed: int = 42,
 ) -> Tuple[pl.DataFrame, pl.DataFrame]:
     """
-    Split data into train/test sets by randomly holding out items per user.
+    Split data into train/test sets with deterministic hash-based sampling.
 
     This approach ensures:
+    - Deterministic split without allocating a full random NumPy array
+    - Approximate test_size_ratio on average
     - Every user in the test set also appears in the training set
-    - Each user's test items are a random subset of their interactions
-    - The split respects the test_size_ratio on average
 
     Args:
         df: Input DataFrame with user and item columns
@@ -191,20 +229,46 @@ def train_test_split_by_user(
     """
     logger.info(f"Splitting data with test_ratio={test_size_ratio}")
 
-    np.random.seed(random_seed)
+    if not 0 < test_size_ratio < 1:
+        raise ValueError("test_size_ratio must be between 0 and 1")
 
-    # Add a random column for splitting
+    split_mod = 10_000
+    test_threshold = int(test_size_ratio * split_mod)
+
+    # Hash on (user, item) gives deterministic per-interaction pseudo-randomness
+    # while avoiding a large in-memory random array.
     df = df.with_columns(
-        pl.Series("random", np.random.random(df.height))
+        (pl.struct([col_user, col_item]).hash(seed=random_seed) % split_mod).alias("__split_bucket")
     )
 
-    # For each user, split by random value
-    train_df = df.filter(pl.col("random") >= test_size_ratio).drop("random")
-    test_df = df.filter(pl.col("random") < test_size_ratio).drop("random")
+    train_df = df.filter(pl.col("__split_bucket") >= test_threshold).drop("__split_bucket")
+    test_df = df.filter(pl.col("__split_bucket") < test_threshold).drop("__split_bucket")
 
-    # Ensure all users in test set also appear in train set
-    train_users = set(train_df.select(col_user).unique().to_series().to_list())
-    test_df = test_df.filter(pl.col(col_user).is_in(train_users))
+    # Ensure all users in test set also appear in train set by moving one row
+    # per missing user from test to train.
+    train_users = train_df.select(col_user).unique()
+    orphan_test_users = (
+        test_df.join(train_users, on=col_user, how="anti")
+        .select(col_user)
+        .unique()
+    )
+
+    if orphan_test_users.height > 0:
+        promoted_to_train = (
+            test_df.join(orphan_test_users, on=col_user, how="inner")
+            .group_by(col_user)
+            .head(1)
+        )
+        test_df = test_df.join(
+            promoted_to_train.select([col_user, col_item]),
+            on=[col_user, col_item],
+            how="anti",
+        )
+        train_df = pl.concat([train_df, promoted_to_train], how="vertical")
+        logger.info(
+            f"Moved {promoted_to_train.height} interactions to train "
+            f"to keep {orphan_test_users.height} test users represented in training"
+        )
 
     # Log statistics
     n_train_users = train_df.select(col_user).n_unique()
@@ -238,7 +302,7 @@ def train_bpr_model(
         df,
         col_user=DEFAULT_USER_COL,
         col_item=DEFAULT_ITEM_COL,
-        col_rating="rating" if "rating" in df.columns else None,
+        col_rating=DEFAULT_RATING_COL if DEFAULT_RATING_COL in df.columns else None,
     )
     training_time = time.time() - start_time
 
@@ -291,8 +355,9 @@ def evaluate_model(
         batch_size=batch_size,
     )
 
-    # Get all items for coverage calculation
-    all_items = train_df.select(DEFAULT_ITEM_COL).unique().to_series().to_list()
+    # Get all items for coverage calculation. Keep as Series to avoid
+    # creating an additional large Python list.
+    all_items = train_df.select(DEFAULT_ITEM_COL).unique().to_series()
 
     # Calculate metrics using the evaluation module
     metrics = evaluate_recommendations(
@@ -320,7 +385,8 @@ def log_to_mlflow(
     training_time: float,
     train_df: pl.DataFrame,
     test_df: pl.DataFrame,
-    recommendations: pl.DataFrame,
+    recommendations_path: Path,
+    n_recommendations: int,
     run_name: Optional[str] = None,
 ) -> str:
     """
@@ -333,7 +399,8 @@ def log_to_mlflow(
         training_time: Training time in seconds
         train_df: Training data
         test_df: Test data
-        recommendations: Generated recommendations
+        recommendations_path: Path to generated recommendations parquet
+        n_recommendations: Number of generated recommendation rows
         run_name: Optional run name
 
     Returns:
@@ -389,6 +456,7 @@ def log_to_mlflow(
         # Log model summary statistics
         mlflow.log_metric("model_n_users", model.n_users)
         mlflow.log_metric("model_n_items", model.n_items)
+        mlflow.log_metric("n_output_recommendations", n_recommendations)
 
         # Create artifacts directory
         artifacts_dir = Path("mlflow_artifacts")
@@ -404,10 +472,13 @@ def log_to_mlflow(
                 logger.warning(f"Could not log artifact {path}: {e}")
                 logger.warning("Artifact saved locally but not uploaded to MLFlow")
 
-        # Save recommendations as artifact
-        recommendations_path = artifacts_dir / "bpr_recommendations.parquet"
-        recommendations.write_parquet(recommendations_path)
-        safe_log_artifact(recommendations_path, "recommendations")
+        # Log the final output recommendations parquet as artifact
+        if recommendations_path.exists():
+            safe_log_artifact(recommendations_path, "recommendations parquet")
+        else:
+            logger.warning(
+                f"Recommendations file not found, cannot log artifact: {recommendations_path}"
+            )
 
         # Save model using BPR's save method
         model_dir = artifacts_dir / "bpr_model"
@@ -465,22 +536,104 @@ def log_to_mlflow(
         return run_id
 
 
-def save_recommendations(recommendations: pl.DataFrame, output_path: str):
-    """Save recommendations to a parquet file."""
+def save_recommendations_streaming(
+    model: BPR,
+    output_path: str,
+    top_k: int,
+    remove_seen: bool,
+    batch_size: int,
+) -> Tuple[Path, int]:
+    """Generate and save recommendations directly to a single parquet file."""
+    import pyarrow.parquet as pq
+
     output_path_obj = Path(output_path)
     output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+    temp_output_path = output_path_obj.with_suffix(output_path_obj.suffix + ".tmp")
 
-    logger.info(f"Saving recommendations to {output_path_obj}")
-    recommendations.write_parquet(output_path_obj)
-    logger.info(f"Saved {recommendations.height} recommendations")
+    if temp_output_path.exists():
+        temp_output_path.unlink()
+
+    logger.info(f"Generating and streaming recommendations to {output_path_obj}")
+
+    writer = None
+    total_rows = 0
+    total_users = model.n_users
+    processed_users = 0
+
+    try:
+        # Iterate over model user mappings directly to avoid a full unique-user collect.
+        for batch_index, batch_users in enumerate(
+            _iter_user_batches(model._user_id_map.keys(), batch_size),
+            start=1,
+        ):
+            batch_users_df = pl.DataFrame({DEFAULT_USER_COL: batch_users})
+            batch_recommendations = model.recommend_k_items(
+                data=batch_users_df,
+                top_k=top_k,
+                remove_seen=remove_seen,
+                col_user=DEFAULT_USER_COL,
+                col_item=DEFAULT_ITEM_COL,
+                col_prediction=DEFAULT_PREDICTION_COL,
+                batch_size=batch_size,
+            )
+
+            if batch_recommendations.height > 0:
+                batch_table = batch_recommendations.to_arrow()
+                if writer is None:
+                    writer = pq.ParquetWriter(str(temp_output_path), batch_table.schema)
+                writer.write_table(batch_table)
+                total_rows += batch_recommendations.height
+
+            processed_users += len(batch_users)
+            if batch_index % 10 == 0 or processed_users >= total_users:
+                logger.info(f"  Processed {processed_users}/{total_users} users")
+
+            del batch_users_df, batch_recommendations
+            if batch_index % 25 == 0:
+                gc.collect()
+    except Exception:
+        if temp_output_path.exists():
+            temp_output_path.unlink()
+        raise
+    finally:
+        if writer is not None:
+            writer.close()
+
+    if total_rows > 0:
+        temp_output_path.replace(output_path_obj)
+    else:
+        # Preserve schema in the output even when there are no recommendations.
+        empty_df = pl.DataFrame({
+            DEFAULT_USER_COL: pl.Series([], dtype=model._user_dtype or pl.String),
+            DEFAULT_ITEM_COL: pl.Series([], dtype=model._item_dtype or pl.String),
+            DEFAULT_PREDICTION_COL: pl.Series([], dtype=pl.Float32),
+        })
+        empty_df.write_parquet(output_path_obj)
+        if temp_output_path.exists():
+            temp_output_path.unlink()
+
+    logger.info(f"Saved {total_rows} recommendations to {output_path_obj}")
+    return output_path_obj, total_rows
 
 
-def main(config: dict) -> Tuple[BPR, pl.DataFrame, Dict[str, float], str]:
+def _iter_user_batches(users: Iterable[str], batch_size: int) -> Iterator[list[str]]:
+    """Yield user IDs in fixed-size batches without materializing all users at once."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be > 0")
+    user_iterator = iter(users)
+    while True:
+        batch = list(islice(user_iterator, batch_size))
+        if not batch:
+            break
+        yield batch
+
+
+def main(config: dict) -> Tuple[BPR, str, Dict[str, float], str]:
     """
     Main training pipeline.
 
     Returns:
-        Tuple of (model, recommendations, metrics, mlflow_run_id)
+        Tuple of (model, recommendations_output_path, metrics, mlflow_run_id)
     """
     # Check MLflow environment before starting
     _check_mlflow_env()
@@ -498,13 +651,21 @@ def main(config: dict) -> Tuple[BPR, pl.DataFrame, Dict[str, float], str]:
         logger.info(f"  {key}: {value}")
 
     # Load data
-    df = load_data(config["data_path"])
+    df = load_data(
+        config["data_path"],
+        required_columns=[
+            config["col_user"],
+            config["col_item"],
+        ],
+        optional_columns=[config.get("col_rating")],
+    )
 
     # Preprocess
     df = preprocess_data(
         df,
         col_user=config["col_user"],
         col_item=config["col_item"],
+        col_rating=config.get("col_rating"),
         min_user_interactions=config["min_user_interactions"],
     )
 
@@ -516,12 +677,14 @@ def main(config: dict) -> Tuple[BPR, pl.DataFrame, Dict[str, float], str]:
         col_item=DEFAULT_ITEM_COL,
         random_seed=config["random_state"],
     )
+    del df
+    gc.collect()
 
     # Train model on training data
     model, training_time = train_bpr_model(train_df, config)
 
     # Evaluate model on test data
-    metrics, test_recommendations = evaluate_model(
+    metrics, evaluation_recommendations = evaluate_model(
         model,
         train_df,
         test_df,
@@ -529,16 +692,14 @@ def main(config: dict) -> Tuple[BPR, pl.DataFrame, Dict[str, float], str]:
         remove_seen=config["remove_seen"],
         batch_size=config["batch_size"],
     )
+    del evaluation_recommendations
+    gc.collect()
 
-    # Generate recommendations for all users (for production use)
-    logger.info("Generating recommendations for all users...")
-    all_recommendations = model.recommend_k_items(
-        data=df,
+    recommendations_output_path, n_recommendations = save_recommendations_streaming(
+        model=model,
+        output_path=config["output_path"],
         top_k=config["top_k"],
         remove_seen=config["remove_seen"],
-        col_user=DEFAULT_USER_COL,
-        col_item=DEFAULT_ITEM_COL,
-        col_prediction=DEFAULT_PREDICTION_COL,
         batch_size=config["batch_size"],
     )
 
@@ -551,19 +712,20 @@ def main(config: dict) -> Tuple[BPR, pl.DataFrame, Dict[str, float], str]:
         training_time,
         train_df,
         test_df,
-        test_recommendations,
+        recommendations_output_path,
+        n_recommendations,
         run_name=run_name,
     )
 
-    # Save recommendations locally
-    save_recommendations(all_recommendations, config["output_path"])
+    del train_df, test_df
+    gc.collect()
 
     logger.info("=" * 60)
     logger.info("Training Pipeline Complete!")
     logger.info(f"MLFlow Run ID: {run_id}")
     logger.info("=" * 60)
 
-    return model, all_recommendations, metrics, run_id
+    return model, str(recommendations_output_path), metrics, run_id
 
 
 def parse_args():
