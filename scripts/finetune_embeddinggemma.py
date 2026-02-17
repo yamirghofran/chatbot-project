@@ -132,13 +132,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--top-popular-books",
         type=int,
-        default=15000,
+        default=10000,
         help="Number of top popular books (by num_interactions) to include",
     )
     parser.add_argument(
         "--random-sampled-books",
         type=int,
-        default=15000,
+        default=10000,
         help="Number of randomly sampled books (excluding top popular) to include",
     )
 
