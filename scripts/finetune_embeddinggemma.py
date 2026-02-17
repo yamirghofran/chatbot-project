@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import math
@@ -167,6 +168,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--eval-k", type=int, default=10)
     parser.add_argument("--eval-batch-size", type=int, default=0)
+    parser.add_argument(
+        "--eval-query-batch-size",
+        type=int,
+        default=0,
+        help="Queries scored per similarity batch (0 = auto)",
+    )
+    parser.add_argument(
+        "--eval-similarity-matrix-mb",
+        type=int,
+        default=256,
+        help="Target max memory (MB) for each query x corpus similarity matrix",
+    )
     parser.add_argument(
         "--eval-baseline",
         action="store_true",
@@ -558,103 +571,13 @@ def evaluate_retrieval_model(
     k: int,
     device: str,
     encode_batch_size: int,
+    query_batch_size: int,
+    similarity_matrix_mb: int,
 ) -> dict[str, float]:
-    model = SentenceTransformer(str(model_name_or_path), device=device)
-
-    corpus_ids = list(candidate_ids)
-    corpus_texts = [text_by_id[book_id] for book_id in corpus_ids]
-    corpus_embeddings = model.encode(
-        corpus_texts,
-        batch_size=encode_batch_size,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-        show_progress_bar=True,
-    )
-
-    id_to_index = {book_id: idx for idx, book_id in enumerate(corpus_ids)}
-    # Handle max_queries: -1 means use all queries, otherwise limit to specified value
-    if max_queries < 0:
-        query_count = len(corpus_ids)
-    else:
-        query_count = min(max_queries, len(corpus_ids))
-    query_ids = corpus_ids[:query_count]
-
-    recall_hits = 0
-    mrr_sum = 0.0
-    first_rank_sum = 0.0
-    evaluated_queries = 0
-
-    # Additional metric accumulators
-    ndcg_sum = 0.0
-    map_sum = 0.0
-    precision_sum = 0.0
-    hit_rate_hits = 0
-
-    for query_id in query_ids:
-        query_idx = id_to_index[query_id]
-        relevant_indices = [
-            id_to_index[neighbor_id]
-            for neighbor_id in neighbors_by_id[query_id]
-            if neighbor_id in id_to_index
-        ]
-        if not relevant_indices:
-            continue
-
-        similarities = corpus_embeddings @ corpus_embeddings[query_idx]
-        similarities[query_idx] = -1.0
-        top_k = min(k, len(similarities) - 1)
-        if top_k <= 0:
-            continue
-
-        if top_k < len(similarities):
-            top_indices = np.argpartition(-similarities, top_k - 1)[:top_k]
-            top_indices = top_indices[np.argsort(-similarities[top_indices])]
-        else:
-            top_indices = np.argsort(-similarities)
-
-        relevant_set = set(relevant_indices)
-        recall_hits += int(any(index in relevant_set for index in top_indices[:top_k]))
-
-        best_relevant_similarity = float(np.max(similarities[relevant_indices]))
-        first_relevant_rank = int(np.sum(similarities > best_relevant_similarity) + 1)
-        mrr_sum += 1.0 / first_relevant_rank
-        first_rank_sum += first_relevant_rank
-
-        # Calculate NDCG@k (Normalized Discounted Cumulative Gain)
-        # Using binary relevance (1 if relevant, 0 otherwise)
-        dcg = 0.0
-        for rank, idx in enumerate(top_indices[:top_k], start=1):
-            if idx in relevant_set:
-                dcg += 1.0 / np.log2(rank + 1)
-        # Ideal DCG: all relevant items at the top
-        ideal_dcg = sum(1.0 / np.log2(r + 1) for r in range(1, min(len(relevant_indices), top_k) + 1))
-        ndcg_sum += dcg / ideal_dcg if ideal_dcg > 0 else 0.0
-
-        # Calculate AP (Average Precision) for MAP
-        # AP = sum of (precision at rank k * relevance at rank k) / total relevant docs
-        num_relevant_found = 0
-        precision_at_positions = 0.0
-        for rank, idx in enumerate(top_indices[:top_k], start=1):
-            if idx in relevant_set:
-                num_relevant_found += 1
-                precision_at_positions += num_relevant_found / rank
-        # Consider relevant items beyond top_k as not retrieved
-        ap = precision_at_positions / len(relevant_indices) if relevant_indices else 0.0
-        map_sum += ap
-
-        # Calculate Precision@k
-        hits_in_top_k = sum(1 for idx in top_indices[:top_k] if idx in relevant_set)
-        precision_sum += hits_in_top_k / top_k
-
-        # Calculate Hit Rate (whether any relevant item is in top-k, same as recall@k for binary)
-        hit_rate_hits += int(hits_in_top_k > 0)
-
-        evaluated_queries += 1
-
-    if evaluated_queries == 0:
+    def empty_metrics(corpus_size: int) -> dict[str, float]:
         return {
             "queries_evaluated": 0,
-            "corpus_size": len(corpus_ids),
+            "corpus_size": int(corpus_size),
             "k": int(k),
             "recall_at_k": 0.0,
             "mrr": 0.0,
@@ -665,18 +588,205 @@ def evaluate_retrieval_model(
             "hit_rate_at_k": 0.0,
         }
 
-    return {
-        "queries_evaluated": int(evaluated_queries),
-        "corpus_size": int(len(corpus_ids)),
-        "k": int(k),
-        "recall_at_k": float(recall_hits / evaluated_queries),
-        "mrr": float(mrr_sum / evaluated_queries),
-        "mean_first_positive_rank": float(first_rank_sum / evaluated_queries),
-        "ndcg_at_k": float(ndcg_sum / evaluated_queries),
-        "map_at_k": float(map_sum / evaluated_queries),
-        "precision_at_k": float(precision_sum / evaluated_queries),
-        "hit_rate_at_k": float(hit_rate_hits / evaluated_queries),
-    }
+    def cleanup_eval_device() -> None:
+        if str(device).startswith("cuda") and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if str(device) == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
+
+    model: Optional[SentenceTransformer] = None
+    corpus_embeddings: Optional[np.ndarray] = None
+    similarities: Optional[np.ndarray] = None
+    top_indices: Optional[np.ndarray] = None
+
+    try:
+        # Some tokenizer versions cannot apply fix_mistral_regex on locally saved models.
+        # Try with the fix first, then fall back to a standard load if patching fails.
+        try:
+            model = SentenceTransformer(
+                str(model_name_or_path),
+                device=device,
+                tokenizer_kwargs={"fix_mistral_regex": True},
+            )
+        except TypeError as exc:
+            error_text = str(exc)
+            if (
+                "pre_tokenizers.Split" in error_text
+                or "does not support item assignment" in error_text
+            ):
+                logger.warning(
+                    "Tokenizer regex patch is incompatible with this environment "
+                    "(transformers/tokenizers). Retrying model load without "
+                    "fix_mistral_regex."
+                )
+                model = SentenceTransformer(str(model_name_or_path), device=device)
+            else:
+                raise
+
+        corpus_ids = list(candidate_ids)
+        if not corpus_ids:
+            return empty_metrics(corpus_size=0)
+
+        corpus_texts = [text_by_id[book_id] for book_id in corpus_ids]
+        corpus_embeddings = model.encode(
+            corpus_texts,
+            batch_size=encode_batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=True,
+        )
+        # Keep evaluation arrays compact and contiguous.
+        corpus_embeddings = np.asarray(corpus_embeddings, dtype=np.float32, order="C")
+
+        top_k = min(k, len(corpus_ids) - 1)
+        if top_k <= 0:
+            return empty_metrics(corpus_size=len(corpus_ids))
+
+        id_to_index = {book_id: idx for idx, book_id in enumerate(corpus_ids)}
+
+        # max_queries < 0 => use all queries.
+        query_count = len(corpus_ids) if max_queries < 0 else min(max_queries, len(corpus_ids))
+        query_ids = corpus_ids[:query_count]
+
+        eval_targets: list[tuple[int, np.ndarray, int]] = []
+        for query_id in query_ids:
+            relevant_indices = np.fromiter(
+                (
+                    id_to_index[neighbor_id]
+                    for neighbor_id in neighbors_by_id[query_id]
+                    if neighbor_id in id_to_index
+                ),
+                dtype=np.int32,
+            )
+            if relevant_indices.size == 0:
+                continue
+            eval_targets.append((id_to_index[query_id], relevant_indices, int(relevant_indices.size)))
+
+        if not eval_targets:
+            return empty_metrics(corpus_size=len(corpus_ids))
+
+        # Bound per-batch memory for the [query_batch, corpus_size] similarity matrix.
+        if query_batch_size > 0:
+            actual_query_batch_size = query_batch_size
+        else:
+            target_bytes = max(1, int(similarity_matrix_mb)) * 1024 * 1024
+            bytes_per_row = max(1, len(corpus_ids) * np.dtype(np.float32).itemsize)
+            actual_query_batch_size = max(1, target_bytes // bytes_per_row)
+            actual_query_batch_size = min(actual_query_batch_size, 512)
+
+        estimated_similarity_mb = (
+            actual_query_batch_size
+            * len(corpus_ids)
+            * np.dtype(np.float32).itemsize
+        ) / (1024 * 1024)
+        if estimated_similarity_mb > max(1, int(similarity_matrix_mb)):
+            logger.warning(
+                "Estimated similarity matrix memory (%.2f MB) exceeds target budget (%s MB). "
+                "Consider lowering --eval-query-batch-size.",
+                estimated_similarity_mb,
+                similarity_matrix_mb,
+            )
+
+        logger.info(
+            "Evaluation config: corpus_size=%s query_count=%s scored_queries=%s top_k=%s "
+            "encode_batch_size=%s query_batch_size=%s similarity_matrix_mb=%s "
+            "estimated_similarity_mb=%.2f",
+            len(corpus_ids),
+            query_count,
+            len(eval_targets),
+            top_k,
+            encode_batch_size,
+            actual_query_batch_size,
+            similarity_matrix_mb,
+            estimated_similarity_mb,
+        )
+
+        recall_hits = 0
+        mrr_sum = 0.0
+        first_rank_sum = 0.0
+        evaluated_queries = 0
+        ndcg_sum = 0.0
+        map_sum = 0.0
+        precision_sum = 0.0
+        hit_rate_hits = 0
+        discount_factors = 1.0 / np.log2(np.arange(2, top_k + 2, dtype=np.float64))
+
+        for start in range(0, len(eval_targets), actual_query_batch_size):
+            batch_targets = eval_targets[start : start + actual_query_batch_size]
+            batch_query_indices = np.fromiter(
+                (target[0] for target in batch_targets),
+                dtype=np.int32,
+                count=len(batch_targets),
+            )
+            batch_query_embeddings = corpus_embeddings[batch_query_indices]
+            similarities = batch_query_embeddings @ corpus_embeddings.T
+            similarities[np.arange(len(batch_targets)), batch_query_indices] = -np.inf
+
+            if top_k < similarities.shape[1]:
+                top_indices = np.argpartition(-similarities, top_k - 1, axis=1)[:, :top_k]
+                top_scores = np.take_along_axis(similarities, top_indices, axis=1)
+                ranking_order = np.argsort(-top_scores, axis=1)
+                top_indices = np.take_along_axis(top_indices, ranking_order, axis=1)
+            else:
+                top_indices = np.argsort(-similarities, axis=1)
+
+            for row_idx, (_, relevant_indices, relevant_count) in enumerate(batch_targets):
+                retrieved_indices = top_indices[row_idx, :top_k]
+                relevance_hits = np.isin(retrieved_indices, relevant_indices, assume_unique=False)
+
+                hits_in_top_k = int(np.count_nonzero(relevance_hits))
+                recall_hits += int(hits_in_top_k > 0)
+                hit_rate_hits += int(hits_in_top_k > 0)
+                precision_sum += hits_in_top_k / top_k
+
+                # Rank of first relevant document over the full corpus.
+                row_similarities = similarities[row_idx]
+                best_relevant_similarity = float(np.max(row_similarities[relevant_indices]))
+                first_relevant_rank = int(np.count_nonzero(row_similarities > best_relevant_similarity) + 1)
+                mrr_sum += 1.0 / first_relevant_rank
+                first_rank_sum += first_relevant_rank
+
+                # NDCG@k (binary relevance).
+                dcg = float(np.sum(discount_factors[relevance_hits]))
+                ideal_dcg = float(np.sum(discount_factors[: min(relevant_count, top_k)]))
+                ndcg_sum += dcg / ideal_dcg if ideal_dcg > 0 else 0.0
+
+                # AP@k contribution to MAP@k.
+                if hits_in_top_k > 0:
+                    hit_ranks = np.flatnonzero(relevance_hits) + 1
+                    precision_at_hits = np.arange(1, hits_in_top_k + 1, dtype=np.float64) / hit_ranks
+                    ap = float(np.sum(precision_at_hits) / relevant_count)
+                else:
+                    ap = 0.0
+                map_sum += ap
+
+                evaluated_queries += 1
+
+            similarities = None
+            top_indices = None
+
+        if evaluated_queries == 0:
+            return empty_metrics(corpus_size=len(corpus_ids))
+
+        return {
+            "queries_evaluated": int(evaluated_queries),
+            "corpus_size": int(len(corpus_ids)),
+            "k": int(k),
+            "recall_at_k": float(recall_hits / evaluated_queries),
+            "mrr": float(mrr_sum / evaluated_queries),
+            "mean_first_positive_rank": float(first_rank_sum / evaluated_queries),
+            "ndcg_at_k": float(ndcg_sum / evaluated_queries),
+            "map_at_k": float(map_sum / evaluated_queries),
+            "precision_at_k": float(precision_sum / evaluated_queries),
+            "hit_rate_at_k": float(hit_rate_hits / evaluated_queries),
+        }
+    finally:
+        model = None
+        corpus_embeddings = None
+        similarities = None
+        top_indices = None
+        gc.collect()
+        cleanup_eval_device()
 
 
 def log_to_mlflow(
@@ -734,6 +844,16 @@ def log_to_mlflow(
             "val_fraction": args.val_fraction,
             "top_popular_books": args.top_popular_books,
             "random_sampled_books": args.random_sampled_books,
+        })
+
+        # Log evaluation parameters
+        mlflow.log_params({
+            "eval_max_queries": args.eval_max_queries,
+            "eval_k": args.eval_k,
+            "eval_batch_size": args.eval_batch_size,
+            "eval_query_batch_size": args.eval_query_batch_size,
+            "eval_similarity_matrix_mb": args.eval_similarity_matrix_mb,
+            "eval_baseline": args.eval_baseline,
         })
 
         # Log runtime configuration
@@ -807,10 +927,23 @@ def log_to_mlflow(
                 artifact_path: Subdirectory in MLFlow (e.g., "model", "dataset")
                 description: Optional description for logging
             """
+            if not path.exists():
+                logger.warning(f"Artifact path does not exist, skipping: {path}")
+                return
+
+            upload_start = time.time()
+            size_mb = path.stat().st_size / (1024 * 1024)
+            artifact_label = description or str(path)
+            logger.info(
+                f"Uploading artifact: {artifact_label} ({size_mb:.2f} MB) to "
+                f"{artifact_path or 'root'}"
+            )
             try:
                 mlflow.log_artifact(str(path), artifact_path=artifact_path)
-                if description:
-                    logger.info(f"Logged artifact: {description}")
+                upload_time = time.time() - upload_start
+                logger.info(
+                    f"Logged artifact: {artifact_label} in {upload_time:.2f} seconds"
+                )
             except Exception as e:
                 logger.warning(f"Could not log artifact {path}: {e}")
                 logger.warning("Artifact saved locally but not uploaded to MLFlow")
@@ -1019,6 +1152,22 @@ def main() -> None:
     training_time = time.time() - start_time
     logger.info(f"Training completed in {training_time:.2f} seconds")
 
+    # Persist a checkpoint summary before evaluation so training metadata survives
+    # even if evaluation or remote artifact logging fails.
+    pre_eval_summary = {
+        "args": vars(args),
+        "runtime": runtime,
+        "data_stats": stats,
+        "training_time_seconds": training_time,
+        "model_saved_to": str(output_path),
+        "summary_stage": "post_training_pre_evaluation",
+        "timestamp": datetime.now().isoformat(),
+    }
+    pre_eval_summary_path = output_path / "run_summary_pre_eval.json"
+    with pre_eval_summary_path.open("w", encoding="utf-8") as f:
+        json.dump(pre_eval_summary, f, indent=2)
+    logger.info(f"Saved pre-evaluation checkpoint summary to {pre_eval_summary_path}")
+
     baseline_metrics = None
     finetuned_metrics = None
     eval_batch_size = (
@@ -1044,6 +1193,7 @@ def main() -> None:
             # Evaluate baseline model first (if enabled)
             if args.eval_baseline:
                 logger.info("=== Evaluating Baseline Model ===")
+                baseline_eval_start = time.time()
                 baseline_metrics = evaluate_retrieval_model(
                     model_name_or_path=args.model_name,
                     candidate_ids=candidate_ids,
@@ -1053,12 +1203,17 @@ def main() -> None:
                     k=int(args.eval_k),
                     device=str(runtime["device"]),
                     encode_batch_size=eval_batch_size,
+                    query_batch_size=int(args.eval_query_batch_size),
+                    similarity_matrix_mb=int(args.eval_similarity_matrix_mb),
                 )
+                baseline_eval_time = time.time() - baseline_eval_start
+                logger.info(f"Baseline evaluation completed in {baseline_eval_time:.2f} seconds")
                 print("=== Baseline eval ===")
                 print(json.dumps(baseline_metrics, indent=2))
 
             # Evaluate finetuned model
             logger.info("=== Evaluating Finetuned Model ===")
+            finetuned_eval_start = time.time()
             finetuned_metrics = evaluate_retrieval_model(
                 model_name_or_path=output_path,
                 candidate_ids=candidate_ids,
@@ -1068,7 +1223,11 @@ def main() -> None:
                 k=int(args.eval_k),
                 device=str(runtime["device"]),
                 encode_batch_size=eval_batch_size,
+                query_batch_size=int(args.eval_query_batch_size),
+                similarity_matrix_mb=int(args.eval_similarity_matrix_mb),
             )
+            finetuned_eval_time = time.time() - finetuned_eval_start
+            logger.info(f"Finetuned evaluation completed in {finetuned_eval_time:.2f} seconds")
             print("=== Finetuned eval ===")
             print(json.dumps(finetuned_metrics, indent=2))
 
@@ -1086,6 +1245,8 @@ def main() -> None:
     # Log to MLFlow
     run_name = f"embeddinggemma_e{args.epochs}_bs{args.batch_size}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     dataset_paths = [Path(raw_source), Path(text_source)]
+    logger.info("Starting MLflow logging...")
+    mlflow_start = time.time()
     mlflow_run_id = log_to_mlflow(
         args=args,
         runtime=runtime,
@@ -1097,6 +1258,8 @@ def main() -> None:
         dataset_paths=dataset_paths,
         run_name=run_name,
     )
+    mlflow_time = time.time() - mlflow_start
+    logger.info(f"MLflow logging completed in {mlflow_time:.2f} seconds")
 
     run_summary = {
         "args": vars(args),
