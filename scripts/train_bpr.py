@@ -149,7 +149,7 @@ def load_data(
         lazy_df = lazy_df.select(selected_columns)
 
     # Streaming collect reduces peak memory during parquet load.
-    df = lazy_df.collect(streaming=True)
+    df = lazy_df.collect(engine="streaming")
     logger.info(f"Loaded {df.height} interactions with schema: {df.schema}")
     return df
 
