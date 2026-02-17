@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { MarketingAuthGate } from "@/components/auth/MarketingAuthGate";
 import { DiscoveryPage } from "@/components/discovery/DiscoveryPage";
 import {
   mockBooks,
@@ -13,6 +15,12 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  if (!isAuthenticated) {
+    return <MarketingAuthGate onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <DiscoveryPage
       books={mockBooks}

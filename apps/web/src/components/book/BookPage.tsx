@@ -73,7 +73,11 @@ export function BookPage({
         />
         <div className="flex flex-col items-center gap-2 mt-3">
           <div className="flex items-center gap-1">
-            <RatingPicker value={rating} onChange={onRatingChange} />
+            <RatingPicker
+              value={rating}
+              onChange={onRatingChange}
+              size="large"
+            />
           </div>
           <Separator className="my-1 w-full" />
           <Button
@@ -152,7 +156,7 @@ export function BookPage({
             ) : (
               <>
                 <h2 className="font-heading text-lg font-semibold mb-2">
-                  Related
+                  Similar
                 </h2>
                 <div>
                   {relatedBooks.map((b, i) => (

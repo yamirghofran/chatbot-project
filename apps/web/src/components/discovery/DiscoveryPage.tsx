@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Book, List, ActivityItem } from "@/lib/types";
 import { BookRow } from "@/components/book/BookRow";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { StaffPicks } from "./StaffPicks";
 import { ActivityFeed } from "./ActivityFeed";
@@ -22,7 +23,9 @@ export function DiscoveryPage({
   trendingLists = [],
 }: DiscoveryPageProps) {
   const [lists, setLists] = useState<List[]>(userLists);
+  const [isProfileLinkCopied, setIsProfileLinkCopied] = useState(false);
   const nextListIdRef = useRef(userLists.length + 1);
+  const copyResetTimerRef = useRef<number | null>(null);
 
   function selectedListIdsForBook(bookId: string) {
     return lists
@@ -67,6 +70,31 @@ export function DiscoveryPage({
 
     setLists((prevLists) => [newList, ...prevLists]);
   }
+
+  async function handleShareProfile() {
+    const profileUrl = `${window.location.origin}/profile/me`;
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      setIsProfileLinkCopied(true);
+      if (copyResetTimerRef.current) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setIsProfileLinkCopied(false);
+        copyResetTimerRef.current = null;
+      }, 2000);
+    } catch {
+      setIsProfileLinkCopied(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div>
@@ -122,14 +150,30 @@ export function DiscoveryPage({
             </section>
           )}
 
-          {activity.length > 0 && (
-            <section>
-              <h2 className="font-heading text-lg font-semibold mb-2">
-                Friend Activity
-              </h2>
+          <section>
+            <h2 className="font-heading text-lg font-semibold mb-2">
+              Friend Activity
+            </h2>
+            {activity.length > 0 ? (
               <ActivityFeed items={activity} />
-            </section>
-          )}
+            ) : (
+              <div className="rounded-lg bg-card px-3 py-2">
+                <p className="text-sm text-muted-foreground">
+                  It&apos;s quiet in here. Be the first to stir the shelves or
+                  share your profile.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={handleShareProfile}
+                >
+                  {isProfileLinkCopied ? "Link copied!" : "Share your profile"}
+                </Button>
+              </div>
+            )}
+          </section>
 
           {trendingLists.length > 0 && (
             <section>
