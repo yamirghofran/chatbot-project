@@ -10,6 +10,7 @@ def _():
     import polars as pl
     import json
     import os
+
     return json, mo, os, pl
 
 
@@ -115,7 +116,7 @@ def _(mo, user_id_map):
 def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     # Process raw_goodreads_reviews_dedup.parquet
     _input_path = os.path.join(data_dir, "raw_goodreads_reviews_dedup.parquet")
-    _output_path = os.path.join(data_dir, "goodreads_reviews_dedup_clean.parquet")
+    _output_path = os.path.join(data_dir, "goodreads_reviews_dedup_merged.parquet")
 
     _lf = pl.scan_parquet(_input_path)
     _n_in = _lf.select(pl.len()).collect().item()
@@ -124,7 +125,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     # 2. Replace with best_csv_id if exists
     # 3. Map user_id (Goodreads) to user_id_csv
 
-    _cleaned = (
+    dedup_merged = (
         _lf
         # Join book_id map
         .join(
@@ -163,7 +164,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
         })
     )
 
-    _cleaned.sink_parquet(_output_path)
+    dedup_merged.sink_parquet(_output_path)
 
     _stats_df = pl.scan_parquet(_output_path).select(
         pl.len().alias("n_out"),
@@ -188,12 +189,12 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
 def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     # Process raw_goodreads_reviews_spoiler.parquet
     _input_path = os.path.join(data_dir, "raw_goodreads_reviews_spoiler.parquet")
-    _output_path = os.path.join(data_dir, "goodreads_reviews_spoiler_clean.parquet")
+    _output_path = os.path.join(data_dir, "goodreads_reviews_spoiler_merged.parquet")
 
     _lf = pl.scan_parquet(_input_path)
     _n_in = _lf.select(pl.len()).collect().item()
 
-    _cleaned = (
+    _merged = (
         _lf
         # Join book_id map
         .join(
@@ -232,7 +233,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
         })
     )
 
-    _cleaned.sink_parquet(_output_path)
+    _merged.sink_parquet(_output_path)
 
     _stats_df = pl.scan_parquet(_output_path).select(
         pl.len().alias("n_out"),
@@ -257,7 +258,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
 def _(data_dir, mo, os, pl):
     # Summary: compare input vs output schemas
     _dedup_in = pl.read_parquet(os.path.join(data_dir, "raw_goodreads_reviews_dedup.parquet"), n_rows=1)
-    _dedup_out = pl.read_parquet(os.path.join(data_dir, "goodreads_reviews_dedup_clean.parquet"), n_rows=1)
+    _dedup_out = pl.read_parquet(os.path.join(data_dir, "goodreads_reviews_dedup_merged.parquet"), n_rows=1)
 
     mo.md(f"""
     ### Schema comparison (reviews_dedup)
@@ -265,6 +266,7 @@ def _(data_dir, mo, os, pl):
     **Output columns:** {list(_dedup_out.columns)}
     """)
     return
+
 
 if __name__ == "__main__":
     app.run()
