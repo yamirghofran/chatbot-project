@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { AmazonIcon } from "@/components/icons/AmazonIcon";
 import { ShellButton } from "@/components/icons/ShellButton";
 import { TurtleShellIcon } from "@/components/icons/TurtleShellIcon";
-import { Badge } from "@/components/ui/badge";
 import { AddToListMenu } from "@/components/list/AddToListMenu";
 import {
   Tooltip,
@@ -17,6 +16,7 @@ import {
 export type BookRowProps = {
   book: Book;
   variant?: "default" | "compact";
+  tagVariant?: "default" | "discovery";
   showActions?: boolean;
   descriptionMode?: "none" | "preview";
   showDescriptionPreview?: boolean;
@@ -56,6 +56,7 @@ function deriveEngagement(book: Book) {
 export function BookRow({
   book,
   variant = "default",
+  tagVariant = "default",
   showActions = false,
   descriptionMode = "none",
   showDescriptionPreview = false,
@@ -69,6 +70,7 @@ export function BookRow({
   isShelled = false,
 }: BookRowProps) {
   const isCompact = variant === "compact";
+  const isDiscoveryTagVariant = tagVariant === "discovery";
   const amazonHref = `https://www.amazon.com/s?k=${encodeURIComponent(`${book.title} ${book.author} book`)}`;
   const engagement = deriveEngagement(book);
   const shouldShowDescriptionPreview =
@@ -101,7 +103,14 @@ export function BookRow({
       observer.disconnect();
       imageEl.style.height = "";
     };
-  }, [isCompact, showDescriptionPreview, book.description, book.tags, book.author, book.title]);
+  }, [
+    isCompact,
+    showDescriptionPreview,
+    book.description,
+    book.tags,
+    book.author,
+    book.title,
+  ]);
 
   return (
     <div
@@ -116,21 +125,87 @@ export function BookRow({
         alt={`Cover of ${book.title}`}
         className={cn(
           "rounded-[12px] supports-[corner-shape:squircle]:rounded-[15px] supports-[corner-shape:squircle]:[corner-shape:squircle] object-cover shrink-0",
-          isCompact
-            ? "h-10 w-7"
-            : "aspect-[2/3] w-auto",
+          isCompact ? "h-10 w-7" : "aspect-[2/3] w-auto",
         )}
       />
 
       <div ref={contentRef} className="flex-1 min-w-0">
-        <p
-          className={cn(
-            "font-medium text-foreground truncate",
-            isCompact ? "text-sm" : "text-base",
+        <div className="flex items-start justify-between gap-2">
+          <p
+            className={cn(
+              "min-w-0 flex-1 font-medium text-foreground truncate",
+              isCompact ? "text-sm" : "text-base",
+            )}
+          >
+            {book.title}
+          </p>
+
+          {showActions && (
+            <TooltipProvider>
+              <div className="flex shrink-0 items-center gap-2">
+                {primaryAction === "shell" ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <ShellButton
+                        isShelled={isShelled}
+                        onClick={onShellToggle}
+                        className={actionBtnClass}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>Add to shell</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <a
+                    href={amazonHref}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className={actionBtnClass}
+                    aria-label={`Find ${book.title} on Amazon`}
+                  >
+                    <AmazonIcon className="size-4" />
+                  </a>
+                )}
+                {listOptions ? (
+                  <AddToListMenu
+                    align="end"
+                    lists={listOptions.map((list) => ({
+                      id: list.id,
+                      name: list.name,
+                      bookCount: list.books.length,
+                    }))}
+                    selectedListIds={selectedListIds}
+                    onToggleList={onToggleList}
+                    onCreateList={onCreateList}
+                    trigger={
+                      <button
+                        type="button"
+                        className={actionBtnClass}
+                        aria-label="Add to list"
+                      >
+                        <ListPlus className="size-4" />
+                      </button>
+                    }
+                  />
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={actionBtnClass}
+                        onClick={onAddToList}
+                        aria-label="Add to list"
+                      >
+                        <ListPlus className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Add to list</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </TooltipProvider>
           )}
-        >
-          {book.title}
-        </p>
+        </div>
+
         <p
           className={cn(
             "text-muted-foreground truncate",
@@ -140,16 +215,31 @@ export function BookRow({
           {book.author}
         </p>
         {!isCompact && book.tags && book.tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-4">
             {book.tags.slice(0, 2).map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-[11px]">
+              <span
+                key={tag}
+                className={cn(
+                  "py-0.5 text-[11px]",
+                  isDiscoveryTagVariant
+                    ? "text-muted-foreground"
+                    : "text-foreground",
+                )}
+              >
                 {tag}
-              </Badge>
+              </span>
             ))}
             {book.tags.length > 2 && (
-              <Badge variant="secondary" className="text-[11px]">
+              <span
+                className={cn(
+                  "py-0.5 text-[11px]",
+                  isDiscoveryTagVariant
+                    ? "text-muted-foreground"
+                    : "text-foreground",
+                )}
+              >
                 +{book.tags.length - 2}
-              </Badge>
+              </span>
             )}
           </div>
         )}
@@ -176,71 +266,6 @@ export function BookRow({
           </div>
         )}
       </div>
-
-      {showActions && (
-        <TooltipProvider>
-          <div className="flex self-center items-center gap-2 shrink-0">
-            {primaryAction === "shell" ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ShellButton
-                    isShelled={isShelled}
-                    onClick={onShellToggle}
-                    className={actionBtnClass}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>Add to shell</TooltipContent>
-              </Tooltip>
-            ) : (
-              <a
-                href={amazonHref}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={actionBtnClass}
-                aria-label={`Find ${book.title} on Amazon`}
-              >
-                <AmazonIcon className="size-4" />
-              </a>
-            )}
-            {listOptions ? (
-              <AddToListMenu
-                align="end"
-                lists={listOptions.map((list) => ({
-                  id: list.id,
-                  name: list.name,
-                  bookCount: list.books.length,
-                }))}
-                selectedListIds={selectedListIds}
-                onToggleList={onToggleList}
-                onCreateList={onCreateList}
-                trigger={
-                  <button
-                    type="button"
-                    className={actionBtnClass}
-                    aria-label="Add to list"
-                  >
-                    <ListPlus className="size-4" />
-                  </button>
-                }
-              />
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={actionBtnClass}
-                    onClick={onAddToList}
-                    aria-label="Add to list"
-                  >
-                    <ListPlus className="size-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Add to list</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </TooltipProvider>
-      )}
     </div>
   );
 }
