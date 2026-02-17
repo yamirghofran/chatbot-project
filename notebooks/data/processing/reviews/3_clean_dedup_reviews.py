@@ -11,10 +11,8 @@ def _():
 
 @app.cell
 def _(os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
-    data_path = os.path.join(project_root, "data", "goodreads_reviews_dedup_merged.parquet")
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    data_path = os.path.join(project_root, "data", "2_goodreads_reviews_dedup_reduced.parquet")
     df = pl.scan_parquet(data_path)
     return (df, project_root)
     
@@ -47,7 +45,7 @@ def _(df_clean):
 @app.cell
 def _(df_clean, os, project_root):
     # Save cleaned data
-    output_path = os.path.join(project_root, "data", "goodreads_reviews_dedup_clean.parquet")
+    output_path = os.path.join(project_root, "data", "3_goodreads_reviews_dedup_clean.parquet")
     df_clean.sink_parquet(output_path)
     return ()
 
