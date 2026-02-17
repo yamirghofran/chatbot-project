@@ -4,6 +4,7 @@ import {
   mockBooks,
   mockStaffPicks,
   mockActivity,
+  mockManyLists,
   mockLists,
 } from "@/lib/mockData";
 
@@ -15,6 +16,7 @@ function Home() {
   return (
     <DiscoveryPage
       books={mockBooks}
+      userLists={mockManyLists}
       staffPicks={mockStaffPicks}
       activity={mockActivity}
       trendingLists={mockLists}

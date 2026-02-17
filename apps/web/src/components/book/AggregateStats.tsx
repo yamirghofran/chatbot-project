@@ -1,5 +1,6 @@
-import { Heart, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import type { BookStats } from "@/lib/types";
+import { TurtleShellIcon } from "@/components/icons/TurtleShellIcon";
 
 export type AggregateStatsProps = {
   stats: BookStats;
@@ -16,8 +17,8 @@ export function AggregateStats({ stats }: AggregateStatsProps) {
         <span className="font-medium text-foreground">{stats.ratingCount}</span> ratings
       </span>
       <span className="flex items-center gap-1">
-        <Heart className="size-3.5 text-red-500 fill-red-500" />
-        <span className="font-medium text-foreground">{stats.loveCount}</span>
+        <TurtleShellIcon className="size-3.5 text-primary" />
+        <span className="font-medium text-foreground">{stats.shellCount}</span>
       </span>
     </div>
   );

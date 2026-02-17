@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { BookRow } from "./BookRow";
 import { Separator } from "@/components/ui/separator";
-import { mockBooks } from "@/lib/mockData";
+import { mockBooks, mockManyLists } from "@/lib/mockData";
 
 const meta = {
   title: "Book/BookRow",
@@ -25,13 +25,16 @@ export const Compact: Story = {
 export const WithActions: Story = {
   args: {
     showActions: true,
+    listOptions: mockManyLists,
   },
 };
 
-export const Loved: Story = {
+export const Shelled: Story = {
   args: {
     showActions: true,
-    isLoved: true,
+    isShelled: true,
+    listOptions: mockManyLists,
+    selectedListIds: [mockManyLists[0].id, mockManyLists[5].id],
   },
 };
 
@@ -41,9 +44,22 @@ export const InList: Story = {
       {mockBooks.slice(0, 5).map((book, i) => (
         <div key={book.id}>
           {i > 0 && <Separator />}
-          <BookRow book={book} showActions />
+          <BookRow
+            book={book}
+            showActions
+            listOptions={mockManyLists}
+            selectedListIds={i % 2 === 0 ? [mockManyLists[0].id] : [mockManyLists[8].id]}
+          />
         </div>
       ))}
     </div>
   ),
+};
+
+export const DiscoveryActions: Story = {
+  args: {
+    showActions: true,
+    primaryAction: "amazon",
+    listOptions: mockManyLists,
+  },
 };

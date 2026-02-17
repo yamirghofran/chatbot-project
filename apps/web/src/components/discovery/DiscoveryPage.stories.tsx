@@ -4,6 +4,7 @@ import {
   mockBooks,
   mockStaffPicks,
   mockActivity,
+  mockManyLists,
   mockLists,
 } from "@/lib/mockData";
 
@@ -12,6 +13,7 @@ const meta = {
   component: DiscoveryPage,
   args: {
     books: mockBooks,
+    userLists: mockManyLists,
     staffPicks: mockStaffPicks,
     activity: mockActivity,
     trendingLists: mockLists,

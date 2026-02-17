@@ -4,6 +4,7 @@ import { DiscoveryPage } from "@/components/discovery/DiscoveryPage";
 import {
   mockActivity,
   mockBooks,
+  mockManyLists,
   mockLists,
   mockStaffPicks,
   mockUser,
@@ -21,6 +22,7 @@ const meta = {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <DiscoveryPage
           books={mockBooks}
+          userLists={mockManyLists}
           staffPicks={mockStaffPicks}
           activity={mockActivity}
           trendingLists={mockLists}

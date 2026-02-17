@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import type { Book, List, ActivityItem } from "@/lib/types";
 import { BookRow } from "@/components/book/BookRow";
 import { Separator } from "@/components/ui/separator";
@@ -9,6 +10,7 @@ import { TrendingLists } from "./TrendingLists";
 
 export type DiscoveryPageProps = {
   books: Book[];
+  userLists?: List[];
   staffPicks?: Book[];
   activity?: ActivityItem[];
   trendingLists?: List[];
@@ -16,10 +18,58 @@ export type DiscoveryPageProps = {
 
 export function DiscoveryPage({
   books,
+  userLists = [],
   staffPicks = [],
   activity = [],
   trendingLists = [],
 }: DiscoveryPageProps) {
+  const [lists, setLists] = useState<List[]>(userLists);
+  const nextListIdRef = useRef(userLists.length + 1);
+
+  function selectedListIdsForBook(bookId: string) {
+    return lists
+      .filter((list) => list.books.some((listBook) => listBook.id === bookId))
+      .map((list) => list.id);
+  }
+
+  function handleToggleBookInList(
+    book: Book,
+    listId: string,
+    nextSelected: boolean,
+  ) {
+    setLists((prevLists) =>
+      prevLists.map((list) => {
+        if (list.id !== listId) return list;
+        const hasBook = list.books.some((b) => b.id === book.id);
+        if (nextSelected && !hasBook) {
+          return { ...list, books: [...list.books, book] };
+        }
+        if (!nextSelected && hasBook) {
+          return { ...list, books: list.books.filter((b) => b.id !== book.id) };
+        }
+        return list;
+      }),
+    );
+  }
+
+  function handleCreateListForBook(book: Book, name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    const newList: List = {
+      id: `l-local-${nextListIdRef.current++}`,
+      name: trimmedName,
+      owner: {
+        id: "me",
+        handle: "me",
+        displayName: "You",
+      },
+      books: [book],
+    };
+
+    setLists((prevLists) => [newList, ...prevLists]);
+  }
+
   return (
     <div>
       <div className="flex gap-8 items-start">
@@ -40,7 +90,7 @@ export function DiscoveryPage({
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" type="button">
                   <BookPlus className="mr-1" />
-                  Track a book
+                  Find a book
                 </Button>
                 <Button size="sm" variant="outline" type="button">
                   <ListPlus className="mr-1" />
@@ -56,7 +106,18 @@ export function DiscoveryPage({
             {books.map((book, i) => (
               <div key={book.id}>
                 {i > 0 && <Separator />}
-                <BookRow book={book} showActions />
+                <BookRow
+                  book={book}
+                  showActions
+                  descriptionMode="preview"
+                  primaryAction="amazon"
+                  listOptions={lists}
+                  selectedListIds={selectedListIdsForBook(book.id)}
+                  onToggleList={(listId, nextSelected) =>
+                    handleToggleBookInList(book, listId, nextSelected)
+                  }
+                  onCreateList={(name) => handleCreateListForBook(book, name)}
+                />
               </div>
             ))}
           </div>

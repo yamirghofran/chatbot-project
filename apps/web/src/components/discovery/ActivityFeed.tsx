@@ -1,7 +1,8 @@
-import { Heart, ListPlus, Star } from "lucide-react";
+import { ListPlus, Star } from "lucide-react";
 import type { ActivityItem } from "@/lib/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { TurtleShellIcon } from "@/components/icons/TurtleShellIcon";
 
 export type ActivityFeedProps = {
   items: ActivityItem[];
@@ -20,8 +21,8 @@ function ActivityIcon({ type }: { type: ActivityItem["type"] }) {
   switch (type) {
     case "rating":
       return <Star className="size-3.5 text-[#FFCC00] fill-[#FFCC00] shrink-0" />;
-    case "love":
-      return <Heart className="size-3.5 text-red-500 fill-red-500 shrink-0" />;
+    case "shell_add":
+      return <TurtleShellIcon className="size-3.5 text-primary shrink-0" />;
     case "list_add":
       return <ListPlus className="size-3.5 text-muted-foreground shrink-0" />;
   }
@@ -36,10 +37,10 @@ function ActivityDescription({ item }: { item: ActivityItem }) {
           {item.rating} stars
         </>
       );
-    case "love":
+    case "shell_add":
       return (
         <>
-          loved <span className="font-medium text-foreground">{item.book.title}</span>
+          added <span className="font-medium text-foreground">{item.book.title}</span> to their shell
         </>
       );
     case "list_add":

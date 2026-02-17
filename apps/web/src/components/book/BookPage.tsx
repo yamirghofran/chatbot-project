@@ -1,5 +1,19 @@
-import type { Book, BookStats, ActivityItem, Review, User } from "@/lib/types";
-import type { RatingPickerProps } from "./RatingPicker";
+import { ListPlus } from "lucide-react";
+import type {
+  Book,
+  BookStats,
+  ActivityItem,
+  Review,
+  User,
+  List,
+} from "@/lib/types";
+import {
+  RatingPicker,
+  type RatingPickerProps,
+} from "@/components/icons/RatingPicker";
+import { TurtleShellIcon } from "@/components/icons/TurtleShellIcon";
+import { AddToListMenu } from "@/components/list/AddToListMenu";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BookHero } from "./BookHero";
 import { BookRow } from "./BookRow";
@@ -11,9 +25,13 @@ export type BookPageProps = {
   relatedBooks?: Book[];
   rating?: RatingPickerProps["value"];
   onRatingChange?: RatingPickerProps["onChange"];
-  isLoved?: boolean;
-  onLoveToggle?: () => void;
+  isShelled?: boolean;
+  onShellToggle?: () => void;
   onAddToList?: () => void;
+  listOptions?: List[];
+  selectedListIds?: string[];
+  onToggleList?: (listId: string, nextSelected: boolean) => void;
+  onCreateList?: (name: string) => void;
   stats?: BookStats;
   friendActivity?: ActivityItem[];
   reviews?: Review[];
@@ -29,9 +47,13 @@ export function BookPage({
   relatedBooks = [],
   rating,
   onRatingChange,
-  isLoved,
-  onLoveToggle,
+  isShelled,
+  onShellToggle,
   onAddToList,
+  listOptions,
+  selectedListIds,
+  onToggleList,
+  onCreateList,
   stats,
   friendActivity,
   reviews,
@@ -42,26 +64,95 @@ export function BookPage({
   onReply,
 }: BookPageProps) {
   return (
-    <div>
-      <BookHero
-        book={book}
-        rating={rating}
-        onRatingChange={onRatingChange}
-        isLoved={isLoved}
-        onLoveToggle={onLoveToggle}
-        onAddToList={onAddToList}
-        stats={stats}
-      />
+    <div className="grid grid-cols-[1fr_4fr] gap-8">
+      <div className="sticky top-6 self-start">
+        <img
+          src={book.coverUrl}
+          alt={`Cover of ${book.title}`}
+          className="w-full aspect-[2/3] rounded-sm object-cover"
+        />
+        <div className="flex flex-col items-center gap-2 mt-3">
+          <div className="flex items-center gap-1">
+            <RatingPicker value={rating} onChange={onRatingChange} />
+          </div>
+          <Separator className="my-1 w-full" />
+          <Button
+            type="button"
+            variant={isShelled ? "secondary" : "default"}
+            size="sm"
+            className="w-full"
+            onClick={onShellToggle}
+          >
+            <TurtleShellIcon className="size-6" filled={isShelled} />
+            {isShelled ? "In shell" : "Add to shell"}
+          </Button>
+          {listOptions ? (
+            <AddToListMenu
+              lists={listOptions.map((list) => ({
+                id: list.id,
+                name: list.name,
+                bookCount: list.books.length,
+              }))}
+              selectedListIds={selectedListIds}
+              onToggleList={onToggleList}
+              onCreateList={onCreateList}
+              className="w-full"
+              trigger={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  <ListPlus className="size-4" />
+                  Add to list
+                </Button>
+              }
+            />
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={onAddToList}
+            >
+              <ListPlus className="size-4" />
+              Add to list
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {(friendActivity?.length || relatedBooks.length > 0) && (
-        <>
-          <Separator className="my-6" />
-          {friendActivity?.length && relatedBooks.length > 0 ? (
-            <div className="grid grid-cols-2 gap-8">
+      <div>
+        <BookHero book={book} stats={stats} />
+
+        {(friendActivity?.length || relatedBooks.length > 0) && (
+          <>
+            <Separator className="my-6" />
+            {friendActivity?.length && relatedBooks.length > 0 ? (
+              <div className="grid grid-cols-2 gap-8">
+                <FriendActivity items={friendActivity} />
+                <div>
+                  <h2 className="font-heading text-lg font-semibold mb-2">
+                    Similar
+                  </h2>
+                  <div>
+                    {relatedBooks.map((b, i) => (
+                      <div key={b.id}>
+                        {i > 0 && <Separator />}
+                        <BookRow book={b} variant="compact" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : friendActivity?.length ? (
               <FriendActivity items={friendActivity} />
-              <div>
+            ) : (
+              <>
                 <h2 className="font-heading text-lg font-semibold mb-2">
-                  Similar
+                  Related
                 </h2>
                 <div>
                   {relatedBooks.map((b, i) => (
@@ -71,41 +162,25 @@ export function BookPage({
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          ) : friendActivity?.length ? (
-            <FriendActivity items={friendActivity} />
-          ) : (
-            <>
-              <h2 className="font-heading text-lg font-semibold mb-2">
-                Related
-              </h2>
-              <div>
-                {relatedBooks.map((b, i) => (
-                  <div key={b.id}>
-                    {i > 0 && <Separator />}
-                    <BookRow book={b} variant="compact" />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
+              </>
+            )}
+          </>
+        )}
 
-      {reviews && (
-        <>
-          <Separator className="my-6" />
-          <ReviewList
-            reviews={reviews}
-            currentUser={currentUser}
-            onPostReview={onPostReview}
-            onLikeReview={onLikeReview}
-            onLikeReply={onLikeReply}
-            onReply={onReply}
-          />
-        </>
-      )}
+        {reviews && (
+          <>
+            <Separator className="my-6" />
+            <ReviewList
+              reviews={reviews}
+              currentUser={currentUser}
+              onPostReview={onPostReview}
+              onLikeReview={onLikeReview}
+              onLikeReply={onLikeReply}
+              onReply={onReply}
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 }

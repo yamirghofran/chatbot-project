@@ -31,7 +31,7 @@ export type RatedBook = {
 export type ActivityItem = {
   id: string;
   user: User;
-  type: "rating" | "love" | "list_add";
+  type: "rating" | "shell_add" | "list_add";
   book: Book;
   rating?: number;
   listName?: string;
@@ -41,7 +41,7 @@ export type ActivityItem = {
 export type BookStats = {
   averageRating: number;
   ratingCount: number;
-  loveCount: number;
+  shellCount: number;
 };
 
 export type Review = {

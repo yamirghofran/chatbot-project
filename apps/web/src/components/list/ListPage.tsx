@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GripVertical, X, Pencil, Check, List as ListIcon, LayoutGrid } from "lucide-react";
+import { GripVertical, X, Pencil, Check, List as ListIcon, LayoutGrid, Trash2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -18,10 +18,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Book, List } from "@/lib/types";
-import { BookRow } from "@/components/book/BookRow";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
+import { ListBookRow } from "@/components/list/ListBookRow";
 import {
   Avatar,
   AvatarFallback,
@@ -39,6 +39,7 @@ export type ListPageProps = {
   onAddBook?: (book: Book) => void;
   onUpdateName?: (name: string) => void;
   onUpdateDescription?: (description: string) => void;
+  onDeleteList?: () => void;
 };
 
 function SortableBookRow({
@@ -79,7 +80,7 @@ function SortableBookRow({
         </button>
       )}
       <div className="flex-1 min-w-0">
-        <BookRow book={book} />
+        <ListBookRow book={book} compact />
       </div>
       {isEditing && (
         <button
@@ -103,6 +104,7 @@ export function ListPage({
   onRemoveBook,
   onUpdateName,
   onUpdateDescription,
+  onDeleteList,
 }: ListPageProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -309,12 +311,12 @@ export function ListPage({
       ) : (
         <div>
           {list.books.map((book, i) => (
-            <div key={book.id}>
-              {i > 0 && <Separator />}
-              <BookRow book={book} />
-            </div>
-          ))}
-        </div>
+              <div key={book.id}>
+                {i > 0 && <Separator />}
+                <ListBookRow book={book} />
+              </div>
+            ))}
+          </div>
       )}
 
       {/* Add book stub (edit mode only) */}
@@ -323,6 +325,17 @@ export function ListPage({
           <Separator className="mb-4" />
           <div className="flex items-center gap-2 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
             Add a book…
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={onDeleteList}
+            >
+              <Trash2 className="size-4" />
+              Delete list
+            </Button>
           </div>
         </div>
       )}

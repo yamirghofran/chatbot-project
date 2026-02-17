@@ -24,7 +24,7 @@ export function RatedBookRow({ ratedBook }: { ratedBook: RatedBook }) {
   return (
     <div className="flex items-center">
       <div className="flex-1 min-w-0">
-        <BookRow book={ratedBook.book} />
+        <BookRow book={ratedBook.book} descriptionMode="none" />
       </div>
       <StarRating rating={ratedBook.rating} />
     </div>

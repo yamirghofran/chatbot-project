@@ -142,7 +142,7 @@ export const mockFriends: User[] = [
 export const mockLists: List[] = [
   {
     id: "l1",
-    name: "Loved in 2025",
+    name: "Shelled in 2025",
     description: "The books that completely took over my year. Each one left a mark.",
     owner: mockUser,
     books: mockBooks.slice(0, 5),
@@ -162,19 +162,77 @@ export const mockLists: List[] = [
   },
 ];
 
+export const mockManyLists: List[] = [
+  ...mockLists,
+  {
+    id: "l4",
+    name: "Short Books I Loved",
+    owner: mockUser,
+    books: mockBooks.slice(0, 3),
+  },
+  {
+    id: "l5",
+    name: "Long Winter Reads",
+    owner: mockUser,
+    books: mockBooks.slice(2, 8),
+  },
+  {
+    id: "l6",
+    name: "Philosophy & Ideas",
+    owner: mockUser,
+    books: [mockBooks[0], mockBooks[4], mockBooks[5]],
+  },
+  {
+    id: "l7",
+    name: "Books I Recommend First",
+    owner: mockUser,
+    books: mockBooks.slice(6, 11),
+  },
+  {
+    id: "l8",
+    name: "Read Again Someday",
+    owner: mockUser,
+    books: [mockBooks[2], mockBooks[3], mockBooks[11]],
+  },
+  {
+    id: "l9",
+    name: "Brilliant Nonfiction",
+    owner: mockUser,
+    books: [mockBooks[1], mockBooks[4], mockBooks[8], mockBooks[10]],
+  },
+  {
+    id: "l10",
+    name: "Quiet Literary Novels",
+    owner: mockUser,
+    books: [mockBooks[3], mockBooks[5], mockBooks[7]],
+  },
+  {
+    id: "l11",
+    name: "Books to Discuss",
+    owner: mockUser,
+    books: mockBooks.slice(0, 6),
+  },
+  {
+    id: "l12",
+    name: "All-time Comfort Reads",
+    owner: mockUser,
+    books: [mockBooks[0], mockBooks[2], mockBooks[9]],
+  },
+];
+
 export const mockActivity: ActivityItem[] = [
   {
     id: "a1",
     user: mockFriends[0],
     type: "rating",
     book: mockBooks[1],
-    rating: 4.5,
+    rating: 5,
     timestamp: "2h ago",
   },
   {
     id: "a2",
     user: mockFriends[1],
-    type: "love",
+    type: "shell_add",
     book: mockBooks[11],
     timestamp: "5h ago",
   },
@@ -189,7 +247,7 @@ export const mockActivity: ActivityItem[] = [
   {
     id: "a4",
     user: mockFriends[0],
-    type: "love",
+    type: "shell_add",
     book: mockBooks[3],
     timestamp: "1d ago",
   },
@@ -207,7 +265,7 @@ export const mockRatedBooks: RatedBook[] = [
   { book: mockBooks[0], rating: 5, ratedAt: "2025-12-01" },
   { book: mockBooks[1], rating: 4, ratedAt: "2025-11-28" },
   { book: mockBooks[2], rating: 5, ratedAt: "2025-11-20" },
-  { book: mockBooks[3], rating: 4.5, ratedAt: "2025-11-15" },
+  { book: mockBooks[3], rating: 5, ratedAt: "2025-11-15" },
   { book: mockBooks[4], rating: 3, ratedAt: "2025-11-10" },
   { book: mockBooks[5], rating: 5, ratedAt: "2025-10-30" },
   { book: mockBooks[6], rating: 4, ratedAt: "2025-10-22" },
@@ -215,7 +273,7 @@ export const mockRatedBooks: RatedBook[] = [
   { book: mockBooks[8], rating: 3, ratedAt: "2025-10-08" },
   { book: mockBooks[9], rating: 4, ratedAt: "2025-09-25" },
   { book: mockBooks[10], rating: 2, ratedAt: "2025-09-18" },
-  { book: mockBooks[11], rating: 3.5, ratedAt: "2025-09-10" },
+  { book: mockBooks[11], rating: 4, ratedAt: "2025-09-10" },
 ];
 
 export const mockFavorites: Book[] = [
@@ -236,7 +294,7 @@ export const mockUserActivity: ActivityItem[] = [
   {
     id: "ua2",
     user: mockUser,
-    type: "love",
+    type: "shell_add",
     book: mockBooks[2],
     timestamp: "3d ago",
   },
@@ -245,7 +303,7 @@ export const mockUserActivity: ActivityItem[] = [
     user: mockUser,
     type: "list_add",
     book: mockBooks[5],
-    listName: "Loved in 2025",
+    listName: "Shelled in 2025",
     timestamp: "5d ago",
   },
   {
@@ -259,7 +317,7 @@ export const mockUserActivity: ActivityItem[] = [
   {
     id: "ua5",
     user: mockUser,
-    type: "love",
+    type: "shell_add",
     book: mockBooks[9],
     timestamp: "2w ago",
   },
@@ -277,7 +335,7 @@ export const mockStaffPicks: Book[] = [
 export const mockBookStats: BookStats = {
   averageRating: 4.3,
   ratingCount: 128,
-  loveCount: 47,
+  shellCount: 47,
 };
 
 export const mockBookActivity: ActivityItem[] = [
@@ -292,7 +350,7 @@ export const mockBookActivity: ActivityItem[] = [
   {
     id: "ba2",
     user: mockFriends[1],
-    type: "love",
+    type: "shell_add",
     book: mockBooks[0],
     timestamp: "1d ago",
   },
