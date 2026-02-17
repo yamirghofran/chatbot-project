@@ -17,7 +17,7 @@ def _():
 @app.cell
 def _(mo, os, pl):
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     )
     data_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
     df = pl.read_parquet(data_path)
@@ -234,7 +234,7 @@ def _(mo):
 @app.cell
 def _():
     # Save the final cleaned and standardized dataset to parquet
-    # output_path = os.path.join(project_root, "data", "goodreads_books_cleaned.parquet")
+    # output_path = os.path.join(project_root, "data", "1_goodreads_books_cleaned.parquet")
     # df_mapped.write_parquet(output_path)
     # mo.md(f"**Dataset saved successfully!**")
     # mo.md(f"**Location:** `{output_path}`")

@@ -27,9 +27,9 @@ def _():
 @app.cell
 def _(os, pl):
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     )
-    data_path = os.path.join(project_root, "data", "goodreads_books_cleaned.parquet")
+    data_path = os.path.join(project_root, "data", "1_goodreads_books_cleaned.parquet")
     df_cleaned = pl.read_parquet(data_path)
     return df_cleaned, project_root
 
@@ -135,7 +135,7 @@ app._unparsable_cell(
 @app.cell
 def _():
     # Save the standardized dataframe to parquet
-    # output_path = os.path.join(project_root, "data", "goodreads_books_standardized.parquet")
+    # output_path = os.path.join(project_root, "data", "2_goodreads_books_standardized.parquet")
     # df_mapped.write_parquet(output_path)
     # mo.md(f"**Saved standardized dataset to:** `{output_path}`")
     return
