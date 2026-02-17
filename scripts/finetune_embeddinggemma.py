@@ -63,7 +63,7 @@ def _check_mlflow_env() -> bool:
         logger.warning(f"Make sure .env file exists at {env_path}")
     return len(missing) == 0
 
-standardized_books_path = os.path.join(project_root, "data", "goodreads_books_with_metrics.parquet")
+standardized_books_path = os.path.join(project_root, "data", "3_goodreads_books_with_metrics.parquet")
 books_texts_path = os.path.join(project_root, "data", "books_embedding_texts.parquet")
 
 

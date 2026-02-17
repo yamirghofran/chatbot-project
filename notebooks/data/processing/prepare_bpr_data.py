@@ -42,7 +42,7 @@ def _(os, pl):
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     data_path = os.path.join(
-        project_root, "data", "goodreads_interactions_merged.parquet"
+        project_root, "data", "3_goodreads_interactions_reduced.parquet"
     )
 
     df = pl.read_parquet(data_path)
