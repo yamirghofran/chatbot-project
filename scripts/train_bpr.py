@@ -107,6 +107,7 @@ DEFAULT_CONFIG = {
     "top_k": 30,
     "remove_seen": True,
     "batch_size": 10000,  # Users to process at once
+    "model_checkpoint_path": "predictions/bpr_model_checkpoint",
 
     # Evaluation
     "top_k_values": [5, 10, 20],
@@ -360,6 +361,7 @@ def evaluate_model(
     all_items = train_df.select(DEFAULT_ITEM_COL).unique().to_series()
 
     # Calculate metrics using the evaluation module
+    logger.info("Computing evaluation metrics...")
     metrics = evaluate_recommendations(
         recommendations=recommendations,
         ground_truth=test_df,
@@ -616,6 +618,18 @@ def save_recommendations_streaming(
     return output_path_obj, total_rows
 
 
+def save_model_checkpoint(model: BPR, checkpoint_path: str) -> Path:
+    """Save a local model checkpoint that can be reused if later stages fail."""
+    checkpoint_path_obj = Path(checkpoint_path)
+    checkpoint_path_obj.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Saving local model checkpoint to {checkpoint_path_obj}")
+    model.save(checkpoint_path_obj)
+    logger.info(f"Saved local model checkpoint to {checkpoint_path_obj}")
+
+    return checkpoint_path_obj
+
+
 def _iter_user_batches(users: Iterable[str], batch_size: int) -> Iterator[list[str]]:
     """Yield user IDs in fixed-size batches without materializing all users at once."""
     if batch_size <= 0:
@@ -683,7 +697,33 @@ def main(config: dict) -> Tuple[BPR, str, Dict[str, float], str]:
     # Train model on training data
     model, training_time = train_bpr_model(train_df, config)
 
+    checkpoint_start_time = time.time()
+    checkpoint_path = save_model_checkpoint(
+        model=model,
+        checkpoint_path=config["model_checkpoint_path"],
+    )
+    checkpoint_time = time.time() - checkpoint_start_time
+    logger.info(
+        f"Model checkpoint save completed in {checkpoint_time:.2f} seconds "
+        f"({checkpoint_path})"
+    )
+
+    recommendations_start_time = time.time()
+    recommendations_output_path, n_recommendations = save_recommendations_streaming(
+        model=model,
+        output_path=config["output_path"],
+        top_k=config["top_k"],
+        remove_seen=config["remove_seen"],
+        batch_size=config["batch_size"],
+    )
+    recommendations_time = time.time() - recommendations_start_time
+    logger.info(
+        f"Recommendation export completed in {recommendations_time:.2f} seconds "
+        f"({n_recommendations} rows)"
+    )
+
     # Evaluate model on test data
+    evaluation_start_time = time.time()
     metrics, evaluation_recommendations = evaluate_model(
         model,
         train_df,
@@ -692,18 +732,13 @@ def main(config: dict) -> Tuple[BPR, str, Dict[str, float], str]:
         remove_seen=config["remove_seen"],
         batch_size=config["batch_size"],
     )
+    evaluation_time = time.time() - evaluation_start_time
+    logger.info(f"Evaluation completed in {evaluation_time:.2f} seconds")
     del evaluation_recommendations
     gc.collect()
 
-    recommendations_output_path, n_recommendations = save_recommendations_streaming(
-        model=model,
-        output_path=config["output_path"],
-        top_k=config["top_k"],
-        remove_seen=config["remove_seen"],
-        batch_size=config["batch_size"],
-    )
-
     # Log to MLFlow
+    mlflow_start_time = time.time()
     run_name = f"bpr_f{config['factors']}_i{config['iterations']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_id = log_to_mlflow(
         model,
@@ -716,6 +751,8 @@ def main(config: dict) -> Tuple[BPR, str, Dict[str, float], str]:
         n_recommendations,
         run_name=run_name,
     )
+    mlflow_time = time.time() - mlflow_start_time
+    logger.info(f"MLflow logging completed in {mlflow_time:.2f} seconds")
 
     del train_df, test_df
     gc.collect()
@@ -780,6 +817,12 @@ def parse_args():
         help="Number of users to process at once (memory vs speed tradeoff)",
     )
     parser.add_argument(
+        "--model-checkpoint-path",
+        type=str,
+        default=None,
+        help="Path to save local model checkpoint before evaluation",
+    )
+    parser.add_argument(
         "--keep-seen",
         action="store_true",
         help="Keep items already seen by user in recommendations",
@@ -840,6 +883,8 @@ if __name__ == "__main__":
         config["top_k"] = args.top_k
     if args.batch_size:
         config["batch_size"] = args.batch_size
+    if args.model_checkpoint_path:
+        config["model_checkpoint_path"] = args.model_checkpoint_path
     if args.keep_seen:
         config["remove_seen"] = False
     if args.num_threads is not None:
