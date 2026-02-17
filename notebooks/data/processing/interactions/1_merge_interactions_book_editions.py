@@ -30,7 +30,7 @@ def _(mo):
 
 @app.cell
 def _(json, mo, os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_dir = os.path.join(project_root, "data")
 
     with open(os.path.join(data_dir, "best_book_id_map.json")) as f:
@@ -91,7 +91,7 @@ def _(json, mo, os, pl):
 @app.cell
 def _(data_dir, lookup_df, mo, os, pl):
     _input = os.path.join(data_dir, "raw_goodreads_interactions.parquet")
-    _output = os.path.join(data_dir, "goodreads_interactions_merged.parquet")
+    _output = os.path.join(data_dir, "1_goodreads_interactions_merged.parquet")
 
     _lf = pl.scan_parquet(_input)
     _n_in = _lf.select(pl.len()).collect().item()
@@ -121,7 +121,7 @@ def _(data_dir, lookup_df, mo, os, pl):
 @app.cell
 def _(book_id_map, data_dir, lookup_df, mo, os, pl, user_id_map):
     _input = os.path.join(data_dir, "raw_goodreads_interactions_dedup.parquet")
-    _output = os.path.join(data_dir, "goodreads_interactions_dedup_merged.parquet")
+    _output = os.path.join(data_dir, "1_goodreads_interactions_dedup_merged.parquet")
 
     _lf = pl.scan_parquet(_input)
     _n_in = _lf.select(pl.len()).collect().item()

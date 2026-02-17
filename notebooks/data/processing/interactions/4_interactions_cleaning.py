@@ -27,10 +27,10 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_dir = os.path.join(project_root, "data")
 
-    interactions_path = os.path.join(data_dir, "goodreads_interactions_reduced.parquet")
+    interactions_path = os.path.join(data_dir, "3_goodreads_interactions_reduced.parquet")
     interactions_lf = pl.scan_parquet(interactions_path)
 
     total_rows = interactions_lf.select(pl.len()).collect().item()
@@ -133,7 +133,7 @@ def _(interactions_lf, mo, pl, total_rows):
     - **Total reviewed**: {_total_reviewed:,} ({_total_reviewed / total_rows * 100:.2f}%)
     - **is_reviewed=1 AND is_read=0** (reviewed but not read): {_reviewed_not_read:,} {"- suspicious!" if _reviewed_not_read > 0 else ""}
 
-    {"All consistent! Every reviewed book is marked as read." if _reviewed_not_read == 0 else f"Found {_reviewed_not_read:,} inconsistencies - users reviewed books without marking as read."}
+    {"All consistent! Every reviewed book is marked as read." if _reviewed_not_read == 0 else f"Found {_reviewed_not_read:,} inconsistencie."}
     """)
     return
 
@@ -213,8 +213,8 @@ def _(data_dir, interactions_lf, mo, os, pl):
     import time as _time
 
     _now_ts = int(_time.time())
-    _out_path = os.path.join(data_dir, "goodreads_interactions_reduced.parquet")
-    _tmp_path = os.path.join(data_dir, "goodreads_interactions_reduced_tmp.parquet")
+    _out_path = os.path.join(data_dir, "3_goodreads_interactions_reduced.parquet")
+    _tmp_path = os.path.join(data_dir, "4_goodreads_interactions_reduced_tmp.parquet")
 
     _clipped = interactions_lf.with_columns(
         pl.when(pl.col("timestamp") > _now_ts)

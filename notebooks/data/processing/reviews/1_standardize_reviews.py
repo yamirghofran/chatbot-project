@@ -27,7 +27,7 @@ def _(mo):
 
 @app.cell
 def _(json, mo, os, pl):
-    _project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
+    _project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_dir = os.path.join(_project_root, "data")
 
     book_id_map = pl.read_parquet(os.path.join(data_dir, "raw_book_id_map.parquet"))
@@ -116,7 +116,7 @@ def _(mo, user_id_map):
 def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     # Process raw_goodreads_reviews_dedup.parquet
     _input_path = os.path.join(data_dir, "raw_goodreads_reviews_dedup.parquet")
-    _output_path = os.path.join(data_dir, "goodreads_reviews_dedup_merged.parquet")
+    _output_path = os.path.join(data_dir, "1_goodreads_reviews_dedup_merged.parquet")
 
     _lf = pl.scan_parquet(_input_path)
     _n_in = _lf.select(pl.len()).collect().item()
@@ -189,7 +189,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
 def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
     # Process raw_goodreads_reviews_spoiler.parquet
     _input_path = os.path.join(data_dir, "raw_goodreads_reviews_spoiler.parquet")
-    _output_path = os.path.join(data_dir, "goodreads_reviews_spoiler_merged.parquet")
+    _output_path = os.path.join(data_dir, "1_goodreads_reviews_spoiler_merged.parquet")
 
     _lf = pl.scan_parquet(_input_path)
     _n_in = _lf.select(pl.len()).collect().item()
@@ -258,7 +258,7 @@ def _(book_edition_lookup, book_id_map, data_dir, mo, os, pl, user_id_map):
 def _(data_dir, mo, os, pl):
     # Summary: compare input vs output schemas
     _dedup_in = pl.read_parquet(os.path.join(data_dir, "raw_goodreads_reviews_dedup.parquet"), n_rows=1)
-    _dedup_out = pl.read_parquet(os.path.join(data_dir, "goodreads_reviews_dedup_merged.parquet"), n_rows=1)
+    _dedup_out = pl.read_parquet(os.path.join(data_dir, "1_goodreads_reviews_dedup_merged.parquet"), n_rows=1)
 
     mo.md(f"""
     ### Schema comparison (reviews_dedup)

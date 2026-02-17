@@ -33,12 +33,12 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_dir = os.path.join(project_root, "data")
 
-    merged_path = os.path.join(data_dir, "goodreads_interactions_merged.parquet")
-    dedup_path = os.path.join(data_dir, "goodreads_interactions_dedup_merged.parquet")
-    output_path = os.path.join(data_dir, "goodreads_interactions_merged_timestamps.parquet")
+    merged_path = os.path.join(data_dir, "1_goodreads_interactions_merged.parquet")
+    dedup_path = os.path.join(data_dir, "1_goodreads_interactions_dedup_merged.parquet")
+    output_path = os.path.join(data_dir, "2_goodreads_interactions_merged_timestamps.parquet")
     temp_dir = os.path.join(data_dir, "temp_chunks")
 
     # Create temp directory for chunks
@@ -182,7 +182,7 @@ def _(chunk_files, mo, output_path, pl):
     mo.md(f"""
     **Final merge complete!**
 
-    Output: `goodreads_interactions_merged_timestamps.parquet`
+    Output: `2_goodreads_interactions_merged_timestamps.parquet`
     Final row count: {final_count:,}
     """)
     return all_chunks, final_count, final_lf
