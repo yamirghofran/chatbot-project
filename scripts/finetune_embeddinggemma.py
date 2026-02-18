@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import argparse
 import gc
+import inspect
 import json
 import logging
-import math
 import os
 import random
 import sys
 import time
 import urllib.parse
 import urllib.request
-from collections import defaultdict, deque
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -20,10 +20,31 @@ import mlflow
 import numpy as np
 import polars as pl
 import torch
+from datasets import Dataset
 from dotenv import load_dotenv
 from huggingface_hub import login
-from sentence_transformers import InputExample, SentenceTransformer, losses
-from torch.utils.data import DataLoader, Dataset, Sampler
+from sentence_transformers import (
+    SentenceTransformer,
+    SentenceTransformerTrainer,
+    SentenceTransformerTrainingArguments,
+    losses,
+)
+from sentence_transformers.evaluation import InformationRetrievalEvaluator
+from sentence_transformers.training_args import BatchSamplers
+
+try:
+    from unsloth import FastSentenceTransformer, is_bf16_supported
+
+    UNSLOTH_AVAILABLE = True
+    UNSLOTH_IMPORT_ERROR: Optional[Exception] = None
+except Exception as exc:
+    FastSentenceTransformer = None
+
+    def is_bf16_supported() -> bool:
+        return False
+
+    UNSLOTH_AVAILABLE = False
+    UNSLOTH_IMPORT_ERROR = exc
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -64,58 +85,18 @@ def _check_mlflow_env() -> bool:
         logger.warning(f"Make sure .env file exists at {env_path}")
     return len(missing) == 0
 
-standardized_books_path = os.path.join(project_root, "data", "3_goodreads_books_with_metrics.parquet")
+standardized_books_path = os.path.join(
+    project_root, "data", "3_goodreads_books_with_metrics.parquet"
+)
 books_texts_path = os.path.join(project_root, "data", "books_embedding_texts.parquet")
-
-
-class PairDataset(Dataset):
-    def __init__(self, pairs_df: pl.DataFrame) -> None:
-        self.examples = [
-            InputExample(texts=[anchor, positive])
-            for anchor, positive in pairs_df.select(
-                ["anchor_text", "positive_text"]
-            ).iter_rows()
-        ]
-
-    def __len__(self) -> int:
-        return len(self.examples)
-
-    def __getitem__(self, idx: int) -> InputExample:
-        return self.examples[idx]
-
-
-class ComponentBatchSampler(Sampler[list[int]]):
-    def __init__(self, component_ids: list[int], batch_size: int, seed: int) -> None:
-        self.batch_size = batch_size
-        self.seed = seed
-        self.component_to_indices: dict[int, list[int]] = defaultdict(list)
-        for idx, component_id in enumerate(component_ids):
-            self.component_to_indices[component_id].append(idx)
-        self.num_examples = len(component_ids)
-
-    def __iter__(self):
-        rng = random.Random(self.seed)
-        pools: dict[int, deque[int]] = {}
-        for component_id, indices in self.component_to_indices.items():
-            shuffled = list(indices)
-            rng.shuffle(shuffled)
-            pools[component_id] = deque(shuffled)
-
-        active_components = [cid for cid, q in pools.items() if len(q) > 0]
-        while active_components:
-            rng.shuffle(active_components)
-            selected_components = active_components[: self.batch_size]
-            batch = [pools[cid].popleft() for cid in selected_components]
-            yield batch
-            active_components = [cid for cid in active_components if len(pools[cid]) > 0]
-
-    def __len__(self) -> int:
-        return math.ceil(self.num_examples / self.batch_size)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Finetune google/embeddinggemma-300m with component-safe MNRL batching."
+        description=(
+            "Finetune embedding models with Unsloth + SentenceTransformers "
+            "MultipleNegativesRankingLoss."
+        )
     )
 
     parser.add_argument("--raw-books-source", default=standardized_books_path)
@@ -145,13 +126,63 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=-1,
+        help="Max optimizer steps (-1 uses full epochs).",
+    )
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--warmup-ratio", type=float, default=10.0)
+    parser.add_argument("--logging-steps", type=int, default=10)
+    parser.add_argument("--eval-steps", type=int, default=50)
+    parser.add_argument("--save-steps", type=int, default=200)
+    parser.add_argument("--save-total-limit", type=int, default=2)
+    parser.add_argument("--lr-scheduler-type", default="linear")
     parser.add_argument("--max-seq-length", type=int, default=512)
     parser.add_argument(
         "--gradient-checkpointing",
         action=argparse.BooleanOptionalAction,
         default=True,
+    )
+    parser.add_argument(
+        "--gradient-checkpointing-mode",
+        default="unsloth",
+        choices=["unsloth", "torch"],
+        help='Checkpointing backend when enabled. "unsloth" is most memory efficient.',
+    )
+    parser.add_argument(
+        "--full-finetuning",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Train full model params instead of LoRA adapters.",
+    )
+    parser.add_argument("--lora-r", type=int, default=32)
+    parser.add_argument("--lora-alpha", type=int, default=64)
+    parser.add_argument("--lora-dropout", type=float, default=0.0)
+    parser.add_argument("--lora-bias", default="none")
+    parser.add_argument(
+        "--lora-target-modules",
+        default="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+        help="Comma-separated target module names for LoRA.",
+    )
+    parser.add_argument(
+        "--use-rslora",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--lora-random-state", type=int, default=3407)
+    parser.add_argument(
+        "--save-merged-16bit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Save merged 16-bit model artifact for deployment.",
+    )
+    parser.add_argument(
+        "--merged-save-method",
+        default="merged_16bit",
+        help="Unsloth merged save method (for save_pretrained_merged).",
     )
     parser.add_argument("--num-workers", type=int, default=-1)
 
@@ -243,35 +274,35 @@ def detect_runtime(num_workers_arg: int) -> dict[str, object]:
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
-        use_amp = True
         pin_memory = True
         prefetch_factor = 4
         auto_workers = min(16, os.cpu_count() or 1)
         eval_batch_size = 256
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         device = "mps"
-        use_amp = False
         pin_memory = False
         prefetch_factor = 2
         auto_workers = 0
         eval_batch_size = 64
     else:
         device = "cpu"
-        use_amp = False
         pin_memory = False
         prefetch_factor = 2
         auto_workers = min(8, os.cpu_count() or 1)
         eval_batch_size = 64
 
     num_workers = auto_workers if num_workers_arg < 0 else num_workers_arg
+    bf16 = device == "cuda" and bool(is_bf16_supported())
+    fp16 = device == "cuda" and not bf16
 
     return {
         "device": device,
-        "use_amp": use_amp,
         "pin_memory": pin_memory,
         "prefetch_factor": prefetch_factor,
         "num_workers": num_workers,
         "default_eval_batch_size": eval_batch_size,
+        "bf16": bf16,
+        "fp16": fp16,
     }
 
 
@@ -562,14 +593,43 @@ def build_eval_graph(
     return eval_candidate_ids, eval_neighbors_by_id, eval_text_by_id
 
 
+def build_ir_evaluator(
+    candidate_ids: list[str],
+    neighbors_by_id: dict[str, set[str]],
+    text_by_id: dict[str, str],
+    batch_size: int,
+) -> Optional[InformationRetrievalEvaluator]:
+    if not candidate_ids:
+        return None
+
+    candidate_set = set(candidate_ids)
+    queries = {book_id: text_by_id[book_id] for book_id in candidate_ids}
+    corpus = dict(queries)
+    relevant_docs = {
+        book_id: sorted(neighbors_by_id[book_id].intersection(candidate_set))
+        for book_id in candidate_ids
+    }
+    relevant_docs = {k: v for k, v in relevant_docs.items() if v}
+    if not relevant_docs:
+        return None
+
+    return InformationRetrievalEvaluator(
+        queries=queries,
+        corpus=corpus,
+        relevant_docs=relevant_docs,
+        show_progress_bar=False,
+        batch_size=batch_size,
+        name="validation_ir",
+    )
+
+
 def evaluate_retrieval_model(
-    model_name_or_path: str | Path,
+    model: SentenceTransformer,
     candidate_ids: list[str],
     neighbors_by_id: dict[str, set[str]],
     text_by_id: dict[str, str],
     max_queries: int,
     k: int,
-    device: str,
     encode_batch_size: int,
     query_batch_size: int,
     similarity_matrix_mb: int,
@@ -588,41 +648,11 @@ def evaluate_retrieval_model(
             "hit_rate_at_k": 0.0,
         }
 
-    def cleanup_eval_device() -> None:
-        if str(device).startswith("cuda") and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        if str(device) == "mps" and hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
-            torch.mps.empty_cache()
-
-    model: Optional[SentenceTransformer] = None
     corpus_embeddings: Optional[np.ndarray] = None
     similarities: Optional[np.ndarray] = None
     top_indices: Optional[np.ndarray] = None
 
     try:
-        # Some tokenizer versions cannot apply fix_mistral_regex on locally saved models.
-        # Try with the fix first, then fall back to a standard load if patching fails.
-        try:
-            model = SentenceTransformer(
-                str(model_name_or_path),
-                device=device,
-                tokenizer_kwargs={"fix_mistral_regex": True},
-            )
-        except TypeError as exc:
-            error_text = str(exc)
-            if (
-                "pre_tokenizers.Split" in error_text
-                or "does not support item assignment" in error_text
-            ):
-                logger.warning(
-                    "Tokenizer regex patch is incompatible with this environment "
-                    "(transformers/tokenizers). Retrying model load without "
-                    "fix_mistral_regex."
-                )
-                model = SentenceTransformer(str(model_name_or_path), device=device)
-            else:
-                raise
-
         corpus_ids = list(candidate_ids)
         if not corpus_ids:
             return empty_metrics(corpus_size=0)
@@ -781,12 +811,10 @@ def evaluate_retrieval_model(
             "hit_rate_at_k": float(hit_rate_hits / evaluated_queries),
         }
     finally:
-        model = None
         corpus_embeddings = None
         similarities = None
         top_indices = None
         gc.collect()
-        cleanup_eval_device()
 
 
 def log_to_mlflow(
@@ -797,6 +825,7 @@ def log_to_mlflow(
     finetuned_metrics: Optional[Dict[str, float]],
     baseline_metrics: Optional[Dict[str, float]],
     output_path: Path,
+    trainer_metrics: Optional[Dict[str, float]] = None,
     dataset_paths: Optional[list[Path]] = None,
     run_name: Optional[str] = None,
 ) -> str:
@@ -825,16 +854,32 @@ def log_to_mlflow(
 
     with mlflow.start_run(run_name=run_name):
         # Log model hyperparameters
-        mlflow.log_params({
-            "model_name": args.model_name,
-            "batch_size": args.batch_size,
-            "epochs": args.epochs,
-            "learning_rate": args.learning_rate,
-            "warmup_ratio": args.warmup_ratio,
-            "max_seq_length": args.max_seq_length,
-            "gradient_checkpointing": args.gradient_checkpointing,
-            "seed": args.seed,
-        })
+        mlflow.log_params(
+            {
+                "model_name": args.model_name,
+                "batch_size": args.batch_size,
+                "epochs": args.epochs,
+                "max_steps": args.max_steps,
+                "gradient_accumulation_steps": args.gradient_accumulation_steps,
+                "learning_rate": args.learning_rate,
+                "warmup_ratio": args.warmup_ratio,
+                "lr_scheduler_type": args.lr_scheduler_type,
+                "max_seq_length": args.max_seq_length,
+                "gradient_checkpointing": args.gradient_checkpointing,
+                "gradient_checkpointing_mode": args.gradient_checkpointing_mode,
+                "seed": args.seed,
+                "full_finetuning": args.full_finetuning,
+                "lora_r": args.lora_r,
+                "lora_alpha": args.lora_alpha,
+                "lora_dropout": args.lora_dropout,
+                "lora_bias": args.lora_bias,
+                "lora_target_modules": args.lora_target_modules,
+                "use_rslora": args.use_rslora,
+                "lora_random_state": args.lora_random_state,
+                "save_merged_16bit": args.save_merged_16bit,
+                "merged_save_method": args.merged_save_method,
+            }
+        )
 
         # Log data processing parameters
         mlflow.log_params({
@@ -847,36 +892,51 @@ def log_to_mlflow(
         })
 
         # Log evaluation parameters
-        mlflow.log_params({
-            "eval_max_queries": args.eval_max_queries,
-            "eval_k": args.eval_k,
-            "eval_batch_size": args.eval_batch_size,
-            "eval_query_batch_size": args.eval_query_batch_size,
-            "eval_similarity_matrix_mb": args.eval_similarity_matrix_mb,
-            "eval_baseline": args.eval_baseline,
-        })
+        mlflow.log_params(
+            {
+                "eval_max_queries": args.eval_max_queries,
+                "eval_k": args.eval_k,
+                "eval_batch_size": args.eval_batch_size,
+                "eval_query_batch_size": args.eval_query_batch_size,
+                "eval_similarity_matrix_mb": args.eval_similarity_matrix_mb,
+                "eval_baseline": args.eval_baseline,
+                "trainer_eval_steps": args.eval_steps,
+                "trainer_logging_steps": args.logging_steps,
+                "trainer_save_steps": args.save_steps,
+                "trainer_save_total_limit": args.save_total_limit,
+            }
+        )
 
         # Log runtime configuration
-        mlflow.log_params({
-            "device": runtime["device"],
-            "use_amp": runtime["use_amp"],
-            "num_workers": runtime["num_workers"],
-        })
+        mlflow.log_params(
+            {
+                "device": runtime["device"],
+                "num_workers": runtime["num_workers"],
+                "bf16": runtime["bf16"],
+                "fp16": runtime["fp16"],
+            }
+        )
 
         # Log dataset statistics
-        mlflow.log_params({
-            "candidate_pair_count": stats["candidate_pair_count"],
-            "sampled_pair_count": stats["sampled_pair_count"],
-            "component_count": stats["component_count"],
-            "train_pairs": stats["train_pairs"],
-            "val_pairs": stats["val_pairs"],
-            "train_components": stats["train_components"],
-            "val_components": stats["val_components"],
-            "selected_books_count": stats["selected_books_count"],
-        })
+        mlflow.log_params(
+            {
+                "candidate_pair_count": stats["candidate_pair_count"],
+                "sampled_pair_count": stats["sampled_pair_count"],
+                "component_count": stats["component_count"],
+                "train_pairs": stats["train_pairs"],
+                "val_pairs": stats["val_pairs"],
+                "train_components": stats["train_components"],
+                "val_components": stats["val_components"],
+                "selected_books_count": stats["selected_books_count"],
+            }
+        )
 
         # Log training time
         mlflow.log_metric("training_time_seconds", training_time)
+        if trainer_metrics:
+            for metric_name, metric_value in trainer_metrics.items():
+                if isinstance(metric_value, (int, float)):
+                    mlflow.log_metric(f"trainer_{metric_name}", float(metric_value))
 
         # Log baseline evaluation metrics if available
         if baseline_metrics:
@@ -918,8 +978,8 @@ def log_to_mlflow(
         def safe_log_artifact(
             path: Path,
             artifact_path: Optional[str] = None,
-            description: Optional[str] = None
-        ):
+            description: Optional[str] = None,
+        ) -> None:
             """Safely log an artifact, handling missing boto3 for S3 backends.
 
             Args:
@@ -948,15 +1008,35 @@ def log_to_mlflow(
                 logger.warning(f"Could not log artifact {path}: {e}")
                 logger.warning("Artifact saved locally but not uploaded to MLFlow")
 
+        def safe_log_artifact_dir(
+            path: Path,
+            artifact_path: Optional[str] = None,
+            description: Optional[str] = None,
+        ) -> None:
+            if not path.exists() or not path.is_dir():
+                logger.warning(f"Artifact directory does not exist, skipping: {path}")
+                return
+
+            artifact_label = description or str(path)
+            logger.info(
+                "Uploading artifact directory: %s to %s",
+                artifact_label,
+                artifact_path or "root",
+            )
+            try:
+                mlflow.log_artifacts(str(path), artifact_path=artifact_path)
+                logger.info("Logged artifact directory: %s", artifact_label)
+            except Exception as e:
+                logger.warning(f"Could not log artifact directory {path}: {e}")
+                logger.warning("Artifacts saved locally but not uploaded to MLFlow")
+
         # Log the saved model directory
         if output_path.exists():
-            for artifact_file in output_path.glob("*"):
-                if artifact_file.is_file():
-                    safe_log_artifact(
-                        artifact_file,
-                        artifact_path="model",
-                        description=f"model/{artifact_file.name}"
-                    )
+            safe_log_artifact_dir(
+                output_path,
+                artifact_path="model",
+                description="model_output",
+            )
 
         # Log dataset files if provided
         if dataset_paths:
@@ -974,13 +1054,24 @@ def log_to_mlflow(
             "model_name": args.model_name,
             "batch_size": args.batch_size,
             "epochs": args.epochs,
+            "max_steps": args.max_steps,
+            "gradient_accumulation_steps": args.gradient_accumulation_steps,
             "learning_rate": args.learning_rate,
             "warmup_ratio": args.warmup_ratio,
             "max_seq_length": args.max_seq_length,
             "gradient_checkpointing": args.gradient_checkpointing,
+            "gradient_checkpointing_mode": args.gradient_checkpointing_mode,
+            "full_finetuning": args.full_finetuning,
+            "lora_r": args.lora_r,
+            "lora_alpha": args.lora_alpha,
+            "lora_dropout": args.lora_dropout,
+            "lora_bias": args.lora_bias,
+            "lora_target_modules": args.lora_target_modules,
+            "use_rslora": args.use_rslora,
             "seed": args.seed,
             "device": runtime["device"],
-            "use_amp": runtime["use_amp"],
+            "bf16": runtime["bf16"],
+            "fp16": runtime["fp16"],
         }
         with open(config_path, "w") as f:
             json.dump(config_data, f, indent=2)
@@ -1021,12 +1112,14 @@ def log_to_mlflow(
         safe_log_artifact(Path(__file__), artifact_path="code", description="code/finetune_embeddinggemma.py")
 
         # Log tags
-        mlflow.set_tags({
-            "model_type": "EmbeddingGemma",
-            "framework": "sentence-transformers",
-            "training_date": datetime.now().isoformat(),
-            "device": str(runtime["device"]),
-        })
+        mlflow.set_tags(
+            {
+                "model_type": "EmbeddingGemma",
+                "framework": "unsloth+sentence-transformers",
+                "training_date": datetime.now().isoformat(),
+                "device": str(runtime["device"]),
+            }
+        )
 
         # Get run ID safely
         active_run = mlflow.active_run()
@@ -1046,6 +1139,12 @@ def log_to_mlflow(
 def main() -> None:
     # Check MLflow environment before starting
     _check_mlflow_env()
+    if not UNSLOTH_AVAILABLE:
+        raise RuntimeError(
+            "Unsloth is required but could not be imported. "
+            "Install it in this environment, then rerun.\n"
+            f"Import error: {UNSLOTH_IMPORT_ERROR}"
+        )
 
     args = parse_args()
 
@@ -1064,7 +1163,9 @@ def main() -> None:
     text_source = resolve_source(args.book_texts_source, args.download_inputs, cache_dir)
 
     print("=== Runtime ===")
-    print(f"device={runtime['device']} use_amp={runtime['use_amp']}")
+    print(
+        f"device={runtime['device']} bf16={runtime['bf16']} fp16={runtime['fp16']}"
+    )
     print(
         f"num_workers={runtime['num_workers']} pin_memory={runtime['pin_memory']} prefetch_factor={runtime['prefetch_factor']}"
     )
@@ -1075,101 +1176,7 @@ def main() -> None:
     print("=== Data stats ===")
     print(json.dumps(stats, indent=2))
 
-    model = SentenceTransformer(args.model_name, device=runtime["device"])
-    model.max_seq_length = int(args.max_seq_length)
-
-    gradient_checkpointing_enabled = False
-    if args.gradient_checkpointing:
-        try:
-            first_module = model._first_module()
-            auto_model = getattr(first_module, "auto_model", None)
-            if auto_model is not None and hasattr(
-                auto_model, "gradient_checkpointing_enable"
-            ):
-                auto_model.gradient_checkpointing_enable()
-                gradient_checkpointing_enabled = True
-        except Exception:
-            gradient_checkpointing_enabled = False
-
-    train_dataset = PairDataset(train_pairs_text_df)
-    component_sampler = ComponentBatchSampler(
-        component_ids=train_pairs_text_df["component_id"].to_list(),
-        batch_size=int(args.batch_size),
-        seed=int(args.seed),
-    )
-
-    dataloader_kwargs: dict[str, object] = {}
-    if runtime["num_workers"] > 0:
-        dataloader_kwargs["num_workers"] = int(runtime["num_workers"])
-        dataloader_kwargs["persistent_workers"] = True
-        dataloader_kwargs["prefetch_factor"] = int(runtime["prefetch_factor"])
-    if runtime["pin_memory"]:
-        dataloader_kwargs["pin_memory"] = True
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_sampler=component_sampler,
-        collate_fn=model.smart_batching_collate,
-        **dataloader_kwargs,
-    )
-    train_loss = losses.MultipleNegativesRankingLoss(model=model)
-
-    steps_per_epoch = len(component_sampler)
-    total_steps = steps_per_epoch * int(args.epochs)
-    warmup_steps = int(total_steps * (float(args.warmup_ratio) / 100.0))
-
-    print("=== Training config ===")
-    print(
-        json.dumps(
-            {
-                "model_name": args.model_name,
-                "output_dir": str(output_path),
-                "batch_size": int(args.batch_size),
-                "epochs": int(args.epochs),
-                "learning_rate": float(args.learning_rate),
-                "warmup_ratio": float(args.warmup_ratio),
-                "warmup_steps": warmup_steps,
-                "max_seq_length": int(args.max_seq_length),
-                "gradient_checkpointing": gradient_checkpointing_enabled,
-                "steps_per_epoch": steps_per_epoch,
-                "total_steps": total_steps,
-            },
-            indent=2,
-        )
-    )
-
-    logger.info("Starting model training...")
-    start_time = time.time()
-    model.old_fit(
-        train_objectives=[(train_dataloader, train_loss)],
-        epochs=int(args.epochs),
-        warmup_steps=warmup_steps,
-        optimizer_params={"lr": float(args.learning_rate)},
-        output_path=str(output_path),
-        use_amp=bool(runtime["use_amp"]),
-        show_progress_bar=True,
-    )
-    training_time = time.time() - start_time
-    logger.info(f"Training completed in {training_time:.2f} seconds")
-
-    # Persist a checkpoint summary before evaluation so training metadata survives
-    # even if evaluation or remote artifact logging fails.
-    pre_eval_summary = {
-        "args": vars(args),
-        "runtime": runtime,
-        "data_stats": stats,
-        "training_time_seconds": training_time,
-        "model_saved_to": str(output_path),
-        "summary_stage": "post_training_pre_evaluation",
-        "timestamp": datetime.now().isoformat(),
-    }
-    pre_eval_summary_path = output_path / "run_summary_pre_eval.json"
-    with pre_eval_summary_path.open("w", encoding="utf-8") as f:
-        json.dump(pre_eval_summary, f, indent=2)
-    logger.info(f"Saved pre-evaluation checkpoint summary to {pre_eval_summary_path}")
-
-    baseline_metrics = None
-    finetuned_metrics = None
+    # Determine evaluation batch sizes.
     eval_batch_size = (
         args.eval_batch_size
         if args.eval_batch_size > 0
@@ -1180,48 +1187,291 @@ def main() -> None:
     # eval_max_queries == -1 means "auto" (evaluate if validation pairs exist)
     # eval_max_queries == 0 means "skip evaluation"
     # eval_max_queries > 0 means "evaluate with specific query limit"
-    should_run_eval = (
-        args.eval_max_queries != 0 and val_pairs_text_df.height > 0
-    )
+    should_run_eval = args.eval_max_queries != 0 and val_pairs_text_df.height > 0
 
+    candidate_ids: list[str] = []
+    neighbors_by_id: dict[str, set[str]] = {}
+    text_by_id: dict[str, str] = {}
     if should_run_eval:
         candidate_ids, neighbors_by_id, text_by_id = build_eval_graph(
             val_pairs_text_df=val_pairs_text_df,
             seed=int(args.seed),
         )
-        if candidate_ids:
-            # Evaluate baseline model first (if enabled)
-            if args.eval_baseline:
-                logger.info("=== Evaluating Baseline Model ===")
-                baseline_eval_start = time.time()
-                baseline_metrics = evaluate_retrieval_model(
-                    model_name_or_path=args.model_name,
-                    candidate_ids=candidate_ids,
-                    neighbors_by_id=neighbors_by_id,
-                    text_by_id=text_by_id,
-                    max_queries=int(args.eval_max_queries),
-                    k=int(args.eval_k),
-                    device=str(runtime["device"]),
-                    encode_batch_size=eval_batch_size,
-                    query_batch_size=int(args.eval_query_batch_size),
-                    similarity_matrix_mb=int(args.eval_similarity_matrix_mb),
-                )
-                baseline_eval_time = time.time() - baseline_eval_start
-                logger.info(f"Baseline evaluation completed in {baseline_eval_time:.2f} seconds")
-                print("=== Baseline eval ===")
-                print(json.dumps(baseline_metrics, indent=2))
 
+    logger.info("Loading model with Unsloth...")
+    model = FastSentenceTransformer.from_pretrained(
+        model_name=args.model_name,
+        max_seq_length=int(args.max_seq_length),
+        full_finetuning=bool(args.full_finetuning),
+    )
+    model.max_seq_length = int(args.max_seq_length)
+
+    baseline_metrics: Optional[Dict[str, float]] = None
+    if should_run_eval and candidate_ids and args.eval_baseline:
+        logger.info("=== Evaluating Baseline Model ===")
+        baseline_eval_start = time.time()
+        baseline_metrics = evaluate_retrieval_model(
+            model=model,
+            candidate_ids=candidate_ids,
+            neighbors_by_id=neighbors_by_id,
+            text_by_id=text_by_id,
+            max_queries=int(args.eval_max_queries),
+            k=int(args.eval_k),
+            encode_batch_size=eval_batch_size,
+            query_batch_size=int(args.eval_query_batch_size),
+            similarity_matrix_mb=int(args.eval_similarity_matrix_mb),
+        )
+        baseline_eval_time = time.time() - baseline_eval_start
+        logger.info("Baseline evaluation completed in %.2f seconds", baseline_eval_time)
+        print("=== Baseline eval ===")
+        print(json.dumps(baseline_metrics, indent=2))
+
+    if not args.full_finetuning:
+        target_modules = [
+            module.strip()
+            for module in str(args.lora_target_modules).split(",")
+            if module.strip()
+        ]
+        if not target_modules:
+            raise ValueError("At least one LoRA target module must be provided.")
+
+        if args.gradient_checkpointing:
+            gc_mode: bool | str = (
+                "unsloth" if args.gradient_checkpointing_mode == "unsloth" else True
+            )
+        else:
+            gc_mode = False
+
+        logger.info("Attaching LoRA adapters with Unsloth...")
+        model = FastSentenceTransformer.get_peft_model(
+            model,
+            r=int(args.lora_r),
+            target_modules=target_modules,
+            lora_alpha=int(args.lora_alpha),
+            lora_dropout=float(args.lora_dropout),
+            bias=str(args.lora_bias),
+            use_gradient_checkpointing=gc_mode,
+            random_state=int(args.lora_random_state),
+            use_rslora=bool(args.use_rslora),
+            loftq_config=None,
+            task_type="FEATURE_EXTRACTION",
+        )
+
+    print("=== Training config ===")
+    print(
+        json.dumps(
+            {
+                "model_name": args.model_name,
+                "output_dir": str(output_path),
+                "batch_size": int(args.batch_size),
+                "epochs": int(args.epochs),
+                "max_steps": int(args.max_steps),
+                "gradient_accumulation_steps": int(args.gradient_accumulation_steps),
+                "learning_rate": float(args.learning_rate),
+                "warmup_ratio": float(args.warmup_ratio),
+                "max_seq_length": int(args.max_seq_length),
+                "gradient_checkpointing": bool(args.gradient_checkpointing),
+                "gradient_checkpointing_mode": str(args.gradient_checkpointing_mode),
+                "full_finetuning": bool(args.full_finetuning),
+                "lora_r": int(args.lora_r),
+                "lora_alpha": int(args.lora_alpha),
+                "lora_dropout": float(args.lora_dropout),
+                "lora_bias": str(args.lora_bias),
+                "lr_scheduler_type": str(args.lr_scheduler_type),
+                "bf16": bool(runtime["bf16"]),
+                "fp16": bool(runtime["fp16"]),
+            },
+            indent=2,
+        )
+    )
+
+    train_dataset = Dataset.from_dict(
+        {
+            "anchor_text": train_pairs_text_df["anchor_text"].to_list(),
+            "positive_text": train_pairs_text_df["positive_text"].to_list(),
+        }
+    )
+    eval_dataset = None
+    if val_pairs_text_df.height > 0:
+        eval_dataset = Dataset.from_dict(
+            {
+                "anchor_text": val_pairs_text_df["anchor_text"].to_list(),
+                "positive_text": val_pairs_text_df["positive_text"].to_list(),
+            }
+        )
+
+    trainer_evaluator = None
+    if should_run_eval and candidate_ids:
+        trainer_evaluator = build_ir_evaluator(
+            candidate_ids=candidate_ids,
+            neighbors_by_id=neighbors_by_id,
+            text_by_id=text_by_id,
+            batch_size=eval_batch_size,
+        )
+
+    prompt_map: dict[str, str] = {}
+    model_prompts = getattr(model, "prompts", None)
+    if isinstance(model_prompts, dict):
+        query_prompt = model_prompts.get("query")
+        document_prompt = model_prompts.get("document")
+        if isinstance(query_prompt, str):
+            prompt_map["anchor_text"] = query_prompt
+        if isinstance(document_prompt, str):
+            prompt_map["positive_text"] = document_prompt
+
+    eval_strategy = (
+        "steps"
+        if trainer_evaluator is not None and eval_dataset is not None
+        else "no"
+    )
+    training_kwargs: dict[str, Any] = {
+        "output_dir": str(output_path / "trainer"),
+        "num_train_epochs": float(args.epochs),
+        "max_steps": int(args.max_steps),
+        "per_device_train_batch_size": int(args.batch_size),
+        "per_device_eval_batch_size": int(eval_batch_size),
+        "gradient_accumulation_steps": int(args.gradient_accumulation_steps),
+        "learning_rate": float(args.learning_rate),
+        "warmup_ratio": float(args.warmup_ratio) / 100.0,
+        "logging_steps": int(args.logging_steps),
+        "eval_steps": int(args.eval_steps),
+        "save_strategy": "steps",
+        "save_steps": max(1, int(args.save_steps)),
+        "save_total_limit": max(1, int(args.save_total_limit)),
+        "bf16": bool(runtime["bf16"]),
+        "fp16": bool(runtime["fp16"]),
+        "report_to": "none",
+        "lr_scheduler_type": str(args.lr_scheduler_type),
+        "dataloader_num_workers": int(runtime["num_workers"]),
+        "dataloader_pin_memory": bool(runtime["pin_memory"]),
+        "remove_unused_columns": False,
+        "seed": int(args.seed),
+    }
+    training_args_signature = inspect.signature(
+        SentenceTransformerTrainingArguments.__init__
+    )
+    if "eval_strategy" in training_args_signature.parameters:
+        training_kwargs["eval_strategy"] = eval_strategy
+    else:
+        training_kwargs["evaluation_strategy"] = eval_strategy
+    optional_kwargs = {
+        "batch_sampler": BatchSamplers.NO_DUPLICATES,
+        "prompts": prompt_map,
+    }
+    for key, value in optional_kwargs.items():
+        if key in training_args_signature.parameters:
+            training_kwargs[key] = value
+    # Keep only kwargs supported by the installed SentenceTransformers version.
+    training_kwargs = {
+        key: value
+        for key, value in training_kwargs.items()
+        if key in training_args_signature.parameters
+    }
+
+    training_args = SentenceTransformerTrainingArguments(**training_kwargs)
+
+    train_loss = losses.MultipleNegativesRankingLoss(model=model)
+    trainer = SentenceTransformerTrainer(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        loss=train_loss,
+        args=training_args,
+        evaluator=trainer_evaluator,
+    )
+
+    logger.info("Starting model training...")
+    start_time = time.time()
+    trainer_stats = trainer.train()
+    training_time = time.time() - start_time
+    logger.info(f"Training completed in {training_time:.2f} seconds")
+    trainer_metrics = (
+        dict(trainer_stats.metrics)
+        if trainer_stats is not None and getattr(trainer_stats, "metrics", None)
+        else {}
+    )
+
+    gpu_peak_reserved_gb = 0.0
+    if torch.cuda.is_available():
+        gpu_peak_reserved_gb = float(
+            torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024
+        )
+        trainer_metrics["gpu_peak_reserved_gb"] = gpu_peak_reserved_gb
+
+    lora_output_path = output_path / "lora"
+    lora_output_path.mkdir(parents=True, exist_ok=True)
+    logger.info("Saving LoRA adapter model to %s", lora_output_path)
+    model.save_pretrained(str(lora_output_path))
+    if getattr(model, "tokenizer", None) is not None:
+        model.tokenizer.save_pretrained(str(lora_output_path))
+
+    merged_output_path: Optional[Path] = None
+    if args.save_merged_16bit:
+        merged_output_path = output_path / "merged_16bit"
+        merged_output_path.mkdir(parents=True, exist_ok=True)
+        logger.info("Saving merged model to %s", merged_output_path)
+        try:
+            model.save_pretrained_merged(
+                str(merged_output_path),
+                tokenizer=model.tokenizer,
+                save_method=str(args.merged_save_method),
+            )
+        except Exception as exc:
+            logger.warning("Could not save merged model artifact: %s", exc)
+            merged_output_path = None
+
+    deployment_manifest = {
+        "base_model": args.model_name,
+        "lora_model_path": str(lora_output_path),
+        "merged_model_path": str(merged_output_path) if merged_output_path else None,
+        "max_seq_length": int(args.max_seq_length),
+        "unsloth_loader_example": [
+            "from unsloth import FastSentenceTransformer",
+            "model = FastSentenceTransformer.from_pretrained('PATH_TO_LORA_OR_MERGED_MODEL')",
+            "embeddings = model.encode(['your text'], convert_to_numpy=True)",
+        ],
+        "sentence_transformers_loader_example": [
+            "from sentence_transformers import SentenceTransformer",
+            "model = SentenceTransformer('PATH_TO_ARTIFACT')",
+            "embeddings = model.encode(['your text'], normalize_embeddings=True)",
+        ],
+    }
+    deployment_manifest_path = output_path / "deployment_manifest.json"
+    with deployment_manifest_path.open("w", encoding="utf-8") as f:
+        json.dump(deployment_manifest, f, indent=2)
+
+    # Persist a checkpoint summary before evaluation so training metadata survives
+    # even if evaluation or remote artifact logging fails.
+    pre_eval_summary = {
+        "args": vars(args),
+        "runtime": runtime,
+        "data_stats": stats,
+        "training_time_seconds": training_time,
+        "model_saved_to": str(output_path),
+        "lora_model_path": str(lora_output_path),
+        "merged_model_path": str(merged_output_path) if merged_output_path else None,
+        "trainer_metrics": trainer_metrics,
+        "summary_stage": "post_training_pre_evaluation",
+        "timestamp": datetime.now().isoformat(),
+    }
+    pre_eval_summary_path = output_path / "run_summary_pre_eval.json"
+    with pre_eval_summary_path.open("w", encoding="utf-8") as f:
+        json.dump(pre_eval_summary, f, indent=2)
+    logger.info(f"Saved pre-evaluation checkpoint summary to {pre_eval_summary_path}")
+
+    finetuned_metrics: Optional[Dict[str, float]] = None
+    if should_run_eval:
+        if candidate_ids:
             # Evaluate finetuned model
             logger.info("=== Evaluating Finetuned Model ===")
             finetuned_eval_start = time.time()
             finetuned_metrics = evaluate_retrieval_model(
-                model_name_or_path=output_path,
+                model=model,
                 candidate_ids=candidate_ids,
                 neighbors_by_id=neighbors_by_id,
                 text_by_id=text_by_id,
                 max_queries=int(args.eval_max_queries),
                 k=int(args.eval_k),
-                device=str(runtime["device"]),
                 encode_batch_size=eval_batch_size,
                 query_batch_size=int(args.eval_query_batch_size),
                 similarity_matrix_mb=int(args.eval_similarity_matrix_mb),
@@ -1243,7 +1493,10 @@ def main() -> None:
                             print(f"  {metric_name}: {baseline_val:.4f} -> {finetuned_val:.4f} (Δ={improvement:+.4f})")
 
     # Log to MLFlow
-    run_name = f"embeddinggemma_e{args.epochs}_bs{args.batch_size}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_name = (
+        f"embeddinggemma_unsloth_e{args.epochs}_bs{args.batch_size}_"
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
     dataset_paths = [Path(raw_source), Path(text_source)]
     logger.info("Starting MLflow logging...")
     mlflow_start = time.time()
@@ -1255,6 +1508,7 @@ def main() -> None:
         finetuned_metrics=finetuned_metrics,
         baseline_metrics=baseline_metrics,
         output_path=output_path,
+        trainer_metrics=trainer_metrics,
         dataset_paths=dataset_paths,
         run_name=run_name,
     )
@@ -1267,6 +1521,10 @@ def main() -> None:
         "data_stats": stats,
         "baseline_eval": baseline_metrics,
         "finetuned_eval": finetuned_metrics,
+        "trainer_metrics": trainer_metrics,
+        "lora_model_path": str(lora_output_path),
+        "merged_model_path": str(merged_output_path) if merged_output_path else None,
+        "deployment_manifest_path": str(deployment_manifest_path),
         "mlflow_run_id": mlflow_run_id,
         "training_time_seconds": training_time,
     }
