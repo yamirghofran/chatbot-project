@@ -1280,38 +1280,36 @@ def main() -> None:
 
     model_dtype = detect_model_dtype(model)
     model_name_lc = str(args.model_name).lower()
-    # Gemma-family Unsloth runs on fp16 can internally fall back to fp32 on T4-class GPUs.
-    # Force trainer precision flags to match to avoid Float-vs-Half backward mismatches.
-    if "gemma" in model_name_lc and not bool(runtime["bf16"]) and bool(runtime["fp16"]):
+    force_fp32_training = "gemma" in model_name_lc and not bool(runtime["bf16"])
+    if force_fp32_training:
         logger.warning(
-            "Disabling fp16 for Gemma-family training on this runtime. "
-            "Using full float32 to avoid dtype mismatch errors."
+            "Forcing full float32 training for Gemma-family model on this runtime "
+            "to avoid float16/float32 mismatch errors."
         )
+        runtime["bf16"] = False
         runtime["fp16"] = False
-
-    if model_dtype == torch.float32:
-        if runtime["bf16"] or runtime["fp16"]:
+        if model_dtype == torch.float16:
             logger.warning(
-                "Model is in float32 (dtype=%s). Disabling bf16/fp16 mixed precision "
-                "to avoid dtype mismatch errors.",
-                model_dtype,
+                "Upcasting model parameters from float16 to float32 for stability."
             )
-        runtime["bf16"] = False
-        runtime["fp16"] = False
-    elif model_dtype == torch.bfloat16:
-        runtime["bf16"] = True
-        runtime["fp16"] = False
-    elif model_dtype == torch.float16:
-        runtime["bf16"] = False
-        runtime["fp16"] = True
-
-    if not bool(runtime["bf16"]) and not bool(runtime["fp16"]) and model_dtype == torch.float16:
-        logger.warning(
-            "Upcasting model parameters from float16 to float32 to align with "
-            "full-precision training mode."
-        )
-        model = model.float()
-        model_dtype = detect_model_dtype(model)
+            model = model.float()
+            model_dtype = detect_model_dtype(model)
+    else:
+        if model_dtype == torch.float32:
+            if runtime["bf16"] or runtime["fp16"]:
+                logger.warning(
+                    "Model is in float32 (dtype=%s). Disabling bf16/fp16 mixed precision "
+                    "to avoid dtype mismatch errors.",
+                    model_dtype,
+                )
+            runtime["bf16"] = False
+            runtime["fp16"] = False
+        elif model_dtype == torch.bfloat16:
+            runtime["bf16"] = True
+            runtime["fp16"] = False
+        elif model_dtype == torch.float16:
+            runtime["bf16"] = False
+            runtime["fp16"] = True
 
     print("=== Training config ===")
     print(
@@ -1426,6 +1424,14 @@ def main() -> None:
     }
 
     training_args = SentenceTransformerTrainingArguments(**training_kwargs)
+    if force_fp32_training:
+        setattr(training_args, "bf16", False)
+        setattr(training_args, "fp16", False)
+    logger.info(
+        "Trainer precision flags: bf16=%s fp16=%s",
+        getattr(training_args, "bf16", None),
+        getattr(training_args, "fp16", None),
+    )
 
     train_loss = losses.MultipleNegativesRankingLoss(model=model)
     trainer = SentenceTransformerTrainer(
@@ -1436,6 +1442,9 @@ def main() -> None:
         args=training_args,
         evaluator=trainer_evaluator,
     )
+    if force_fp32_training:
+        setattr(trainer.args, "bf16", False)
+        setattr(trainer.args, "fp16", False)
 
     logger.info("Starting model training...")
     start_time = time.time()
