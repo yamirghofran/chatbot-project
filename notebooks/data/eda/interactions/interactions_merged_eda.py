@@ -31,7 +31,7 @@ def _(mo, os, pl):
     project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
     data_dir = os.path.join(project_root, "data")
 
-    merged_lf = pl.scan_parquet(os.path.join(data_dir, "goodreads_interactions_merged.parquet"))
+    merged_lf = pl.scan_parquet(os.path.join(data_dir, "1_goodreads_interactions_merged.parquet"))
     raw_lf = pl.scan_parquet(os.path.join(data_dir, "raw_goodreads_interactions.parquet"))
     books_lf = pl.scan_parquet(os.path.join(data_dir, "raw_goodreads_books.parquet"))
     works_lf = pl.scan_parquet(os.path.join(data_dir, "raw_goodreads_book_works.parquet"))
