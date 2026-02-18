@@ -23,14 +23,6 @@ import torch
 from datasets import Dataset
 from dotenv import load_dotenv
 from huggingface_hub import login
-from sentence_transformers import (
-    SentenceTransformer,
-    SentenceTransformerTrainer,
-    SentenceTransformerTrainingArguments,
-    losses,
-)
-from sentence_transformers.evaluation import InformationRetrievalEvaluator
-from sentence_transformers.training_args import BatchSamplers
 
 try:
     from unsloth import FastSentenceTransformer, is_bf16_supported
@@ -45,6 +37,15 @@ except Exception as exc:
 
     UNSLOTH_AVAILABLE = False
     UNSLOTH_IMPORT_ERROR = exc
+
+from sentence_transformers import (
+    SentenceTransformer,
+    SentenceTransformerTrainer,
+    SentenceTransformerTrainingArguments,
+    losses,
+)
+from sentence_transformers.evaluation import InformationRetrievalEvaluator
+from sentence_transformers.training_args import BatchSamplers
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -187,7 +188,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=-1)
 
     parser.add_argument(
-        "--model-name", default="google/embeddinggemma-300m", help="HF model id"
+        "--model-name",
+        default="unsloth/embeddinggemma-300m",
+        help="HF model id (for Unsloth, prefer unsloth/* model ids).",
     )
     parser.add_argument("--output-dir", default="data/models/embeddinggemma_mnrl")
 
@@ -1147,6 +1150,13 @@ def main() -> None:
         )
 
     args = parse_args()
+    if args.model_name == "google/embeddinggemma-300m":
+        logger.warning(
+            "Model '%s' is not an Unsloth model id. Switching to "
+            "'unsloth/embeddinggemma-300m'.",
+            args.model_name,
+        )
+        args.model_name = "unsloth/embeddinggemma-300m"
 
     random.seed(args.seed)
     np.random.seed(args.seed)
