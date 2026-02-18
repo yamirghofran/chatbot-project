@@ -47,28 +47,25 @@ def precision_at_k(
     Returns:
         float: Average Precision@k across all users
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    truth_unique = ground_truth.select([col_user, col_item]).unique()
 
-    precisions = []
+    rec_counts = top_k_recs.group_by(col_user).len().rename({"len": "__rec_count"})
 
-    for user in users.to_series().to_list():
-        user_recs = top_k_recs.filter(pl.col(col_user) == user).select(col_item).to_series().to_list()
-        user_truth = ground_truth.filter(pl.col(col_user) == user).select(col_item).to_series().to_list()
+    hits = top_k_recs.join(truth_unique, on=[col_user, col_item], how="inner")
+    hit_counts = hits.group_by(col_user).len().rename({"len": "__hit_count"})
 
-        if len(user_truth) > 0:
-            hits = len(set(user_recs) & set(user_truth))
-            precision = hits / min(k, len(user_recs)) if len(user_recs) > 0 else 0
-            precisions.append(precision)
+    base = rec_counts.join(hit_counts, on=col_user, how="left").with_columns(pl.col("__hit_count").fill_null(0))
 
-    return np.mean(precisions) if precisions else 0.0
+    if base.height == 0:
+        return 0.0
+
+    return float(base.select((pl.col("__hit_count") / pl.col("__rec_count")).mean()).item()) or 0.0
 
 
 def recall_at_k(
@@ -95,28 +92,24 @@ def recall_at_k(
     Returns:
         float: Average Recall@k across all users
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    truth_unique = ground_truth.select([col_user, col_item]).unique()
+    truth_counts = truth_unique.group_by(col_user).len().rename({"len": "__truth_count"})
 
-    recalls = []
+    hits = top_k_recs.join(truth_unique, on=[col_user, col_item], how="inner")
+    hit_counts = hits.group_by(col_user).len().rename({"len": "__hit_count"})
 
-    for user in users.to_series().to_list():
-        user_recs = top_k_recs.filter(pl.col(col_user) == user).select(col_item).to_series().to_list()
-        user_truth = ground_truth.filter(pl.col(col_user) == user).select(col_item).to_series().to_list()
+    base = truth_counts.join(hit_counts, on=col_user, how="left").with_columns(pl.col("__hit_count").fill_null(0))
 
-        if len(user_truth) > 0:
-            hits = len(set(user_recs) & set(user_truth))
-            recall = hits / len(user_truth)
-            recalls.append(recall)
+    if base.height == 0:
+        return 0.0
 
-    return np.mean(recalls) if recalls else 0.0
+    return float(base.select((pl.col("__hit_count") / pl.col("__truth_count")).mean()).item()) or 0.0
 
 
 def map_at_k(
@@ -145,36 +138,56 @@ def map_at_k(
     Returns:
         float: Mean Average Precision@k
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    truth_unique = ground_truth.select([col_user, col_item]).unique()
+    truth_counts = truth_unique.group_by(col_user).len().rename({"len": "__truth_count"})
 
-    aps = []
+    hits = top_k_recs.join(truth_unique, on=[col_user, col_item], how="inner")
 
-    for user in users.to_series().to_list():
-        user_recs = top_k_recs.filter(pl.col(col_user) == user).sort(col_prediction, descending=True)
-        user_recs_items = user_recs.select(col_item).to_series().to_list()
-        user_truth = set(ground_truth.filter(pl.col(col_user) == user).select(col_item).to_series().to_list())
+    ap_terms = (
+        hits
+        .sort([col_user, col_prediction], descending=[False, True])
+        .with_columns(
+            pl.col(col_prediction)
+            .rank(method="ordinal", descending=True)
+            .over(col_user)
+            .alias("__rank")
+        )
+        .with_columns(
+            pl.col("__rank")
+            .cum_count()
+            .over(col_user)
+            .cast(pl.Float64)
+            .alias("__hit_order")
+        )
+        .with_columns((pl.col("__hit_order") / pl.col("__rank")).alias("__ap_term"))
+        .group_by(col_user)
+        .agg(pl.col("__ap_term").sum().alias("__ap_sum"))
+    )
 
-        if len(user_truth) > 0:
-            hits = 0
-            precision_sum = 0.0
+    base = truth_counts.join(ap_terms, on=col_user, how="left").with_columns(
+        [
+            pl.col("__ap_sum").fill_null(0.0),
+            pl.min_horizontal(pl.col("__truth_count"), pl.lit(k)).cast(pl.Float64).alias("__map_denom"),
+        ]
+    )
 
-            for i, item in enumerate(user_recs_items):
-                if item in user_truth:
-                    hits += 1
-                    precision_sum += hits / (i + 1)
+    if base.height == 0:
+        return 0.0
 
-            ap = precision_sum / min(len(user_truth), k)
-            aps.append(ap)
+    result = base.with_columns(
+        pl.when(pl.col("__map_denom") > 0)
+        .then(pl.col("__ap_sum") / pl.col("__map_denom"))
+        .otherwise(0.0)
+        .alias("__ap")
+    )
 
-    return np.mean(aps) if aps else 0.0
+    return float(result.select(pl.col("__ap").mean()).item()) or 0.0
 
 
 def ndcg_at_k(
@@ -203,39 +216,69 @@ def ndcg_at_k(
     Returns:
         float: Average NDCG@k across all users
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    truth_unique = ground_truth.select([col_user, col_item]).unique()
+    truth_counts = truth_unique.group_by(col_user).len().rename({"len": "__truth_count"})
 
-    ndcgs = []
+    hits = top_k_recs.join(truth_unique, on=[col_user, col_item], how="inner").with_columns(
+        pl.col(col_prediction)
+        .rank(method="ordinal", descending=True)
+        .over(col_user)
+        .cast(pl.Int32)
+        .alias("__rank")
+    )
 
-    for user in users.to_series().to_list():
-        user_recs = top_k_recs.filter(pl.col(col_user) == user).sort(col_prediction, descending=True)
-        user_recs_items = user_recs.select(col_item).to_series().to_list()
-        user_truth = set(ground_truth.filter(pl.col(col_user) == user).select(col_item).to_series().to_list())
+    dcg_terms = (
+        hits
+        .group_by(col_user)
+        .agg(
+            (
+                1.0
+                / (pl.col("__rank") + 1)
+                .cast(pl.Float64)
+                .log(base=2)
+            ).sum().alias("__dcg")
+        )
+    )
 
-        if len(user_truth) > 0:
-            # Calculate DCG
-            dcg = 0.0
-            for i, item in enumerate(user_recs_items):
-                if item in user_truth:
-                    dcg += 1.0 / np.log2(i + 2)  # i + 2 because log2(1) = 0
+    idcg_rows: list[float] = [0.0]
+    running = 0.0
+    for i in range(1, k + 1):
+        running += 1.0 / np.log2(i + 1)
+        idcg_rows.append(running)
+    idcg_lookup = pl.DataFrame({
+        "__ideal_len": list(range(k + 1)),
+        "__idcg": idcg_rows,
+    })
 
-            # Calculate IDCG (ideal case: all relevant items in top positions)
-            idcg = 0.0
-            for i in range(min(len(user_truth), k)):
-                idcg += 1.0 / np.log2(i + 2)
+    base = truth_counts.with_columns(
+        pl.min_horizontal(pl.col("__truth_count"), pl.lit(k)).cast(pl.Int32).alias("__ideal_len")
+    )
 
-            ndcg = dcg / idcg if idcg > 0 else 0
-            ndcgs.append(ndcg)
+    result = (
+        base.join(idcg_lookup, on="__ideal_len", how="left")
+        .join(dcg_terms, on=col_user, how="left")
+        .with_columns([
+            pl.col("__idcg").fill_null(0.0),
+            pl.col("__dcg").fill_null(0.0),
+        ])
+        .with_columns(
+            pl.when(pl.col("__idcg") > 0)
+            .then(pl.col("__dcg") / pl.col("__idcg"))
+            .otherwise(0.0)
+            .alias("__ndcg")
+        )
+    )
 
-    return np.mean(ndcgs) if ndcgs else 0.0
+    if result.height == 0:
+        return 0.0
+
+    return float(result.select(pl.col("__ndcg").mean()).item()) or 0.0
 
 
 def hit_rate_at_k(
@@ -262,29 +305,31 @@ def hit_rate_at_k(
     Returns:
         float: Hit Rate@k
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    truth_unique = ground_truth.select([col_user, col_item]).unique()
 
-    hits = 0
-    total_users = 0
+    hits = top_k_recs.join(truth_unique, on=[col_user, col_item], how="inner")
+    hit_users = hits.select(col_user).unique()
 
-    for user in users.to_series().to_list():
-        user_recs = set(top_k_recs.filter(pl.col(col_user) == user).select(col_item).to_series().to_list())
-        user_truth = set(ground_truth.filter(pl.col(col_user) == user).select(col_item).to_series().to_list())
+    rec_users = top_k_recs.select(col_user).unique()
 
-        if len(user_truth) > 0:
-            total_users += 1
-            if len(user_recs & user_truth) > 0:
-                hits += 1
+    truth_users = truth_unique.select(col_user).unique()
 
-    return hits / total_users if total_users > 0 else 0.0
+    base_users = rec_users.join(truth_users, on=col_user, how="inner")
+
+    if base_users.height == 0:
+        return 0.0
+
+    result = base_users.join(hit_users, on=col_user, how="left").with_columns(
+        pl.col(col_user).is_not_null().cast(pl.Float64).alias("__has_hit")
+    )
+
+    return float(result.select(pl.col("__has_hit").mean()).item()) or 0.0
 
 
 def coverage(
@@ -348,28 +393,27 @@ def diversity(
     Returns:
         float: Average diversity across users
     """
-    # Get top-k recommendations per user
     top_k_recs = (
         recommendations.sort(col_prediction, descending=True)
         .group_by(col_user)
         .head(k)
     )
 
-    # Get unique users
-    users = top_k_recs.select(col_user).unique()
+    diversity_scores = (
+        top_k_recs
+        .group_by(col_user)
+        .agg([
+            pl.col(col_item).n_unique().alias("__unique_items"),
+            pl.len().alias("__total_items")
+        ])
+        .filter(pl.col("__total_items") > 1)
+        .with_columns((pl.col("__unique_items") / pl.col("__total_items")).alias("__diversity"))
+    )
 
-    diversities = []
+    if diversity_scores.height == 0:
+        return 0.0
 
-    for user in users.to_series().to_list():
-        user_recs = top_k_recs.filter(pl.col(col_user) == user).select(col_item).to_series().to_list()
-
-        if len(user_recs) > 1:
-            # Simple diversity: proportion of unique items
-            unique_items = len(set(user_recs))
-            diversity_score = unique_items / len(user_recs)
-            diversities.append(diversity_score)
-
-    return np.mean(diversities) if diversities else 0.0
+    return float(diversity_scores.select(pl.col("__diversity").mean()).item()) or 0.0
 
 
 def evaluate_recommendations(
