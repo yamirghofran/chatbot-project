@@ -18,7 +18,7 @@ const meta = {
   },
   render: () => (
     <div className="min-h-dvh bg-background text-foreground">
-      <Navbar user={mockUser} />
+      <Navbar user={mockUser} searchValue="" onSearchChange={() => {}} />
       <main className="mx-auto max-w-5xl px-4 py-8">
         <DiscoveryPage
           books={mockBooks}

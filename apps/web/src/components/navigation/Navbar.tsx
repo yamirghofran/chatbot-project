@@ -42,7 +42,10 @@ export function Navbar({
                 <button type="button" aria-label="Profile">
                   <Avatar size="lg">
                     {user.avatarUrl && (
-                      <AvatarImage src={user.avatarUrl} alt={user.displayName} />
+                      <AvatarImage
+                        src={user.avatarUrl}
+                        alt={user.displayName}
+                      />
                     )}
                     <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
