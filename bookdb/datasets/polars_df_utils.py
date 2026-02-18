@@ -379,12 +379,7 @@ def negative_feedback_sampler(
             )
 
     # Process each user group and concatenate results
-    result_dfs = []
-    for user_id in df[col_user].unique().to_list():
-        user_df = df.filter(pl.col(col_user) == user_id)
-        result_dfs.append(sample_items(user_df))
-
-    return pl.concat(result_dfs)
+    return df.group_by(col_user, maintain_order=True).map_groups(sample_items)
 
 
 def has_columns(df: pl.DataFrame, columns: list[str] | set[str]) -> bool:
