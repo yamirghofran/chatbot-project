@@ -1279,6 +1279,16 @@ def main() -> None:
         )
 
     model_dtype = detect_model_dtype(model)
+    model_name_lc = str(args.model_name).lower()
+    # Gemma-family Unsloth runs on fp16 can internally fall back to fp32 on T4-class GPUs.
+    # Force trainer precision flags to match to avoid Float-vs-Half backward mismatches.
+    if "gemma" in model_name_lc and not bool(runtime["bf16"]) and bool(runtime["fp16"]):
+        logger.warning(
+            "Disabling fp16 for Gemma-family training on this runtime. "
+            "Using full float32 to avoid dtype mismatch errors."
+        )
+        runtime["fp16"] = False
+
     if model_dtype == torch.float32:
         if runtime["bf16"] or runtime["fp16"]:
             logger.warning(
@@ -1294,6 +1304,14 @@ def main() -> None:
     elif model_dtype == torch.float16:
         runtime["bf16"] = False
         runtime["fp16"] = True
+
+    if not bool(runtime["bf16"]) and not bool(runtime["fp16"]) and model_dtype == torch.float16:
+        logger.warning(
+            "Upcasting model parameters from float16 to float32 to align with "
+            "full-precision training mode."
+        )
+        model = model.float()
+        model_dtype = detect_model_dtype(model)
 
     print("=== Training config ===")
     print(
