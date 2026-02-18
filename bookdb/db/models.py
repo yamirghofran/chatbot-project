@@ -21,14 +21,14 @@ from .base import Base
 book_authors = Table(
     "book_authors",
     Base.metadata,
-    Column("book_id", ForeignKey("books.id"), primary_key=True),
-    Column("author_id", ForeignKey("authors.id"), primary_key=True),
+    Column("book_id", ForeignKey("books.id", ondelete="CASCADE"), primary_key=True),
+    Column("author_id", ForeignKey("authors.id", ondelete="CASCADE"), primary_key=True),
 )
 list_books = Table(
     "list_books",
     Base.metadata,
-    Column("list_id", ForeignKey("lists.id"), primary_key=True),
-    Column("book_id", ForeignKey("books.id"), primary_key=True),
+    Column("list_id", ForeignKey("lists.id", ondelete="CASCADE"), primary_key=True),
+    Column("book_id", ForeignKey("books.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -64,7 +64,7 @@ class BookList(Base):
     name: Mapped[str] = mapped_column(String(255))
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         index=True,
     )
     user: Mapped["User"] = relationship(back_populates="lists")
@@ -139,8 +139,8 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
@@ -157,8 +157,8 @@ class Rating(Base):
         CheckConstraint("rating >= 1 AND rating <= 5", name="ck_ratings_rating_range"),
     )
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
     rating: Mapped[int] = mapped_column(Integer)
 
     user: Mapped["User"] = relationship(back_populates="ratings")
