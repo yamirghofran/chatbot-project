@@ -309,6 +309,17 @@ def detect_runtime(num_workers_arg: int) -> dict[str, object]:
     }
 
 
+def detect_model_dtype(model: Any) -> Optional[torch.dtype]:
+    model_dtype = getattr(model, "dtype", None)
+    if isinstance(model_dtype, torch.dtype):
+        return model_dtype
+    try:
+        first_param = next(model.parameters())
+        return first_param.dtype
+    except Exception:
+        return None
+
+
 def build_training_frames(args: argparse.Namespace, raw_source: str, text_source: str):
     # Load books with num_interactions for filtering
     raw_books_lf = pl.scan_parquet(raw_source).select(
@@ -1267,6 +1278,23 @@ def main() -> None:
             task_type="FEATURE_EXTRACTION",
         )
 
+    model_dtype = detect_model_dtype(model)
+    if model_dtype == torch.float32:
+        if runtime["bf16"] or runtime["fp16"]:
+            logger.warning(
+                "Model is in float32 (dtype=%s). Disabling bf16/fp16 mixed precision "
+                "to avoid dtype mismatch errors.",
+                model_dtype,
+            )
+        runtime["bf16"] = False
+        runtime["fp16"] = False
+    elif model_dtype == torch.bfloat16:
+        runtime["bf16"] = True
+        runtime["fp16"] = False
+    elif model_dtype == torch.float16:
+        runtime["bf16"] = False
+        runtime["fp16"] = True
+
     print("=== Training config ===")
     print(
         json.dumps(
@@ -1288,6 +1316,7 @@ def main() -> None:
                 "lora_dropout": float(args.lora_dropout),
                 "lora_bias": str(args.lora_bias),
                 "lr_scheduler_type": str(args.lr_scheduler_type),
+                "model_dtype": str(model_dtype) if model_dtype is not None else "unknown",
                 "bf16": bool(runtime["bf16"]),
                 "fp16": bool(runtime["fp16"]),
             },
