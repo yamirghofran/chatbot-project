@@ -444,9 +444,15 @@ class BPR:
             "item_id_map": self._item_id_map,
             "col_user": self._col_user,
             "col_item": self._col_item,
+            "user_dtype": str(self._user_dtype) if self._user_dtype else None,
+            "item_dtype": str(self._item_dtype) if self._item_dtype else None,
         }
         with open(save_path / "mappings.json", "w") as f:
             json.dump(mappings, f)
+
+        # Save user-item matrix
+        from scipy.sparse import save_npz
+        save_npz(save_path / "user_item_matrix.npz", self._user_item_matrix)
 
         logger.info(f"Model saved to {save_path}")
 
@@ -488,6 +494,27 @@ class BPR:
         bpr._reverse_item_map = {v: k for k, v in bpr._item_id_map.items()}
         bpr._col_user = mappings["col_user"]
         bpr._col_item = mappings["col_item"]
+
+        # Restore dtype information
+        dtype_map = {
+            "Int8": pl.Int8,
+            "Int16": pl.Int16,
+            "Int32": pl.Int32,
+            "Int64": pl.Int64,
+            "UInt8": pl.UInt8,
+            "UInt16": pl.UInt16,
+            "UInt32": pl.UInt32,
+            "UInt64": pl.UInt64,
+            "Float32": pl.Float32,
+            "Float64": pl.Float64,
+            "String": pl.String,
+        }
+        bpr._user_dtype = dtype_map.get(mappings["user_dtype"]) if mappings.get("user_dtype") else None
+        bpr._item_dtype = dtype_map.get(mappings["item_dtype"]) if mappings.get("item_dtype") else None
+
+        # Load user-item matrix
+        from scipy.sparse import load_npz
+        bpr._user_item_matrix = load_npz(load_path / "user_item_matrix.npz")
 
         logger.info(f"Model loaded from {load_path}")
 
