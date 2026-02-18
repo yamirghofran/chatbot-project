@@ -159,6 +159,7 @@ def import_dataset(
                     stats["books_created"] += 1
 
                 except Exception:
+                    session.rollback()
                     logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
@@ -232,8 +233,17 @@ def import_authors(
 
                     seen_names.add(name_key)
 
-                    author_data = {}
                     ext_id = row.get("author_id")
+
+                    # Skip if author already exists (by external_id or name)
+                    if ext_id is not None and AuthorCRUD.get_by_external_id(session, str(ext_id)):
+                        stats["authors_skipped"] += 1
+                        continue
+                    if AuthorCRUD.get_by_name(session, name):
+                        stats["authors_skipped"] += 1
+                        continue
+
+                    author_data = {}
                     if ext_id is not None:
                         author_data["external_id"] = str(ext_id)
 
@@ -241,6 +251,7 @@ def import_authors(
                     stats["authors_created"] += 1
 
                 except Exception:
+                    session.rollback()
                     logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
@@ -276,7 +287,7 @@ def parse_authors_field(raw) -> list[str]:
 
 def import_books(
     file_path: str | Path = None,
-    batch_size: int = 1000,
+    batch_size: int = 10000,
     limit: int | None = None,
     session: Session | None = None,
 ) -> dict[str, int]:
@@ -337,12 +348,19 @@ def import_books(
 
                     seen_titles.add(title_key)
 
+                    ext_book_id = str(row["book_id"]) if row.get("book_id") else None
+
+                    # Skip if book already exists (by book_id or title)
+                    if ext_book_id and BookCRUD.get_by_book_id(session, ext_book_id):
+                        stats["books_skipped"] += 1
+                        continue
+
                     book_data = {
                         "title": title,
                         "publication_year": safe_int(row.get("publication_year")),
                         "description": row.get("description") or None,
                         "image_url": row.get("image_url") or None,
-                        "book_id": str(row["book_id"]) if row.get("book_id") else None,
+                        "book_id": ext_book_id,
                     }
 
                     book = BookCRUD.create(session, **book_data)
@@ -357,6 +375,7 @@ def import_books(
                     stats["books_created"] += 1
 
                 except Exception:
+                    session.rollback()
                     logger.exception(f"Failed to process row: {row}")
                     stats["errors"] += 1
                     continue
