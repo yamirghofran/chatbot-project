@@ -65,6 +65,6 @@ src/
 ├── lib/             # Utilities (cn helper, etc.)
 ├── routes/          # File-based routes (TanStack Router)
 ├── assets/          # Static assets
-├── index.css        # Tailwind CSS + theme config
+├── styles/globals.css # Tailwind CSS + theme config
 └── main.tsx         # App entry point
 ```
