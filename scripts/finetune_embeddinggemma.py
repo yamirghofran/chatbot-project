@@ -320,6 +320,17 @@ def detect_model_dtype(model: Any) -> Optional[torch.dtype]:
         return None
 
 
+def align_dense_layer_dtype(model: Any, target_dtype: Optional[torch.dtype]) -> None:
+    if target_dtype is None:
+        return
+    for module in model.modules():
+        if module.__class__.__name__ == "Dense":
+            try:
+                module.to(dtype=target_dtype)
+            except Exception as exc:
+                logger.warning("Could not align Dense module dtype: %s", exc)
+
+
 def build_training_frames(args: argparse.Namespace, raw_source: str, text_source: str):
     # Load books with num_interactions for filtering
     raw_books_lf = pl.scan_parquet(raw_source).select(
@@ -1288,12 +1299,6 @@ def main() -> None:
         )
         runtime["bf16"] = False
         runtime["fp16"] = False
-        if model_dtype == torch.float16:
-            logger.warning(
-                "Upcasting model parameters from float16 to float32 for stability."
-            )
-            model = model.float()
-            model_dtype = detect_model_dtype(model)
     else:
         if model_dtype == torch.float32:
             if runtime["bf16"] or runtime["fp16"]:
@@ -1310,6 +1315,19 @@ def main() -> None:
         elif model_dtype == torch.float16:
             runtime["bf16"] = False
             runtime["fp16"] = True
+
+    # Keep SentenceTransformers Dense projection layers on the same dtype as the
+    # base model output to avoid matmul dtype mismatches.
+    align_dense_layer_dtype(model, model_dtype)
+    dense_dtypes: list[str] = []
+    for module in model.modules():
+        if module.__class__.__name__ == "Dense":
+            linear = getattr(module, "linear", None)
+            weight = getattr(linear, "weight", None)
+            if weight is not None and hasattr(weight, "dtype"):
+                dense_dtypes.append(str(weight.dtype))
+    if dense_dtypes:
+        logger.info("Dense layer dtypes: %s", sorted(set(dense_dtypes)))
 
     print("=== Training config ===")
     print(
