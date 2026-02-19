@@ -7,7 +7,14 @@ def seed():
     with SessionLocal() as db:
         stmt = select(User).where(User.email == "admin@example.com")
         if not db.scalar(stmt):
-            db.add(User(email="admin@example.com", name="Admin"))
+            db.add(
+                User(
+                    name="Admin",
+                    username="admin",
+                    email="admin@example.com",
+                    password_hash="seeded-admin-password",
+                )
+            )
             db.commit()
 
 if __name__ == "__main__":

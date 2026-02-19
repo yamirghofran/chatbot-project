@@ -1,18 +1,26 @@
 import os
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_USER = os.getenv('DATABASE_USER')
-DATABASE_PW = os.getenv('DATABASE_PW')
-DATABASE_NAME = os.getenv('DATABASE_NAME')
 
-if not all([DATABASE_USER, DATABASE_PW, DATABASE_NAME]):
-    raise ValueError("DATABASE_USER, DATABASE_PW, and DATABASE_NAME must be set in environment variables")
+def build_database_url() -> str:
+    direct = os.getenv("DATABASE_URL")
+    if direct:
+        return direct
 
-DATABASE_URL = f"postgresql+psycopg://{DATABASE_USER}:{DATABASE_PW}@localhost:5433/{DATABASE_NAME}"
+    user = os.getenv("DATABASE_USER", "app_user")
+    password = os.getenv("DATABASE_PW", "app_pw")
+    name = os.getenv("DATABASE_NAME", "app_db")
+    host = os.getenv("DATABASE_HOST", "localhost")
+    port = os.getenv("DATABASE_PORT", "5433")
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+
+
+DATABASE_URL = build_database_url()
 
 engine = create_engine(DATABASE_URL, future=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)

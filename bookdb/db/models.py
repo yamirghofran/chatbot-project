@@ -1,170 +1,174 @@
-from datetime import date
-from sqlalchemy import (
-    String,
-    Text,
-    DateTime,
-    Integer,
-    ForeignKey,
-    Table,
-    func,
-    Column,
-    CheckConstraint,
-)
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship,
-)
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, SmallInteger, Text, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .base import Base
 
 
-book_authors = Table(
-    "book_authors",
-    Base.metadata,
-    Column("book_id", ForeignKey("books.id", ondelete="CASCADE"), primary_key=True),
-    Column("author_id", ForeignKey("authors.id", ondelete="CASCADE"), primary_key=True),
-)
-list_books = Table(
-    "list_books",
-    Base.metadata,
-    Column("list_id", ForeignKey("lists.id", ondelete="CASCADE"), primary_key=True),
-    Column("book_id", ForeignKey("books.id", ondelete="CASCADE"), primary_key=True),
-)
+class TimestampMixin:
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
-class User(Base):
+class User(TimestampMixin, Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(255))
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    goodreads_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    username: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Optional external identifier from dataset imports (e.g. Goodreads user_id).
-    # Mirrors Author.external_id — allows mapping dataset review rows back to
-    # PG users so that import_reviews() can create proper FK-linked Review rows.
-    external_id: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
-
-    lists: Mapped[list["BookList"]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    reviews: Mapped[list["Review"]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    ratings: Mapped[list["Rating"]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
+    lists: Mapped[list["BookList"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    shell: Mapped["Shell | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    ratings: Mapped[list["BookRating"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reviews: Mapped[list["Review"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    review_comments: Mapped[list["ReviewComment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    review_likes: Mapped[list["ReviewLike"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
-class BookList(Base):
-    __tablename__ = "lists"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
-
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        index=True,
-    )
-    user: Mapped["User"] = relationship(back_populates="lists")
-
-    books: Mapped[list["Book"]] = relationship(
-        secondary=list_books,
-        back_populates="lists",
-    )
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-
-class Book(Base):
-    __tablename__ = "books"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-    title: Mapped[str] = mapped_column(String(500), index=True)
-    description: Mapped[str | None] = mapped_column(String)
-    image_url: Mapped[str | None] = mapped_column(String(1000))
-    publication_year: Mapped[int | None] = mapped_column(Integer)
-
-    # External identifiers
-    book_id: Mapped[str | None] = mapped_column(String(50))
-    author_id: Mapped[str | None] = mapped_column(String(50))
-
-    # Similar books (JSON-serialized list of external book IDs)
-    similar_books: Mapped[str | None] = mapped_column(Text)
-
-    # Relationships
-    authors: Mapped[list["Author"]] = relationship(
-        secondary=book_authors,
-        back_populates="books",
-    )
-    lists: Mapped[list["BookList"]] = relationship(
-        secondary=list_books,
-        back_populates="books",
-    )
-    reviews: Mapped[list["Review"]] = relationship(
-        back_populates="book",
-        cascade="all, delete-orphan",
-    )
-    ratings: Mapped[list["Rating"]] = relationship(
-        back_populates="book",
-        cascade="all, delete-orphan",
-    )
-
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
-
-class Author(Base):
+class Author(TimestampMixin, Base):
     __tablename__ = "authors"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), index=True)
-    external_id: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    goodreads_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    books: Mapped[list["Book"]] = relationship(
-        secondary=book_authors,
-        back_populates="authors",
+    books: Mapped[list["BookAuthor"]] = relationship(back_populates="author", cascade="all, delete-orphan")
+
+
+class Book(TimestampMixin, Base):
+    __tablename__ = "books"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    goodreads_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    format: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publisher: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    isbn13: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    authors: Mapped[list["BookAuthor"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+    list_entries: Mapped[list["ListBook"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+    shell_entries: Mapped[list["ShellBook"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+    ratings: Mapped[list["BookRating"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+    reviews: Mapped[list["Review"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+
+
+class BookAuthor(TimestampMixin, Base):
+    __tablename__ = "book_authors"
+
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    author_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("authors.id", ondelete="RESTRICT"), primary_key=True)
+
+    book: Mapped["Book"] = relationship(back_populates="authors")
+    author: Mapped["Author"] = relationship(back_populates="books")
+
+
+class BookList(TimestampMixin, Base):
+    __tablename__ = "lists"
+    __table_args__ = (UniqueConstraint("user_id", "title", name="uq_lists_user_id_title"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="lists")
+    books: Mapped[list["ListBook"]] = relationship(back_populates="list", cascade="all, delete-orphan")
+
+
+class ListBook(TimestampMixin, Base):
+    __tablename__ = "list_books"
+
+    list_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("lists.id", ondelete="CASCADE"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    added_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    list: Mapped["BookList"] = relationship(back_populates="books")
+    book: Mapped["Book"] = relationship(back_populates="list_entries")
+
+
+class Shell(TimestampMixin, Base):
+    __tablename__ = "shells"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="My Shell")
+
+    user: Mapped["User"] = relationship(back_populates="shell")
+    books: Mapped[list["ShellBook"]] = relationship(back_populates="shell", cascade="all, delete-orphan")
 
 
-class Review(Base):
-    __tablename__ = "reviews"
+class ShellBook(TimestampMixin, Base):
+    __tablename__ = "shell_books"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), index=True)
-    text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-    )
+    shell_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("shells.id", ondelete="CASCADE"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    added_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    user: Mapped["User"] = relationship(back_populates="reviews")
-    book: Mapped["Book"] = relationship(back_populates="reviews")
+    shell: Mapped["Shell"] = relationship(back_populates="books")
+    book: Mapped["Book"] = relationship(back_populates="shell_entries")
 
 
-class Rating(Base):
-    __tablename__ = "ratings"
+class BookRating(TimestampMixin, Base):
+    __tablename__ = "book_ratings"
     __table_args__ = (
-        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_ratings_rating_range"),
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_book_ratings_range"),
     )
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
-    rating: Mapped[int] = mapped_column(Integer)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="ratings")
     book: Mapped["Book"] = relationship(back_populates="ratings")
+
+
+class Review(TimestampMixin, Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    goodreads_id: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    review_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="reviews")
+    book: Mapped["Book"] = relationship(back_populates="reviews")
+    comments: Mapped[list["ReviewComment"]] = relationship(back_populates="review", cascade="all, delete-orphan")
+    likes: Mapped[list["ReviewLike"]] = relationship(back_populates="review", cascade="all, delete-orphan")
+
+
+class ReviewComment(TimestampMixin, Base):
+    __tablename__ = "review_comments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    review_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    review: Mapped["Review"] = relationship(back_populates="comments")
+    user: Mapped["User"] = relationship(back_populates="review_comments")
+
+
+class ReviewLike(Base):
+    __tablename__ = "review_likes"
+
+    review_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("reviews.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    review: Mapped["Review"] = relationship(back_populates="likes")
+    user: Mapped["User"] = relationship(back_populates="review_likes")

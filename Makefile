@@ -1,4 +1,4 @@
-.PHONY: help install dev db-up db-down db-reset migrate make-migration seed setup chroma-up chroma-down chroma-reset chroma-logs
+.PHONY: help install dev db-up db-down db-reset migrate make-migration import-data seed setup chroma-up chroma-down chroma-reset chroma-logs
 
 help:
 	@echo "Available commands:"
@@ -7,8 +7,9 @@ help:
 	@echo "  make db-reset          - Reset Postgres volume"
 	@echo "  make migrate           - Apply migrations"
 	@echo "  make make-migration    - Create a migration (msg=...)"
+	@echo "  make import-data       - Import parquet datasets into Postgres"
 	@echo "  make seed              - Seed the database"
-	@echo "  make setup             - Bring up DB, migrate, seed"
+	@echo "  make setup             - Bring up DB and migrate"
 	@echo "  make chroma-up         - Start ChromaDB with Docker"
 	@echo "  make chroma-down       - Stop ChromaDB"
 	@echo "  make chroma-reset      - Reset ChromaDB volume"
@@ -38,6 +39,9 @@ migrate:
 make-migration:
 	uv run alembic revision --autogenerate -m "$(msg)"
 
+import-data:
+	uv run python scripts/import_goodreads_to_postgres.py
+
 seed:
 	uv run python -m bookdb.seed
 
@@ -46,7 +50,6 @@ setup:
 	@echo "Waiting for database to be ready..."
 	@sleep 3
 	make migrate
-	make seed
 
 chroma-up:
 	docker compose up -d chromadb
