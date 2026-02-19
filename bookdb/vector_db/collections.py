@@ -5,7 +5,7 @@ from chromadb import Collection
 from chromadb.api.types import CollectionMetadata
 
 from .client import get_chroma_client
-from .schemas import CollectionNames, BookMetadata, UserMetadata, AuthorMetadata
+from .schemas import CollectionNames, BookMetadata, UserMetadata
 from .config import ChromaDBConfig
 
 
@@ -40,15 +40,6 @@ class CollectionManager:
             metadata={
                 "description": "Book embeddings and metadata for semantic search",
                 "hnsw:space": "cosine",  # Use cosine similarity for book embeddings
-            },
-        )
-
-        # Initialize authors collection
-        self._get_or_create_collection(
-            name=CollectionNames.AUTHORS.value,
-            metadata={
-                "description": "Author embeddings and metadata",
-                "hnsw:space": "cosine",
             },
         )
 
@@ -123,14 +114,6 @@ class CollectionManager:
                 name=collection_name.value,
                 metadata={
                     "description": "Book embeddings and metadata for semantic search",
-                    "hnsw:space": "cosine",
-                },
-            )
-        elif collection_name == CollectionNames.AUTHORS:
-            self._get_or_create_collection(
-                name=collection_name.value,
-                metadata={
-                    "description": "Author embeddings and metadata",
                     "hnsw:space": "cosine",
                 },
             )

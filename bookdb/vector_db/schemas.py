@@ -11,13 +11,11 @@ class CollectionNames(str, Enum):
 
     Attributes:
         BOOKS: Collection for book embeddings and metadata
-        AUTHORS: Collection for author embeddings and metadata
         USERS: Collection for user preference embeddings and metadata
         REVIEWS: Collection for book review embeddings and metadata
     """
 
     BOOKS = "books"
-    AUTHORS = "authors"
     USERS = "users"
     REVIEWS = "reviews"
 
@@ -53,31 +51,6 @@ class BookMetadata(BaseModel):
         }
     )
 
-
-class AuthorMetadata(BaseModel):
-    """Metadata schema for author embeddings.
-
-    This metadata is stored alongside author embeddings in ChromaDB
-    and can be used for filtering during similarity search.
-
-    Attributes:
-        name: Author name
-        created_at: Timestamp when embedding was created
-    """
-
-    name: str = Field(..., description="Author name")
-    created_at: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
-        description="Creation timestamp",
-    )
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "name": "F. Scott Fitzgerald",
-            }
-        }
-    )
 
 
 class UserMetadata(BaseModel):
@@ -162,20 +135,6 @@ def validate_book_metadata(metadata: dict) -> BookMetadata:
     """
     return BookMetadata(**metadata)
 
-
-def validate_author_metadata(metadata: dict) -> AuthorMetadata:
-    """Validate and parse author metadata.
-
-    Args:
-        metadata: Dictionary containing author metadata
-
-    Returns:
-        Validated AuthorMetadata instance
-
-    Raises:
-        ValueError: If metadata validation fails
-    """
-    return AuthorMetadata(**metadata)
 
 
 def validate_user_metadata(metadata: dict) -> UserMetadata:
