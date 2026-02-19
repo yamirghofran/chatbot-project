@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -11,6 +12,25 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+
+class _TokenizerRegexWarningFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "incorrect regex pattern" in message and "fix_mistral_regex=True" in message:
+            return False
+        return True
+
+
+@contextmanager
+def _suppress_tokenizer_regex_warning():
+    tokenizer_logger = logging.getLogger("transformers.tokenization_utils_base")
+    warning_filter = _TokenizerRegexWarningFilter()
+    tokenizer_logger.addFilter(warning_filter)
+    try:
+        yield
+    finally:
+        tokenizer_logger.removeFilter(warning_filter)
 
 
 def detect_inference_device(device: Optional[str] = None) -> str:
@@ -157,18 +177,43 @@ def load_embedding_model(
             if isinstance(max_seq_length, int) and max_seq_length > 0:
                 kwargs["max_seq_length"] = int(max_seq_length)
 
+        unsloth_kwargs: dict[str, Any] = {
+            "model_name": str(resolved_model_path),
+            "device": resolved_device,
+            "fix_mistral_regex": True,
+            **kwargs,
+        }
+        with _suppress_tokenizer_regex_warning():
+            try:
+                return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
+            except TypeError:
+                pass
+
+            unsloth_kwargs.pop("fix_mistral_regex", None)
+            try:
+                return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
+            except TypeError:
+                pass
+
+            unsloth_kwargs.pop("device", None)
+            return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
+
+    sentence_transformer_kwargs: dict[str, Any] = {
+        "device": resolved_device,
+        "tokenizer_kwargs": {"fix_mistral_regex": True},
+    }
+    with _suppress_tokenizer_regex_warning():
         try:
-            return FastSentenceTransformer.from_pretrained(
-                model_name=str(resolved_model_path),
-                device=resolved_device,
-                **kwargs,
+            return SentenceTransformer(
+                str(resolved_model_path),
+                **sentence_transformer_kwargs,
             )
         except TypeError:
-            return FastSentenceTransformer.from_pretrained(
-                model_name=str(resolved_model_path),
+            sentence_transformer_kwargs.pop("tokenizer_kwargs", None)
+            return SentenceTransformer(
+                str(resolved_model_path),
+                **sentence_transformer_kwargs,
             )
-
-    return SentenceTransformer(str(resolved_model_path), device=resolved_device)
 
 
 def encode_texts(

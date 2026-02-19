@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import gc
 import inspect
 import json
@@ -61,6 +62,26 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class _TokenizerRegexWarningFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "incorrect regex pattern" in message and "fix_mistral_regex=True" in message:
+            return False
+        return True
+
+
+@contextmanager
+def suppress_tokenizer_regex_warning():
+    tokenizer_logger = logging.getLogger("transformers.tokenization_utils_base")
+    warning_filter = _TokenizerRegexWarningFilter()
+    tokenizer_logger.addFilter(warning_filter)
+    try:
+        yield
+    finally:
+        tokenizer_logger.removeFilter(warning_filter)
+
 
 # Login to HuggingFace Hub if token is available
 hf_token = os.getenv("HF_TOKEN")
@@ -1231,11 +1252,18 @@ def main() -> None:
         )
 
     logger.info("Loading model with Unsloth...")
-    model = FastSentenceTransformer.from_pretrained(
-        model_name=args.model_name,
-        max_seq_length=int(args.max_seq_length),
-        full_finetuning=bool(args.full_finetuning),
-    )
+    load_kwargs = {
+        "model_name": args.model_name,
+        "max_seq_length": int(args.max_seq_length),
+        "full_finetuning": bool(args.full_finetuning),
+        "fix_mistral_regex": True,
+    }
+    with suppress_tokenizer_regex_warning():
+        try:
+            model = FastSentenceTransformer.from_pretrained(**load_kwargs)
+        except TypeError:
+            load_kwargs.pop("fix_mistral_regex", None)
+            model = FastSentenceTransformer.from_pretrained(**load_kwargs)
     model.max_seq_length = int(args.max_seq_length)
 
     baseline_metrics: Optional[Dict[str, float]] = None
