@@ -191,7 +191,7 @@ def load_embedding_model(
         "device": resolved_device,
         "tokenizer_kwargs": {"fix_mistral_regex": True},
     }
-    with _suppress_tokenizer_regex_warning():
+    with suppress_tokenizer_regex_warning():
         try:
             return SentenceTransformer(
                 str(resolved_model_path),
