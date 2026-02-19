@@ -1,6 +1,6 @@
 import asyncio
 from dotenv import load_dotenv
-from bookdb.models.query_rewritter import create_groq_client, rewrite_query
+from bookdb.models.chatbot_llm import create_groq_client, rewrite_query
 
 load_dotenv()
 
