@@ -174,9 +174,10 @@ def import_authors(
     stats = {"rows": 0, "upserted": 0, "skipped": 0}
     limit_sql = f" LIMIT {limit}" if limit is not None else ""
     query = (
-        "SELECT author_id, name "
+        "SELECT author_id, ANY_VALUE(name) AS name "
         "FROM read_parquet(?) "
         "WHERE author_id IS NOT NULL "
+        "GROUP BY author_id "
         f"{limit_sql}"
     )
 
@@ -276,6 +277,13 @@ def import_books(
 
         if not book_payload:
             continue
+
+        # Deduplicate by goodreads_id, keeping the last entry
+        seen: dict[int, dict] = {}
+        for row in book_payload:
+            key = row["goodreads_id"]
+            seen[key] = row
+        book_payload = list(seen.values())
 
         stmt = pg_insert(Book).values(book_payload)
         stmt = stmt.on_conflict_do_update(
@@ -404,6 +412,14 @@ def import_reviews(
             )
 
         if payload:
+            # Deduplicate by goodreads_id, keeping the entry with the latest updated_at
+            seen: dict[str, dict] = {}
+            for row in payload:
+                key = row["goodreads_id"]
+                if key not in seen or row["updated_at"] > seen[key]["updated_at"]:
+                    seen[key] = row
+            payload = list(seen.values())
+
             stmt = pg_insert(Review).values(payload)
             stmt = stmt.on_conflict_do_update(
                 index_elements=[Review.goodreads_id],

@@ -22,5 +22,15 @@ def build_database_url() -> str:
 
 DATABASE_URL = build_database_url()
 
-engine = create_engine(DATABASE_URL, future=True)
+engine = create_engine(
+    DATABASE_URL,
+    future=True,
+    connect_args={
+        "keepalives": 1,
+        "keepalives_idle": 10,
+        "keepalives_interval": 5,
+        "keepalives_count": 5,
+        "connect_timeout": 30,
+    },
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
