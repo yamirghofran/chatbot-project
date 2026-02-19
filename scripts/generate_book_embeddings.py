@@ -12,6 +12,12 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+# Usage:
+# 1. Base (default, if nothing is provided):
+#    `uv run python scripts/generate_finetuned_book_embeddings.py`
+# 2. Finetuned books:
+#    `uv run python scripts/generate_finetuned_book_embeddings.py --model-variant finetuned-books --artifact-root models/finetuned_embeddinggemma_books`
+
 # Add project root to path for direct script execution.
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
@@ -34,8 +40,17 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate book embeddings parquet from finetuned EmbeddingGemma artifacts."
+            "Generate book embeddings parquet from base or finetuned EmbeddingGemma models."
         )
+    )
+    parser.add_argument(
+        "--model-variant",
+        choices=("base", "finetuned-books"),
+        default="base",
+        help=(
+            "Model variant to use. `base` loads `unsloth/embeddinggemma-300m`; "
+            "`finetuned-books` loads `<artifact-root>/merged_16bit`."
+        ),
     )
     parser.add_argument(
         "--artifact-root",
@@ -49,8 +64,8 @@ def parse_args() -> argparse.Namespace:
         "--model-path",
         default=None,
         help=(
-            "Explicit model directory or HF model id. If set, overrides artifact "
-            "auto-resolution."
+            "Explicit model directory or HF model id. If set, overrides "
+            "--model-variant defaults."
         ),
     )
     parser.add_argument(
@@ -117,6 +132,37 @@ def _validate_args(args: argparse.Namespace, texts_path: Path, output_path: Path
         raise ValueError("--log-every-seconds must be >= 0")
 
 
+def _resolve_model_selection(
+    args: argparse.Namespace,
+) -> tuple[str, Optional[dict[str, object]], str]:
+    # Explicit model path takes precedence regardless of selected variant.
+    if args.model_path is not None and str(args.model_path).strip():
+        model_path, manifest = resolve_artifact_model_path(
+            artifact_root=args.artifact_root,
+            model_path=args.model_path,
+        )
+        return str(model_path), manifest, str(args.model_variant)
+
+    variant = str(args.model_variant).strip().lower()
+    if variant == "base":
+        return "unsloth/embeddinggemma-300m", None, "base"
+
+    if variant != "finetuned-books":
+        raise ValueError(f"Unsupported --model-variant: {args.model_variant}")
+
+    model_path, manifest = resolve_artifact_model_path(
+        artifact_root=args.artifact_root,
+        model_path="merged_16bit",
+    )
+    resolved_path = Path(model_path).expanduser()
+    if not resolved_path.exists():
+        raise FileNotFoundError(
+            "Expected finetuned model at "
+            f"{resolved_path}. Provide --artifact-root with merged_16bit or use --model-path."
+        )
+    return str(resolved_path), manifest, "finetuned-books"
+
+
 def main() -> None:
     args = parse_args()
 
@@ -125,16 +171,14 @@ def main() -> None:
     _validate_args(args, texts_path=texts_path, output_path=output_path)
 
     resolved_device = detect_inference_device(args.device)
-    model_path, manifest = resolve_artifact_model_path(
-        artifact_root=args.artifact_root,
-        model_path=args.model_path,
-    )
+    model_path, manifest, resolved_model_variant = _resolve_model_selection(args)
     model = load_embedding_model(
         model_path=model_path,
         manifest=manifest,
         device=resolved_device,
     )
     logger.info("Starting embedding generation")
+    logger.info("Model variant: %s", resolved_model_variant)
     logger.info("Resolved model path: %s", model_path)
     logger.info("Runtime device: %s", resolved_device)
     logger.info("Input parquet: %s", texts_path)
@@ -263,6 +307,7 @@ def main() -> None:
         rows_per_sec,
     )
     summary = {
+        "model_variant": resolved_model_variant,
         "artifact_root_input": str(args.artifact_root),
         "model_path": str(model_path),
         "device": resolved_device,
