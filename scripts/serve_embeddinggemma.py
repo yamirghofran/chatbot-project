@@ -14,6 +14,7 @@ if str(project_root) not in sys.path:
 
 from bookdb.models.embedding_inference import (
     cosine_similarity,
+    detect_inference_device,
     encode_texts,
     load_embedding_model,
     resolve_artifact_model_path,
@@ -26,15 +27,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--artifact-root",
-        default="data/models/embeddinggemma_mnrl",
-        help="Training output dir that contains deployment_manifest.json/lora/merged_16bit.",
+        default="models/finetuned_embeddinggemma_books",
+        help=(
+            "Artifact location. Accepts artifact root, merged_16bit/lora model dir, "
+            "deployment_manifest.json path, file:// URI, or alias paths."
+        ),
     )
     parser.add_argument(
         "--model-path",
         default=None,
         help="Explicit model directory. If set, it overrides artifact auto-resolution.",
     )
-    parser.add_argument("--device", default=None, help="Optional device (cpu/cuda/mps).")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Optional device override (cpu/cuda/mps). Auto-detects when omitted.",
+    )
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
@@ -64,12 +72,17 @@ def _import_fastapi_runtime() -> tuple[Any, Any, Any, Any, Any]:
 def main() -> None:
     args = parse_args()
     uvicorn, FastAPI, HTTPException, BaseModel, Field = _import_fastapi_runtime()
+    resolved_device = detect_inference_device(args.device)
 
     model_path, manifest = resolve_artifact_model_path(
         artifact_root=args.artifact_root,
         model_path=args.model_path,
     )
-    model = load_embedding_model(model_path=model_path, manifest=manifest, device=args.device)
+    model = load_embedding_model(
+        model_path=model_path,
+        manifest=manifest,
+        device=resolved_device,
+    )
 
     class EmbedRequest(BaseModel):
         texts: list[str] = Field(..., min_length=1)
@@ -90,6 +103,7 @@ def main() -> None:
         return {
             "status": "ok",
             "model_path": str(model_path),
+            "device": resolved_device,
             "default_batch_size": int(args.batch_size),
         }
 

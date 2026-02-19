@@ -11,6 +11,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from bookdb.models.embedding_inference import (
+    detect_inference_device,
     encode_texts,
     load_embedding_model,
     resolve_artifact_model_path,
@@ -35,8 +36,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--artifact-root",
-        default="data/models/embeddinggemma_mnrl",
-        help="Training output dir that contains deployment_manifest.json/lora/merged_16bit.",
+        default="models/finetuned_embeddinggemma_books",
+        help=(
+            "Artifact location. Accepts artifact root, merged_16bit/lora model dir, "
+            "deployment_manifest.json path, file:// URI, or alias paths."
+        ),
     )
     parser.add_argument(
         "--model-path",
@@ -60,7 +64,11 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument("--device", default=None, help="Optional device (cpu/cuda/mps).")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Optional device override (cpu/cuda/mps). Auto-detects when omitted.",
+    )
     parser.add_argument(
         "--output-json",
         default=None,
@@ -71,6 +79,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    resolved_device = detect_inference_device(args.device)
 
     texts = list(args.text)
     if args.input_json:
@@ -83,7 +92,11 @@ def main() -> None:
         artifact_root=args.artifact_root,
         model_path=args.model_path,
     )
-    model = load_embedding_model(model_path=model_path, manifest=manifest, device=args.device)
+    model = load_embedding_model(
+        model_path=model_path,
+        manifest=manifest,
+        device=resolved_device,
+    )
     embeddings = encode_texts(
         model=model,
         texts=texts,
@@ -93,6 +106,7 @@ def main() -> None:
 
     payload = {
         "model_path": str(model_path),
+        "device": resolved_device,
         "normalize_embeddings": bool(args.normalize_embeddings),
         "shape": [int(x) for x in embeddings.shape],
         "texts": texts,
