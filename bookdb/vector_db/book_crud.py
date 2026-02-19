@@ -66,27 +66,24 @@ class BookVectorCRUD(BaseVectorCRUD):
             publication_year=publication_year,
         )
         
-        # Create document from book information
-        document = self._create_book_document(
-            title=title,
-            author=author,
-            description=description,
-            genre=genre,
-        )
+        # Use description as document, or create default
+        document = description or f"{title} by {author}"
         
-        if embedding is None:
-            from .embeddings import get_embedding_service
-            service = get_embedding_service()
-            embedding = service.generate_book_embedding(
-                title=title,
-                description=description,
-                author=author,
-                genre=genre,
-            )
+        # TODO: Generate embedding if not provided
+        # if embedding is None:
+        #     from .embeddings import get_embedding_service
+        #     service = get_embedding_service()
+        #     embedding = service.generate_book_embedding(
+        #         title=title,
+        #         description=description,
+        #         author=author,
+        #         genre=genre,
+        #     )
+        
         self.add(
             id=book_id,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     
@@ -133,31 +130,27 @@ class BookVectorCRUD(BaseVectorCRUD):
         # Validate updated metadata
         metadata = BookMetadata(**updated_data)
         
-        # Create updated document if content changed
+        # Update document if description changed
         document = None
-        if any(x is not None for x in [title, author, description, genre]):
-            document = self._create_book_document(
-                title=metadata.title,
-                author=metadata.author,
-                description=description,
-                genre=metadata.genre,
-            )
+        if description is not None:
+            document = description
             
-            if embedding is None:
-                from .embeddings import get_embedding_service
-                service = get_embedding_service()
-                embedding = service.generate_book_embedding(
-                    title=metadata.title,
-                    description=description,
-                    author=metadata.author,
-                    genre=metadata.genre,
-                )
+            # TODO: Regenerate embedding if description changed
+            # if embedding is None:
+            #     from .embeddings import get_embedding_service
+            #     service = get_embedding_service()
+            #     embedding = service.generate_book_embedding(
+            #         title=metadata.title,
+            #         description=description,
+            #         author=metadata.author,
+            #         genre=metadata.genre,
+            #     )
         
         # Update in collection
         self.update(
             id=book_id,
             document=document,
-            metadata=metadata.model_dump(),
+            metadata=metadata.model_dump(exclude_none=True),
             embedding=embedding,
         )
     
@@ -255,37 +248,3 @@ class BookVectorCRUD(BaseVectorCRUD):
         """Get book recommendations based on a given book."""
         # TODO: Implement book recommendations
         pass
-    
-    def _create_book_document(
-        self,
-        title: str,
-        author: str,
-        description: Optional[str] = None,
-        genre: Optional[str] = None,
-    ) -> str:
-        """Create a text document from book information.
-        
-        This combines book fields into a single text representation for
-        storage and embedding generation.
-        
-        Args:
-            title: Book title
-            author: Book author
-            description: Book description
-            genre: Book genre
-        
-        Returns:
-            Combined text document
-        """
-        parts = [
-            f"Title: {title}",
-            f"Author: {author}",
-        ]
-        
-        if genre:
-            parts.append(f"Genre: {genre}")
-        
-        if description:
-            parts.append(f"Description: {description}")
-        
-        return " | ".join(parts)

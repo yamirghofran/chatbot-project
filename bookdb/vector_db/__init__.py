@@ -38,6 +38,7 @@ from .embeddings import (
 )
 from .crud import BaseVectorCRUD
 from .book_crud import BookVectorCRUD
+from .user_crud import UserVectorCRUD
 from .review_crud import ReviewVectorCRUD
 
 __all__ = [
@@ -67,5 +68,6 @@ __all__ = [
     # CRUD
     "BaseVectorCRUD",
     "BookVectorCRUD",
+    "UserVectorCRUD",
     "ReviewVectorCRUD",
 ]

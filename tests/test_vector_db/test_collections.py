@@ -72,63 +72,36 @@ class TestBookMetadata:
 class TestUserMetadata:
     """Tests for UserMetadata schema."""
     
-    def test_user_metadata_minimal(self):
-        """Test creating user metadata with minimal required fields."""
-        metadata = UserMetadata(user_id=123)
+    def test_user_metadata_required_fields(self):
+        """Test creating user metadata with required fields."""
+        metadata = UserMetadata(user_id=123, name="Alice")
         
         assert metadata.user_id == 123
-        assert metadata.num_books_read == 0  # default
+        assert metadata.name == "Alice"
         assert metadata.created_at is not None
-        assert metadata.updated_at is not None
-    
-    def test_user_metadata_full(self):
-        """Test creating user metadata with all fields."""
-        metadata = UserMetadata(
-            user_id=12345,
-            num_books_read=42,
-            favorite_genres="Fiction,Science Fiction,Mystery",
-            average_rating_given=4.2,
-            reading_level="advanced",
-        )
-        
-        assert metadata.user_id == 12345
-        assert metadata.num_books_read == 42
-        assert metadata.favorite_genres == "Fiction,Science Fiction,Mystery"
-        assert metadata.average_rating_given == 4.2
     
     def test_user_metadata_invalid_user_id(self):
         """Test validation error for invalid user_id."""
         with pytest.raises(ValueError):
-            UserMetadata(user_id=0)  # Must be >= 1
+            UserMetadata(user_id=0, name="Alice")  # Must be >= 1
     
-    def test_user_metadata_invalid_num_books(self):
-        """Test validation error for negative books read."""
+    def test_user_metadata_missing_name(self):
+        """Test validation error when name is missing."""
         with pytest.raises(ValueError):
-            UserMetadata(
-                user_id=123,
-                num_books_read=-1,
-            )
-    
-    def test_user_metadata_invalid_rating(self):
-        """Test validation error for invalid average rating."""
-        with pytest.raises(ValueError):
-            UserMetadata(
-                user_id=123,
-                average_rating_given=5.5,  # Too high
-            )
+            UserMetadata(user_id=123)
     
     def test_validate_user_metadata_function(self):
         """Test validate_user_metadata helper function."""
         data = {
             "user_id": 456,
-            "num_books_read": 10,
-            "favorite_genres": "Fiction",
+            "name": "Bob",
         }
         
         metadata = validate_user_metadata(data)
         
         assert isinstance(metadata, UserMetadata)
         assert metadata.user_id == 456
+        assert metadata.name == "Bob"
 
 
 class TestCollectionNames:

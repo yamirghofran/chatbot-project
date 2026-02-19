@@ -88,32 +88,19 @@ class UserMetadata(BaseModel):
     
     Attributes:
         user_id: Unique user identifier (from PostgreSQL)
-        num_books_read: Total number of books the user has read
-        favorite_genres: List of user's favorite genres
-        average_rating_given: Average rating the user gives to books
-        last_active: Timestamp of last user activity
-        reading_level: User's reading level/preference
+        name: User display name
         created_at: Timestamp when embedding was created
-        updated_at: Timestamp when embedding was last updated
     """
     
     user_id: int = Field(..., description="User ID from PostgreSQL", ge=1)
-    num_books_read: int = Field(default=0, description="Number of books read", ge=0)
-    favorite_genres: Optional[str] = Field(None, description="Comma-separated favorite genres")
-    average_rating_given: Optional[float] = Field(None, description="Average rating given", ge=0.0, le=5.0)
-    last_active: Optional[str] = Field(None, description="Last activity timestamp")
-    reading_level: Optional[str] = Field(None, description="Reading level/preference")
+    name: str = Field(..., description="User display name")
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
-    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Last update timestamp")
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "user_id": 12345,
-                "num_books_read": 42,
-                "favorite_genres": "Fiction,Science Fiction,Mystery",
-                "average_rating_given": 4.2,
-                "reading_level": "advanced",
+                "name": "Alice",
             }
         }
     )
