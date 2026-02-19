@@ -538,6 +538,14 @@ def import_interactions(
                 stats["list_books_added"] += affected_rows(list_book_result, len(list_book_payload))
 
         if rating_payload:
+            # Deduplicate by (user_id, book_id), keeping the entry with the latest updated_at
+            seen: dict[tuple[int, int], dict] = {}
+            for row in rating_payload:
+                key = (row["user_id"], row["book_id"])
+                if key not in seen or row["updated_at"] > seen[key]["updated_at"]:
+                    seen[key] = row
+            rating_payload = list(seen.values())
+
             rating_stmt = pg_insert(BookRating).values(rating_payload)
             rating_stmt = rating_stmt.on_conflict_do_update(
                 index_elements=[BookRating.user_id, BookRating.book_id],
