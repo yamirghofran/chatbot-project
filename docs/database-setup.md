@@ -1,230 +1,144 @@
-# Local PostgreSQL Setup Guide
+# PostgreSQL Setup, Migration, and Import Workflow
 
-This guide covers setting up the local PostgreSQL database using Docker and managing migrations with Alembic.
+This guide is the source of truth for starting BookDB locally with the current schema and importing Goodreads parquet datasets.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- Python environment with `uv` package manager
-- Project dependencies installed (`uv sync`)
+- Docker + Docker Compose
+- Python + `uv`
+- Project checked out locally
 
-## Quick Start
-
-Run the complete setup with a single command:
+## 1. Install Dependencies
 
 ```bash
-make setup
+uv sync
 ```
 
-This will:
-1. Start the PostgreSQL container
-2. Wait for the database to be ready
-3. Run all migrations
-4. Seed initial data
+## 2. Configure Environment
 
-## Database Configuration
-
-The database connection is configured via environment variables. Copy the example file:
+Create `.env` (if missing):
 
 ```bash
 cp .env.example .env
 ```
 
-Default configuration (in `.env`):
-```
-DATABASE_URL=postgresql+psycopg://app_user:app_password@localhost:5433/app_db
-```
+Default local database connection uses:
 
-Note: I used port **5433** to avoid conflicts with my other local dbs
+- host: `localhost`
+- port: `5433`
+- database: `app_db`
+- user: `app_user`
 
-## Make Commands
-
-| Command | Description |
-|---------|-------------|
-| `make db-up` | Start the PostgreSQL container |
-| `make db-down` | Stop the PostgreSQL container |
-| `make db-reset` | Reset database (deletes all data) |
-| `make migrate` | Apply pending migrations |
-| `make make-migration msg="description"` | Create a new migration |
-| `make seed` | Seed initial data |
-| `make setup` | Full setup (db-up + migrate + seed) |
-
-## Step-by-Step Setup
-
-### 1. Start the Database
+## 3. Start Postgres
 
 ```bash
 make db-up
 ```
 
-This starts a PostgreSQL 16 container named `local-postgres`. Verify it's running:
+To confirm:
 
 ```bash
-docker ps
+docker compose ps
 ```
 
-### 2. Run Migrations
-
-Apply all database migrations:
+## 4. Apply Migrations
 
 ```bash
 make migrate
 ```
 
-### 3. Verify the Setup
+This runs:
 
-Connect to the database and check tables:
+```bash
+uv run alembic upgrade head
+```
+
+## 5. Import Dataset Files
+
+Run the importer:
+
+```bash
+make import-data
+```
+
+This executes:
+
+```bash
+uv run python scripts/import_goodreads_to_postgres.py
+```
+
+### Import script defaults
+
+- `data/raw_goodreads_book_authors.parquet`
+- `data/3_goodreads_books_with_metrics.parquet`
+- `data/3_goodreads_reviews_dedup_clean.parquet`
+- `data/3_goodreads_interactions_reduced.parquet`
+
+### Optional import flags
+
+```bash
+uv run python scripts/import_goodreads_to_postgres.py --limit 5000 --batch-size 1000
+uv run python scripts/import_goodreads_to_postgres.py --skip-reviews --skip-interactions
+```
+
+## 6. Verify Tables
 
 ```bash
 docker exec -it local-postgres psql -U app_user -d app_db -c "\dt"
 ```
 
-Expected output:
-```
- Schema |      Name       | Type  |  Owner
---------+-----------------+-------+----------
- public | alembic_version | table | app_user
- public | authors         | table | app_user
- public | book_authors    | table | app_user
- public | books           | table | app_user
- public | list_books      | table | app_user
- public | lists           | table | app_user
- public | users           | table | app_user
-```
+Expected tables:
 
-## Creating Migrations
+- `alembic_version`
+- `users`
+- `authors`
+- `books`
+- `book_authors`
+- `lists`
+- `list_books`
+- `shells`
+- `shell_books`
+- `book_ratings`
+- `reviews`
+- `review_comments`
+- `review_likes`
 
-When you modify models in `bookdb/db/models.py`, create a new migration:
+## 7. Useful Commands
 
-```bash
-make make-migration msg="add rating column to books"
-```
+- `make db-down`: stop Postgres
+- `make db-reset`: reset docker volume and start fresh Postgres
+- `make setup`: start DB and run migrations
+- `make make-migration msg="..."`: generate migration from model changes
 
-This auto-generates a migration file in `alembic/versions/`. Review the generated file, then apply:
+## Clean Reset From Scratch
 
-```bash
-make migrate
-```
-
-### Migration Best Practices
-
-1. **Review generated migrations** - Alembic's autogenerate is helpful but not perfect
-2. **Test migrations locally** before committing
-3. **Use descriptive messages** for migration names
-4. **Keep migrations small** - one logical change per migration
-
-## Resetting the Database
-
-To completely reset the database (deletes all data):
+Use this when you want an empty database and then re-import everything:
 
 ```bash
 make db-reset
 make migrate
-make seed
+make import-data
 ```
 
-Or use the combined command:
+## Current Workflow for Schema Changes
 
-```bash
-make db-reset && make migrate && make seed
-```
+1. Edit SQLAlchemy models in `bookdb/db/models.py`.
+2. Generate migration:
+   ```bash
+   make make-migration msg="describe change"
+   ```
+3. Review migration in `alembic/versions/`.
+4. Apply migration:
+   ```bash
+   make migrate
+   ```
+5. Re-run importer if schema changes affect ingest:
+   ```bash
+   make import-data
+   ```
 
-## Troubleshooting
+## Notes About ID Strategy
 
-### Port Conflict
-
-If you see an error about port 5432/5433 being in use:
-
-```bash
-# Check what's using the port
-lsof -i :5433
-
-# Stop any conflicting services or change the port in docker-compose.yml
-```
-
-### Connection Refused
-
-If migrations fail with "connection refused":
-
-1. Check the container is running: `docker ps`
-2. Wait a few seconds for PostgreSQL to initialize
-3. Verify the port in `.env` matches `docker-compose.yml`
-
-### Permission Denied
-
-If you get permission errors:
-
-```bash
-# Reset with fresh volume
-make db-reset
-```
-
-## Accessing the Database
-
-### Via Docker
-
-```bash
-docker exec -it local-postgres psql -U app_user -d app_db
-```
-
-### Via Python
-
-```python
-from bookdb.db.session import SessionLocal
-
-session = SessionLocal()
-# ... do queries ...
-session.close()
-```
-
-### Connection String
-
-For external tools (DBeaver, pgAdmin, tablePlus, etc.):
-
-```
-Host: localhost
-Port: 5433
-Database: app_db
-User: app_user
-Password: app_password
-```
-
-## Schema Overview
-
-```
-users
-├── id (PK)
-├── email (unique)
-├── name
-└── created_at
-
-authors
-├── id (PK)
-├── name (indexed)
-└── created_at
-
-books
-├── id (PK)
-├── title (indexed)
-├── pages_number
-├── publisher_name
-├── publish_day/month/year
-├── num_reviews
-├── rating_dist_1..5
-├── rating_dist_total
-└── created_at
-
-book_authors (junction table)
-├── book_id (FK → books)
-└── author_id (FK → authors)
-
-lists
-├── id (PK)
-├── name
-├── user_id (FK → users, indexed)
-└── created_at
-
-list_books (junction table)
-├── list_id (FK → lists)
-└── book_id (FK → books)
-```
+- `users` and `authors` use internal auto-increment `id` as PK.
+- Both have unique `goodreads_id` populated from datasets.
+- Importer resolves dataset IDs (`goodreads_id`) to internal PKs before writing FK rows.
