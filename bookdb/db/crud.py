@@ -8,6 +8,7 @@ flush on writes so IDs and relationship rows are available immediately.
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -28,6 +29,12 @@ from .models import (
     User,
 )
 
+# ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 
 def _parse_optional_bigint(value: int | float | str | None) -> int | None:
     """Parse a value into an integer ID, returning None when empty/NaN."""
@@ -43,6 +50,46 @@ def _parse_optional_bigint(value: int | float | str | None) -> int | None:
     if not value:
         return None
     return int(value)
+
+
+def _require_non_empty(value: str | None, field_name: str) -> str:
+    """Validate that a string field is not None, empty, or whitespace-only."""
+    if value is None:
+        raise ValueError(f"{field_name} is required")
+    value = str(value).strip()
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")
+    return value
+
+
+def _validate_email(email: str) -> str:
+    """Validate basic email format and return the stripped value."""
+    email = _require_non_empty(email, "email")
+    if not _EMAIL_RE.match(email):
+        raise ValueError(f"Invalid email format: {email!r}")
+    return email
+
+
+def _validate_year(year: int | None) -> int | None:
+    """Validate that a publication year is within a sane range, if provided."""
+    if year is None:
+        return None
+    if not isinstance(year, int):
+        raise ValueError(f"publication_year must be an integer, got {type(year).__name__}")
+    if year < 1000 or year > 9999:
+        raise ValueError(f"publication_year must be between 1000 and 9999, got {year}")
+    return year
+
+
+def _check_unique(
+    session: Session, model, field, value, label: str, exclude_id: int | None = None,
+) -> None:
+    """Pre-check a UNIQUE column, raising ValueError on conflict."""
+    stmt = select(model).where(field == value)
+    if exclude_id is not None:
+        stmt = stmt.where(model.id != exclude_id)
+    if session.scalar(stmt) is not None:
+        raise ValueError(f"{label} {value!r} is already taken")
 
 
 class AuthorCRUD:
@@ -63,8 +110,12 @@ class AuthorCRUD:
 
     @staticmethod
     def create(session: Session, name: str, **kwargs) -> Author:
+        name = _require_non_empty(name, "name")
         if "goodreads_id" in kwargs:
-            kwargs["goodreads_id"] = _parse_optional_bigint(kwargs["goodreads_id"])
+            gid = _parse_optional_bigint(kwargs["goodreads_id"])
+            kwargs["goodreads_id"] = gid
+            if gid is not None:
+                _check_unique(session, Author, Author.goodreads_id, gid, "goodreads_id")
         author = Author(name=name, **kwargs)
         session.add(author)
         session.flush()
@@ -75,8 +126,13 @@ class AuthorCRUD:
         author = session.get(Author, author_id)
         if not author:
             raise ValueError(f"Author with id {author_id} not found")
+        if "name" in kwargs:
+            kwargs["name"] = _require_non_empty(kwargs["name"], "name")
         if "goodreads_id" in kwargs:
-            kwargs["goodreads_id"] = _parse_optional_bigint(kwargs["goodreads_id"])
+            gid = _parse_optional_bigint(kwargs["goodreads_id"])
+            kwargs["goodreads_id"] = gid
+            if gid is not None:
+                _check_unique(session, Author, Author.goodreads_id, gid, "goodreads_id", exclude_id=author_id)
         for key, value in kwargs.items():
             setattr(author, key, value)
         session.flush()
@@ -158,6 +214,11 @@ class BookCRUD:
         gid = _parse_optional_bigint(goodreads_id)
         if gid is None:
             raise ValueError("goodreads_id is required and must be a valid integer")
+        _check_unique(session, Book, Book.goodreads_id, gid, "goodreads_id")
+        if "title" in kwargs:
+            kwargs["title"] = _require_non_empty(kwargs["title"], "title")
+        if "publication_year" in kwargs:
+            kwargs["publication_year"] = _validate_year(kwargs.get("publication_year"))
         kwargs["goodreads_id"] = gid
         book = Book(**kwargs)
         session.add(book)
@@ -173,8 +234,15 @@ class BookCRUD:
         book = session.get(Book, book_id)
         if not book:
             raise ValueError(f"Book with id {book_id} not found")
+        if "title" in kwargs:
+            kwargs["title"] = _require_non_empty(kwargs["title"], "title")
+        if "publication_year" in kwargs:
+            kwargs["publication_year"] = _validate_year(kwargs["publication_year"])
         if "goodreads_id" in kwargs:
-            kwargs["goodreads_id"] = _parse_optional_bigint(kwargs["goodreads_id"])
+            gid = _parse_optional_bigint(kwargs["goodreads_id"])
+            kwargs["goodreads_id"] = gid
+            if gid is not None:
+                _check_unique(session, Book, Book.goodreads_id, gid, "goodreads_id", exclude_id=book_id)
         for key, value in kwargs.items():
             setattr(book, key, value)
         session.flush()
@@ -247,8 +315,17 @@ class UserCRUD:
         password_hash: str,
         **kwargs,
     ) -> User:
+        email = _validate_email(email)
+        name = _require_non_empty(name, "name")
+        username = _require_non_empty(username, "username")
+        password_hash = _require_non_empty(password_hash, "password_hash")
+        _check_unique(session, User, User.email, email, "email")
+        _check_unique(session, User, User.username, username, "username")
         if "goodreads_id" in kwargs:
-            kwargs["goodreads_id"] = _parse_optional_bigint(kwargs["goodreads_id"])
+            gid = _parse_optional_bigint(kwargs["goodreads_id"])
+            kwargs["goodreads_id"] = gid
+            if gid is not None:
+                _check_unique(session, User, User.goodreads_id, gid, "goodreads_id")
         user = User(
             email=email,
             name=name,
@@ -265,8 +342,21 @@ class UserCRUD:
         user = session.get(User, user_id)
         if not user:
             raise ValueError(f"User with id {user_id} not found")
+        if "email" in kwargs:
+            kwargs["email"] = _validate_email(kwargs["email"])
+            _check_unique(session, User, User.email, kwargs["email"], "email", exclude_id=user_id)
+        if "name" in kwargs:
+            kwargs["name"] = _require_non_empty(kwargs["name"], "name")
+        if "username" in kwargs:
+            kwargs["username"] = _require_non_empty(kwargs["username"], "username")
+            _check_unique(session, User, User.username, kwargs["username"], "username", exclude_id=user_id)
+        if "password_hash" in kwargs:
+            kwargs["password_hash"] = _require_non_empty(kwargs["password_hash"], "password_hash")
         if "goodreads_id" in kwargs:
-            kwargs["goodreads_id"] = _parse_optional_bigint(kwargs["goodreads_id"])
+            gid = _parse_optional_bigint(kwargs["goodreads_id"])
+            kwargs["goodreads_id"] = gid
+            if gid is not None:
+                _check_unique(session, User, User.goodreads_id, gid, "goodreads_id", exclude_id=user_id)
         for key, value in kwargs.items():
             setattr(user, key, value)
         session.flush()
@@ -387,6 +477,12 @@ class BookListCRUD:
     def create(
         session: Session, user_id: int, title: str, description: str | None = None
     ) -> BookList:
+        title = _require_non_empty(title, "title")
+        existing = session.scalar(
+            select(BookList).where(BookList.user_id == user_id, BookList.title == title)
+        )
+        if existing:
+            raise ValueError(f"User already has a list titled {title!r}")
         book_list = BookList(user_id=user_id, title=title, description=description)
         session.add(book_list)
         session.flush()
@@ -546,6 +642,10 @@ class ReviewCRUD:
         review_text: str,
         goodreads_id: str | None = None,
     ) -> Review:
+        review_text = _require_non_empty(review_text, "review_text")
+        if goodreads_id is not None:
+            goodreads_id = _require_non_empty(goodreads_id, "goodreads_id")
+            _check_unique(session, Review, Review.goodreads_id, goodreads_id, "goodreads_id")
         review = Review(
             user_id=user_id,
             book_id=book_id,
@@ -561,6 +661,11 @@ class ReviewCRUD:
         review = session.get(Review, review_id)
         if not review:
             raise ValueError(f"Review with id {review_id} not found")
+        if "review_text" in kwargs:
+            kwargs["review_text"] = _require_non_empty(kwargs["review_text"], "review_text")
+        if "goodreads_id" in kwargs and kwargs["goodreads_id"] is not None:
+            kwargs["goodreads_id"] = _require_non_empty(kwargs["goodreads_id"], "goodreads_id")
+            _check_unique(session, Review, Review.goodreads_id, kwargs["goodreads_id"], "goodreads_id", exclude_id=review_id)
         for key, value in kwargs.items():
             setattr(review, key, value)
         session.flush()
@@ -594,6 +699,7 @@ class ReviewCommentCRUD:
 
     @staticmethod
     def create(session: Session, review_id: int, user_id: int, comment_text: str) -> ReviewComment:
+        comment_text = _require_non_empty(comment_text, "comment_text")
         comment = ReviewComment(
             review_id=review_id,
             user_id=user_id,
