@@ -143,3 +143,4 @@ dmypy.json
 #/data
 .DS_Store
 /data
+/models
