@@ -39,6 +39,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
 
+    # Optional external identifier from dataset imports (e.g. Goodreads user_id).
+    # Mirrors Author.external_id — allows mapping dataset review rows back to
+    # PG users so that import_reviews() can create proper FK-linked Review rows.
+    external_id: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
+
     lists: Mapped[list["BookList"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",

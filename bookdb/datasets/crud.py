@@ -141,8 +141,13 @@ class UserCRUD:
         return session.scalar(stmt)
 
     @staticmethod
-    def create(session: Session, email: str, name: str) -> User:
-        user = User(email=email, name=name)
+    def get_by_external_id(session: Session, external_id: str) -> User | None:
+        stmt = select(User).where(User.external_id == external_id)
+        return session.scalar(stmt)
+
+    @staticmethod
+    def create(session: Session, email: str, name: str, **kwargs) -> User:
+        user = User(email=email, name=name, **kwargs)
         session.add(user)
         session.flush()
         return user
@@ -153,6 +158,64 @@ class UserCRUD:
         if user:
             return user
         return UserCRUD.create(session, email, name)
+
+    @staticmethod
+    def get_or_create_from_external(
+        session: Session, external_id: str
+    ) -> User:
+        """Look up by external_id; if missing, create a stub user.
+
+        Stub users get a synthetic email (``<ext_id_prefix>@import.local``)
+        and name (``User <ext_id_prefix>``) derived from the external ID.
+        This allows dataset imports (e.g. Goodreads reviews) to create
+        FK-linked rows even when no real email/name is available.
+        """
+        user = UserCRUD.get_by_external_id(session, external_id)
+        if user:
+            return user
+        prefix = external_id[:12]
+        return UserCRUD.create(
+            session,
+            email=f"{prefix}@import.local",
+            name=f"User {prefix}",
+            external_id=external_id,
+        )
+
+    @staticmethod
+    def bulk_get_by_external_ids(
+        session: Session, external_ids: list[str]
+    ) -> dict[str, User]:
+        """Return {external_id: User} for all matching rows."""
+        external_ids = list(set(external_ids))
+        if not external_ids:
+            return {}
+        stmt = select(User).where(User.external_id.in_(external_ids))
+        return {u.external_id: u for u in session.scalars(stmt).all()}
+
+    @staticmethod
+    def bulk_get_or_create_from_external(
+        session: Session, external_ids: list[str]
+    ) -> dict[str, User]:
+        """Return {external_id: User}, creating stub users for any missing IDs."""
+        external_ids = list(set(external_ids))
+        if not external_ids:
+            return {}
+        existing = UserCRUD.bulk_get_by_external_ids(session, external_ids)
+        to_create = [eid for eid in external_ids if eid not in existing]
+        if to_create:
+            new_users = [
+                User(
+                    email=f"{eid[:12]}@import.local",
+                    name=f"User {eid[:12]}",
+                    external_id=eid,
+                )
+                for eid in to_create
+            ]
+            session.add_all(new_users)
+            session.flush()
+            for user in new_users:
+                existing[user.external_id] = user
+        return existing
 
 
 class BookListCRUD:
