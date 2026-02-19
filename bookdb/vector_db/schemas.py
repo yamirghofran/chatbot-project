@@ -13,11 +13,13 @@ class CollectionNames(str, Enum):
         BOOKS: Collection for book embeddings and metadata
         AUTHORS: Collection for author embeddings and metadata
         USERS: Collection for user preference embeddings and metadata
+        REVIEWS: Collection for book review embeddings and metadata
     """
 
     BOOKS = "books"
     AUTHORS = "authors"
     USERS = "users"
+    REVIEWS = "reviews"
 
 
 class BookMetadata(BaseModel):
@@ -117,6 +119,48 @@ class UserMetadata(BaseModel):
     )
 
 
+class ReviewMetadata(BaseModel):
+    """Metadata schema for book review embeddings.
+    
+    This metadata is stored alongside review embeddings in ChromaDB
+    and can be used for filtering and analysis.
+    
+    Note:
+        The review_id is stored as the document ID in ChromaDB, not in metadata.
+        Access it via item["id"] when retrieving reviews.
+    
+    Attributes:
+        user_id: User identifier who wrote the review
+        book_id: Book identifier being reviewed
+        rating: Rating given (1-5)
+        date_added: Date when review was added
+        date_updated: Date when review was last updated
+        read_at: Date when book was read
+        created_at: Timestamp when embedding was created
+    """
+    
+    user_id: str = Field(..., description="User ID who wrote the review")
+    book_id: str = Field(..., description="Book ID being reviewed")
+    rating: int = Field(..., description="Rating given (1-5)", ge=1, le=5)
+    date_added: Optional[str] = Field(None, description="Date when review was added")
+    date_updated: Optional[str] = Field(None, description="Date when review was last updated")
+    read_at: Optional[str] = Field(None, description="Date when book was read")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": "user_12345",
+                "book_id": "book_789",
+                "rating": 5,
+                "date_added": "2024-01-15",
+                "date_updated": "2024-01-20",
+                "read_at": "2024-01-10",
+            }
+        }
+    )
+
+
 def validate_book_metadata(metadata: dict) -> BookMetadata:
     """Validate and parse book metadata.
     
@@ -160,3 +204,18 @@ def validate_user_metadata(metadata: dict) -> UserMetadata:
         ValueError: If metadata validation fails
     """
     return UserMetadata(**metadata)
+
+
+def validate_review_metadata(metadata: dict) -> ReviewMetadata:
+    """Validate and parse review metadata.
+    
+    Args:
+        metadata: Dictionary containing review metadata
+    
+    Returns:
+        Validated ReviewMetadata instance
+    
+    Raises:
+        ValueError: If metadata validation fails
+    """
+    return ReviewMetadata(**metadata)

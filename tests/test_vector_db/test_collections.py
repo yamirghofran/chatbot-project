@@ -170,8 +170,8 @@ class TestCollectionManager:
         manager = CollectionManager()
         manager.initialize_collections()
         
-        # Should create all collections
-        assert mock_client.get_or_create_collection.call_count == 3
+        # Should create all collections (books, authors, users, reviews)
+        assert mock_client.get_or_create_collection.call_count == 4
         
         # Check books collection creation
         calls = mock_client.get_or_create_collection.call_args_list
@@ -188,6 +188,11 @@ class TestCollectionManager:
         users_call = calls[2]
         assert users_call[1]["name"] == "users"
         assert "cosine" in users_call[1]["metadata"]["hnsw:space"]
+        
+        # Check reviews collection creation
+        reviews_call = calls[3]
+        assert reviews_call[1]["name"] == "reviews"
+        assert "cosine" in reviews_call[1]["metadata"]["hnsw:space"]
     
     @patch("bookdb.vector_db.collections.get_chroma_client")
     def test_get_collection_from_cache(self, mock_get_client):

@@ -20,14 +20,17 @@ from .schemas import (
     CollectionNames,
     BookMetadata,
     UserMetadata,
+    ReviewMetadata,
     validate_book_metadata,
     validate_user_metadata,
+    validate_review_metadata,
 )
 from .collections import (
     CollectionManager,
     initialize_all_collections,
     get_books_collection,
     get_users_collection,
+    get_reviews_collection,
 )
 from .embeddings import (
     EmbeddingService,
@@ -35,6 +38,7 @@ from .embeddings import (
 )
 from .crud import BaseVectorCRUD
 from .book_crud import BookVectorCRUD
+from .review_crud import ReviewVectorCRUD
 
 __all__ = [
     # Client
@@ -47,17 +51,21 @@ __all__ = [
     "CollectionNames",
     "BookMetadata",
     "UserMetadata",
+    "ReviewMetadata",
     "validate_book_metadata",
     "validate_user_metadata",
+    "validate_review_metadata",
     # Collections
     "CollectionManager",
     "initialize_all_collections",
     "get_books_collection",
     "get_users_collection",
+    "get_reviews_collection",
     # Embeddings
     "EmbeddingService",
     "get_embedding_service",
     # CRUD
     "BaseVectorCRUD",
     "BookVectorCRUD",
+    "ReviewVectorCRUD",
 ]

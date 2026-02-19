@@ -14,11 +14,6 @@ class CollectionManager:
     
     This class handles the lifecycle of ChromaDB collections including
     creation, retrieval, and configuration.
-    
-    Example:
-        >>> manager = CollectionManager()
-        >>> manager.initialize_collections()
-        >>> books_collection = manager.get_collection(CollectionNames.BOOKS)
     """
     
     def __init__(self, config: Optional[ChromaDBConfig] = None):
@@ -33,7 +28,7 @@ class CollectionManager:
     def initialize_collections(self) -> None:
         """Initialize all required collections.
 
-        Creates the BOOKS, AUTHORS, and USERS collections if they don't exist.
+        Creates the BOOKS, AUTHORS, USERS, and REVIEWS collections if they don't exist.
         Configures appropriate distance functions and metadata for each.
 
         Note:
@@ -65,6 +60,15 @@ class CollectionManager:
                 "hnsw:space": "cosine",  # Use cosine similarity for user embeddings
             },
         )
+        
+        # Initialize reviews collection
+        self._get_or_create_collection(
+            name=CollectionNames.REVIEWS.value,
+            metadata={
+                "description": "Book review embeddings for sentiment analysis and recommendations",
+                "hnsw:space": "cosine",  # Use cosine similarity for review embeddings
+            },
+        )
     
     def get_collection(self, collection_name: CollectionNames) -> Collection:
         """Get a collection by name.
@@ -77,10 +81,6 @@ class CollectionManager:
         
         Raises:
             ValueError: If collection doesn't exist
-        
-        Example:
-            >>> manager = CollectionManager()
-            >>> books = manager.get_collection(CollectionNames.BOOKS)
         """
         # Check cache first
         if collection_name.value in self._collections:
@@ -139,6 +139,14 @@ class CollectionManager:
                 name=collection_name.value,
                 metadata={
                     "description": "User preference embeddings for personalized recommendations",
+                    "hnsw:space": "cosine",
+                },
+            )
+        elif collection_name == CollectionNames.REVIEWS:
+            self._get_or_create_collection(
+                name=collection_name.value,
+                metadata={
+                    "description": "Book review embeddings for sentiment analysis and recommendations",
                     "hnsw:space": "cosine",
                 },
             )
@@ -220,10 +228,6 @@ def initialize_all_collections(config: Optional[ChromaDBConfig] = None) -> Colle
     
     Returns:
         Initialized CollectionManager instance
-    
-    Example:
-        >>> manager = initialize_all_collections()
-        >>> books = manager.get_collection(CollectionNames.BOOKS)
     """
     manager = CollectionManager(config)
     manager.initialize_collections()
@@ -254,3 +258,16 @@ def get_users_collection(config: Optional[ChromaDBConfig] = None) -> Collection:
     """
     manager = CollectionManager(config)
     return manager.get_collection(CollectionNames.USERS)
+
+
+def get_reviews_collection(config: Optional[ChromaDBConfig] = None) -> Collection:
+    """Get the reviews collection.
+    
+    Args:
+        config: ChromaDB configuration. If None, loads from environment.
+    
+    Returns:
+        Reviews Collection instance
+    """
+    manager = CollectionManager(config)
+    return manager.get_collection(CollectionNames.REVIEWS)
