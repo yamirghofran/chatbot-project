@@ -147,13 +147,28 @@ def main() -> None:
         texts_raw = request.get("texts")
         if not isinstance(texts_raw, list) or len(texts_raw) == 0:
             raise HTTPException(status_code=400, detail="texts must be a non-empty list of strings")
-        texts = [str(x) for x in texts_raw]
+
+        MAX_TEXTS = 100
+        MAX_TEXT_LENGTH = 5000
+        if len(texts_raw) > MAX_TEXTS:
+            raise HTTPException(status_code=400, detail=f"Maximum {MAX_TEXTS} texts allowed per request")
+
+        texts = []
+        for x in texts_raw:
+            s = str(x)
+            if len(s) > MAX_TEXT_LENGTH:
+                raise HTTPException(status_code=400, detail=f"Text exceeds maximum length of {MAX_TEXT_LENGTH} characters")
+            texts.append(s)
 
         model_key = request.get("model", args.default_model)
         selected_key, selected_model = _resolve_runtime_model(str(model_key))
 
         normalize_embeddings = bool(request.get("normalize_embeddings", True))
-        batch_size = max(1, int(request.get("batch_size", args.batch_size)))
+
+        MAX_BATCH_SIZE = 64
+        requested_batch_size = int(request.get("batch_size", args.batch_size))
+        batch_size = max(1, min(requested_batch_size, MAX_BATCH_SIZE))
+
         embeddings = encode_texts(
             model=selected_model["model"],
             texts=texts,

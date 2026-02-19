@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+
 import gc
 import inspect
 import json
@@ -64,23 +64,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class _TokenizerRegexWarningFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        message = record.getMessage()
-        if "incorrect regex pattern" in message and "fix_mistral_regex=True" in message:
-            return False
-        return True
-
-
-@contextmanager
-def suppress_tokenizer_regex_warning():
-    tokenizer_logger = logging.getLogger("transformers.tokenization_utils_base")
-    warning_filter = _TokenizerRegexWarningFilter()
-    tokenizer_logger.addFilter(warning_filter)
-    try:
-        yield
-    finally:
-        tokenizer_logger.removeFilter(warning_filter)
+from bookdb.models.embedding_inference import suppress_tokenizer_regex_warning
 
 
 # Login to HuggingFace Hub if token is available

@@ -232,15 +232,14 @@ def main() -> None:
             if kept_rows == 0:
                 continue
 
-            batch_book_ids = [str(x) if x is not None else "" for x in batch_frame["book_id"].to_list()]
-            batch_texts = [str(x) for x in batch_frame["book_embedding_text"].to_list()]
+            batch_book_ids = batch_frame.get_column("book_id").cast(pl.String).fill_null("").to_list()
+            batch_texts = batch_frame["book_embedding_text"].to_list()
             batch_embeddings = encode_texts(
                 model=model,
                 texts=batch_texts,
                 normalize_embeddings=bool(args.normalize_embeddings),
                 batch_size=int(args.encode_batch_size),
             )
-            batch_embeddings = np.asarray(batch_embeddings, dtype=np.float32, order="C")
             if batch_embeddings.ndim == 1:
                 batch_embeddings = batch_embeddings.reshape(1, -1)
 

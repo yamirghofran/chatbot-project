@@ -23,7 +23,7 @@ class _TokenizerRegexWarningFilter(logging.Filter):
 
 
 @contextmanager
-def _suppress_tokenizer_regex_warning():
+def suppress_tokenizer_regex_warning():
     tokenizer_logger = logging.getLogger("transformers.tokenization_utils_base")
     warning_filter = _TokenizerRegexWarningFilter()
     tokenizer_logger.addFilter(warning_filter)
@@ -66,18 +66,11 @@ def _iter_path_candidates(path_like: str | Path) -> list[Path]:
     candidates: list[Path] = [base]
 
     if raw.endswith("_merged_16bit"):
-        candidates.append(Path(f"{raw[: -len('_merged_16bit')]}/merged_16bit"))
+        candidates.append(Path(raw[: -len("_merged_16bit")]) / "merged_16bit")
     if raw.endswith("_lora"):
-        candidates.append(Path(f"{raw[: -len('_lora')]}/lora"))
+        candidates.append(Path(raw[: -len("_lora")]) / "lora")
 
-    deduped: list[Path] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key not in seen:
-            seen.add(key)
-            deduped.append(candidate)
-    return deduped
+    return list(dict.fromkeys(candidates))
 
 
 def _resolve_input_path(path_like: str | Path) -> Path:
@@ -183,20 +176,16 @@ def load_embedding_model(
             "fix_mistral_regex": True,
             **kwargs,
         }
-        with _suppress_tokenizer_regex_warning():
+        with suppress_tokenizer_regex_warning():
             try:
                 return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
             except TypeError:
-                pass
-
-            unsloth_kwargs.pop("fix_mistral_regex", None)
-            try:
-                return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
-            except TypeError:
-                pass
-
-            unsloth_kwargs.pop("device", None)
-            return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
+                unsloth_kwargs.pop("fix_mistral_regex", None)
+                try:
+                    return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
+                except TypeError:
+                    unsloth_kwargs.pop("device", None)
+                    return FastSentenceTransformer.from_pretrained(**unsloth_kwargs)
 
     sentence_transformer_kwargs: dict[str, Any] = {
         "device": resolved_device,
