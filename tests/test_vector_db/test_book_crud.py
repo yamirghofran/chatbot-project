@@ -37,7 +37,6 @@ class TestBookVectorCRUDQdrant:
 
     def test_init_defaults_to_books_collection(self, book_crud):
         assert book_crud.collection_name == CollectionNames.BOOKS.value
-        assert book_crud._legacy_mode is False
 
     def test_add_book_minimal(self, book_crud, mock_client):
         mock_client.retrieve.return_value = []

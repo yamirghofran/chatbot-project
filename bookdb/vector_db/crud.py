@@ -11,11 +11,7 @@ from .client import get_qdrant_client
 
 
 class BaseVectorCRUD:
-    """Base CRUD operations for vector collections.
-
-    Qdrant is the primary backend. A temporary legacy fallback is kept for
-    still-unmigrated call sites that pass legacy collection objects.
-    """
+    """Base CRUD operations for Qdrant collections."""
 
     def __init__(
         self,
@@ -33,8 +29,7 @@ class BaseVectorCRUD:
         self.collection = collection
         self.collection_name = self._resolve_collection_name(collection)
         self.vector_size = vector_size or int(os.getenv("QDRANT_VECTOR_SIZE", "384"))
-        self._legacy_mode = self._is_legacy_collection(collection)
-        self.client = None if self._legacy_mode else (client or get_qdrant_client())
+        self.client = client or get_qdrant_client()
 
     def add(
         self,
@@ -44,10 +39,6 @@ class BaseVectorCRUD:
         embedding: Optional[List[float]] = None,
     ) -> None:
         """Add a single item to the collection."""
-        if self._legacy_mode:
-            self._legacy_add(id=id, document=document, metadata=metadata, embedding=embedding)
-            return
-
         if self.exists(id):
             raise ValueError(f"Item with ID '{id}' already exists")
 
@@ -71,10 +62,6 @@ class BaseVectorCRUD:
         embeddings: Optional[List[List[float]]] = None,
     ) -> None:
         """Add multiple items to the collection in batch."""
-        if self._legacy_mode:
-            self._legacy_add_batch(ids, documents, metadatas, embeddings)
-            return
-
         if metadatas and len(metadatas) != len(ids):
             raise ValueError("Length of metadatas must match length of ids")
         if embeddings and len(embeddings) != len(ids):
@@ -111,9 +98,6 @@ class BaseVectorCRUD:
 
     def get(self, id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single item by ID."""
-        if self._legacy_mode:
-            return self._legacy_get(id)
-
         records = self.client.retrieve(
             collection_name=self.collection_name,
             ids=[id],
@@ -126,9 +110,6 @@ class BaseVectorCRUD:
 
     def get_batch(self, ids: List[str]) -> List[Dict[str, Any]]:
         """Retrieve multiple items by IDs."""
-        if self._legacy_mode:
-            return self._legacy_get_batch(ids)
-
         records = self.client.retrieve(
             collection_name=self.collection_name,
             ids=ids,
@@ -145,10 +126,6 @@ class BaseVectorCRUD:
         embedding: Optional[List[float]] = None,
     ) -> None:
         """Update an existing item."""
-        if self._legacy_mode:
-            self._legacy_update(id=id, document=document, metadata=metadata, embedding=embedding)
-            return
-
         existing = self.get(id)
         if not existing:
             raise ValueError(f"Item with ID '{id}' does not exist")
@@ -171,10 +148,6 @@ class BaseVectorCRUD:
 
     def delete(self, id: str) -> None:
         """Delete a single item from the collection."""
-        if self._legacy_mode:
-            self._legacy_delete(id)
-            return
-
         if not self.exists(id):
             raise ValueError(f"Item with ID '{id}' does not exist")
 
@@ -186,10 +159,6 @@ class BaseVectorCRUD:
 
     def delete_batch(self, ids: List[str]) -> None:
         """Delete multiple items from the collection."""
-        if self._legacy_mode:
-            self._legacy_delete_batch(ids)
-            return
-
         existing = self.client.retrieve(
             collection_name=self.collection_name,
             ids=ids,
@@ -209,13 +178,6 @@ class BaseVectorCRUD:
 
     def exists(self, id: str) -> bool:
         """Check if an item exists in the collection."""
-        if self._legacy_mode:
-            try:
-                result = self.collection.get(ids=[id])
-                return len(result["ids"]) > 0
-            except Exception:
-                return False
-
         try:
             records = self.client.retrieve(
                 collection_name=self.collection_name,
@@ -229,9 +191,6 @@ class BaseVectorCRUD:
 
     def count(self) -> int:
         """Get the total number of items in the collection."""
-        if self._legacy_mode:
-            return self._legacy_count()
-
         result = self.client.count(
             collection_name=self.collection_name,
             exact=True,
@@ -244,9 +203,6 @@ class BaseVectorCRUD:
         offset: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Get all items from the collection."""
-        if self._legacy_mode:
-            return self._legacy_get_all(limit=limit, offset=offset)
-
         skip = max(0, offset or 0)
         items: List[Dict[str, Any]] = []
         skipped = 0
@@ -285,15 +241,6 @@ class BaseVectorCRUD:
 
         return str(collection)
 
-    def _is_legacy_collection(self, collection: Any) -> bool:
-        return (
-            hasattr(collection, "add")
-            and hasattr(collection, "get")
-            and hasattr(collection, "update")
-            and hasattr(collection, "delete")
-            and hasattr(collection, "count")
-        )
-
     def _make_point(
         self,
         id: str,
@@ -325,124 +272,3 @@ class BaseVectorCRUD:
             "metadata": payload.get("metadata"),
             "embedding": vector,
         }
-
-    # --- Temporary legacy compatibility helpers ---
-    def _legacy_add(
-        self,
-        id: str,
-        document: str,
-        metadata: Optional[Dict[str, Any]],
-        embedding: Optional[List[float]],
-    ) -> None:
-        if self.exists(id):
-            raise ValueError(f"Item with ID '{id}' already exists")
-        self.collection.add(
-            ids=[id],
-            documents=[document],
-            metadatas=[metadata] if metadata else None,
-            embeddings=[embedding] if embedding else None,
-        )
-
-    def _legacy_add_batch(
-        self,
-        ids: List[str],
-        documents: List[str],
-        metadatas: Optional[List[Dict[str, Any]]],
-        embeddings: Optional[List[List[float]]],
-    ) -> None:
-        if metadatas and len(metadatas) != len(ids):
-            raise ValueError("Length of metadatas must match length of ids")
-        if embeddings and len(embeddings) != len(ids):
-            raise ValueError("Length of embeddings must match length of ids")
-        if len(documents) != len(ids):
-            raise ValueError("Length of documents must match length of ids")
-
-        existing_items = self.collection.get(ids=ids)
-        if existing_items["ids"]:
-            raise ValueError(f"Items with IDs already exist: {existing_items['ids']}")
-
-        self.collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-            embeddings=embeddings,
-        )
-
-    def _legacy_get(self, id: str) -> Optional[Dict[str, Any]]:
-        result = self.collection.get(
-            ids=[id],
-            include=["documents", "metadatas", "embeddings"],
-        )
-        if not result["ids"]:
-            return None
-        return {
-            "id": result["ids"][0],
-            "document": result["documents"][0] if result["documents"] else None,
-            "metadata": result["metadatas"][0] if result["metadatas"] else None,
-            "embedding": result["embeddings"][0] if result["embeddings"] else None,
-        }
-
-    def _legacy_get_batch(self, ids: List[str]) -> List[Dict[str, Any]]:
-        result = self.collection.get(
-            ids=ids,
-            include=["documents", "metadatas", "embeddings"],
-        )
-        items: List[Dict[str, Any]] = []
-        for i in range(len(result["ids"])):
-            items.append({
-                "id": result["ids"][i],
-                "document": result["documents"][i] if result["documents"] else None,
-                "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                "embedding": result["embeddings"][i] if result["embeddings"] else None,
-            })
-        return items
-
-    def _legacy_update(
-        self,
-        id: str,
-        document: Optional[str],
-        metadata: Optional[Dict[str, Any]],
-        embedding: Optional[List[float]],
-    ) -> None:
-        if not self.exists(id):
-            raise ValueError(f"Item with ID '{id}' does not exist")
-        self.collection.update(
-            ids=[id],
-            documents=[document] if document else None,
-            metadatas=[metadata] if metadata else None,
-            embeddings=[embedding] if embedding else None,
-        )
-
-    def _legacy_delete(self, id: str) -> None:
-        if not self.exists(id):
-            raise ValueError(f"Item with ID '{id}' does not exist")
-        self.collection.delete(ids=[id])
-
-    def _legacy_delete_batch(self, ids: List[str]) -> None:
-        missing_ids = [id_ for id_ in ids if not self.exists(id_)]
-        if missing_ids:
-            raise ValueError(f"Items with IDs do not exist: {missing_ids}")
-        self.collection.delete(ids=ids)
-
-    def _legacy_count(self) -> int:
-        return self.collection.count()
-
-    def _legacy_get_all(
-        self,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        result = self.collection.get(
-            include=["documents", "metadatas", "embeddings"],
-            limit=limit,
-            offset=offset,
-        )
-        items: List[Dict[str, Any]] = []
-        for i in range(len(result["ids"])):
-            items.append({
-                "id": result["ids"][i],
-                "document": result["documents"][i] if result["documents"] else None,
-                "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                "embedding": result["embeddings"][i] if result["embeddings"] else None,
-            })
-        return items

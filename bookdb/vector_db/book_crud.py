@@ -176,15 +176,6 @@ class BookVectorCRUD(BaseVectorCRUD):
             List of matching books
         """
         try:
-            if self._legacy_mode:
-                return self._search_by_metadata_legacy(
-                    genre=genre,
-                    author=author,
-                    min_year=min_year,
-                    max_year=max_year,
-                    limit=limit,
-                )
-
             scroll_filter = self._build_qdrant_filter(
                 genre=genre,
                 author=author,
@@ -237,54 +228,6 @@ class BookVectorCRUD(BaseVectorCRUD):
 
         return Filter(must=must) if must else None
 
-    def _search_by_metadata_legacy(
-        self,
-        genre: Optional[str] = None,
-        author: Optional[str] = None,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-        limit: int = 10,
-    ) -> List[Dict[str, Any]]:
-        where_filter = {}
-
-        if genre:
-            where_filter["genre"] = genre
-
-        if author:
-            where_filter["author"] = author
-
-        if min_year is not None:
-            where_filter["publication_year"] = {"$gte": min_year}
-
-        if max_year is not None:
-            if "publication_year" in where_filter:
-                where_filter["publication_year"]["$lte"] = max_year
-            else:
-                where_filter["publication_year"] = {"$lte": max_year}
-
-        if where_filter:
-            result = self.collection.get(
-                where=where_filter,
-                limit=limit,
-                include=["documents", "metadatas", "embeddings"],
-            )
-        else:
-            result = self.collection.get(
-                limit=limit,
-                include=["documents", "metadatas", "embeddings"],
-            )
-
-        items = []
-        for i in range(len(result["ids"])):
-            items.append({
-                "id": result["ids"][i],
-                "document": result["documents"][i] if result["documents"] else None,
-                "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                "embedding": result["embeddings"][i] if result["embeddings"] else None,
-            })
-
-        return items
-    
     def search_similar_books(
         self,
         query_text: str,
