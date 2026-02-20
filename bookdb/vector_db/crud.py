@@ -16,8 +16,8 @@ class BaseVectorCRUD:
     def __init__(
         self,
         collection: Any,
-        client: Any | None = None,
-        vector_size: int | None = None,
+        client: Optional[Any] = None,
+        vector_size: Optional[int] = None,
     ):
         """Initialize CRUD operations for a collection.
 
