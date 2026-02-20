@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Tests for Qdrant-backed book CRUD operations."""
 
 from types import SimpleNamespace
