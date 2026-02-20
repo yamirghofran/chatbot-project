@@ -112,7 +112,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self.update(
             id=book_id,
             document=document,
-            metadata={},
+            metadata=None,
             embedding=embedding,
         )
     
