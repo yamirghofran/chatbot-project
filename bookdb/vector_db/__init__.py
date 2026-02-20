@@ -11,11 +11,10 @@ Example:
 
 from .client import (
     get_qdrant_client,
-    get_chroma_client,
     reset_client,
     get_client_info,
 )
-from .config import QdrantConfig, ChromaDBConfig
+from .config import QdrantConfig
 from .schemas import (
     CollectionNames,
     BookMetadata,
@@ -44,12 +43,10 @@ from .review_crud import ReviewVectorCRUD
 __all__ = [
     # Client
     "get_qdrant_client",
-    "get_chroma_client",
     "reset_client",
     "get_client_info",
     # Config
     "QdrantConfig",
-    "ChromaDBConfig",
     # Schemas
     "CollectionNames",
     "BookMetadata",

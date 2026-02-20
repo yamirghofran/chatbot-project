@@ -105,8 +105,3 @@ def get_client_info() -> dict:
         "mode": _client_config.mode if _client_config else "unknown",
         "config": _client_config.__dict__ if _client_config else None,
     }
-
-
-def get_chroma_client(config: Optional[QdrantConfig] = None) -> QdrantClient:
-    """Compatibility wrapper for legacy call sites."""
-    return get_qdrant_client(config)

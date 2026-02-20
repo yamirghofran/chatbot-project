@@ -14,7 +14,7 @@ class BaseVectorCRUD:
     """Base CRUD operations for vector collections.
 
     Qdrant is the primary backend. A temporary legacy fallback is kept for
-    still-unmigrated call sites that pass Chroma-like collection objects.
+    still-unmigrated call sites that pass legacy collection objects.
     """
 
     def __init__(

@@ -1,4 +1,4 @@
-"""Embedding generation service for ChromaDB.
+"""Embedding generation service for vector search.
 
 This module provides functionality for generating vector embeddings from text
 using sentence-transformers models.

@@ -86,7 +86,3 @@ class QdrantConfig:
 
         if self.timeout <= 0:
             raise ValueError(f"Timeout must be > 0. Got: {self.timeout}")
-
-
-# Temporary compatibility alias while downstream modules are migrated.
-ChromaDBConfig = QdrantConfig
