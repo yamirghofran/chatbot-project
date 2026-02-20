@@ -6,7 +6,7 @@ from typing import Optional
 
 # QUERY REWRITING TO BOOK DESCRIPTIONS AND REVIEWS
 
-DEFAULT_QUERY_REWRITER_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+DEFAULT_QUERY_REWRITER_MODEL = os.environ.get("DEFAULT_QUERY_REWRITER_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 BOOK_DESCRIPTION_PROMPT = """You're a prompt re-writer. Your job is to rewrite \
  user's queries to look like a book description. Make up the title, author, shelves, \
@@ -61,14 +61,18 @@ async def _rewrite_description(client: AsyncGroq, query: str) -> str:
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
             {"role": "system", "content": BOOK_DESCRIPTION_PROMPT},
-            {"role": "user", "content": query},
+            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
         ],
         temperature=1,
-        max_completion_tokens=1024,
+        max_completion_tokens=int(os.environ.get("MAX_DESCRIPTION_TOKENS", 1024)),
         stream=False,
         response_format=_BOOK_DESCRIPTION_SCHEMA,
     )
-    data = json.loads(response.choices[0].message.content)
+    try:
+        data = json.loads(response.choices[0].message.content)
+    except (IndexError, json.JSONDecodeError) as e:
+        print(f"Error parsing LLM response for description: {e}")
+        return ""
     return f"TITLE: {data['title']}\nAUTHOR: {data['author']}\nSHELVES: {data['shelves']}\nDESCRIPTION: {data['description']}\n"
 
 
@@ -77,14 +81,18 @@ async def _rewrite_review(client: AsyncGroq, query: str) -> str:
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
             {"role": "system", "content": BOOK_REVIEW_PROMPT},
-            {"role": "user", "content": query},
+            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
         ],
         temperature=1,
-        max_completion_tokens=1024,
+        max_completion_tokens=int(os.environ.get("MAX_REVIEW_TOKENS", 150)),
         stream=False,
         response_format=_BOOK_REVIEW_SCHEMA,
     )
-    return json.loads(response.choices[0].message.content)["review"]
+    try:
+        return json.loads(response.choices[0].message.content)["review"]
+    except (IndexError, json.JSONDecodeError) as e:
+        print(f"Error parsing LLM response for review: {e}")
+        return ""
 
 
 async def rewrite_query(client: AsyncGroq, query: str) -> tuple[str, str]:
@@ -96,7 +104,7 @@ async def rewrite_query(client: AsyncGroq, query: str) -> tuple[str, str]:
 
 # ANSWERING USER QUERIES WITH A CHATBOT LLM
 
-DEFAULT_CHATBOT_MODEL = "moonshotai/kimi-k2-instruct-0905"
+DEFAULT_CHATBOT_MODEL = os.environ.get("DEFAULT_CHATBOT_MODEL", "moonshotai/kimi-k2-instruct-0905")
 
 _CHATBOT_SYSTEM_PROMPT = """\
 You are a helpful book recommendation assistant. You are given a list of books \
@@ -146,9 +154,9 @@ async def generate_response(
         for r in reviews
     )
     user_message = (
-        f"User query: {query}\n\n"
-        f"Relevant books:\n{books_text}\n\n"
-        f"Relevant reviews (may reference books not in the list above):\n{reviews_text}"
+        f"### USER QUERY ###\n{query}\n### END USER QUERY ###\n\n"
+        f"### RELEVANT BOOKS ###\n{books_text}\n### END RELEVANT BOOKS ###\n\n"
+        f"### RELEVANT REVIEWS ###\n{reviews_text}\n### END RELEVANT REVIEWS ###"
     )
 
     response = await client.chat.completions.create(
@@ -157,9 +165,13 @@ async def generate_response(
             {"role": "system", "content": _CHATBOT_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
-        temperature=0.7,
-        max_completion_tokens=1024,
+        temperature=float(os.environ.get("CHATBOT_TEMPERATURE", 0.7)),
+        max_completion_tokens=int(os.environ.get("MAX_CHATBOT_TOKENS", 1024)),
         stream=False,
         response_format=_CHATBOT_RESPONSE_SCHEMA,
     )
-    return json.loads(response.choices[0].message.content)
+    try:
+        return json.loads(response.choices[0].message.content)
+    except (IndexError, json.JSONDecodeError) as e:
+        print(f"Error parsing LLM response for chatbot: {e}")
+        return {"response": "An error occurred while generating the response.", "referenced_book_ids": [], "referenced_review_ids": []}
