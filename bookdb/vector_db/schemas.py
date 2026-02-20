@@ -1,4 +1,4 @@
-"""Schemas and metadata definitions for ChromaDB collections."""
+"""Schemas and metadata definitions for vector collections."""
 
 from enum import Enum
 from typing import Optional
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class CollectionNames(str, Enum):
-    """Enumeration of collection names in ChromaDB.
+    """Enumeration of vector collection names.
 
     Attributes:
         BOOKS: Collection for book embeddings and metadata
@@ -23,7 +23,7 @@ class CollectionNames(str, Enum):
 class BookMetadata(BaseModel):
     """Metadata schema for book embeddings.
 
-    This metadata is stored alongside book embeddings in ChromaDB
+    This metadata is stored alongside book embeddings
     and can be used for filtering during similarity search.
 
     Attributes:
@@ -56,7 +56,7 @@ class BookMetadata(BaseModel):
 class UserMetadata(BaseModel):
     """Metadata schema for user preference embeddings.
     
-    This metadata is stored alongside user embeddings in ChromaDB
+    This metadata is stored alongside user embeddings
     and can be used for filtering and analysis.
     
     Attributes:
@@ -82,11 +82,11 @@ class UserMetadata(BaseModel):
 class ReviewMetadata(BaseModel):
     """Metadata schema for book review embeddings.
     
-    This metadata is stored alongside review embeddings in ChromaDB
+    This metadata is stored alongside review embeddings
     and can be used for filtering and analysis.
     
     Note:
-        The review_id is stored as the document ID in ChromaDB, not in metadata.
+        The review_id is stored as the document ID, not in metadata.
         Access it via item["id"] when retrieving reviews.
     
     Attributes:

@@ -1,11 +1,10 @@
-"""Vector database module for ChromaDB integration.
+"""Vector database module.
 
-This module provides a clean interface for interacting with ChromaDB,
+This module provides a clean interface for interacting with the vector backend,
 including client management, configuration, and CRUD operations.
 
 Example:
-    >>> from bookdb.vector_db import get_chroma_client, initialize_all_collections
-    >>> client = get_chroma_client()
+    >>> from bookdb.vector_db import initialize_all_collections, CollectionNames
     >>> manager = initialize_all_collections()
     >>> books = manager.get_collection(CollectionNames.BOOKS)
 """

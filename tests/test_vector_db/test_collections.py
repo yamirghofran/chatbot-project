@@ -1,4 +1,4 @@
-"""Tests for ChromaDB collections module."""
+"""Tests for vector collection management."""
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -17,7 +17,6 @@ from bookdb.vector_db.schemas import (
     validate_book_metadata,
     validate_user_metadata,
 )
-from bookdb.vector_db.config import ChromaDBConfig
 
 
 class TestBookMetadata:
@@ -180,7 +179,7 @@ class TestCollectionManager:
     
     @patch("bookdb.vector_db.collections.get_chroma_client")
     def test_get_collection_from_client(self, mock_get_client):
-        """Test getting collection from ChromaDB client."""
+        """Test getting collection from the backing client."""
         mock_client = MagicMock()
         mock_collection = MagicMock()
         mock_client.get_collection.return_value = mock_collection

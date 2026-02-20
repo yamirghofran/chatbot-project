@@ -1,18 +1,18 @@
-"""Collection management for ChromaDB."""
+"""Collection management for vector database collections."""
 
 from typing import Optional, List
 from chromadb import Collection
 from chromadb.api.types import CollectionMetadata
 
 from .client import get_chroma_client
-from .schemas import CollectionNames, BookMetadata, UserMetadata
+from .schemas import CollectionNames
 from .config import ChromaDBConfig
 
 
 class CollectionManager:
-    """Manager for ChromaDB collections.
+    """Manager for vector database collections.
     
-    This class handles the lifecycle of ChromaDB collections including
+    This class handles collection lifecycle operations including
     creation, retrieval, and configuration.
     """
     
@@ -20,7 +20,7 @@ class CollectionManager:
         """Initialize collection manager.
         
         Args:
-            config: ChromaDB configuration. If None, loads from environment.
+            config: Vector DB configuration. If None, loads from environment.
         """
         self.client = get_chroma_client(config)
         self._collections = {}
@@ -28,7 +28,7 @@ class CollectionManager:
     def initialize_collections(self) -> None:
         """Initialize all required collections.
 
-        Creates the BOOKS, AUTHORS, USERS, and REVIEWS collections if they don't exist.
+        Creates the BOOKS, USERS, and REVIEWS collections if they don't exist.
         Configures appropriate distance functions and metadata for each.
 
         Note:
@@ -68,7 +68,7 @@ class CollectionManager:
             collection_name: Name of the collection to retrieve
         
         Returns:
-            ChromaDB Collection instance
+            Collection instance
         
         Raises:
             ValueError: If collection doesn't exist
@@ -77,7 +77,7 @@ class CollectionManager:
         if collection_name.value in self._collections:
             return self._collections[collection_name.value]
         
-        # Try to get from ChromaDB
+        # Try to get from backing client
         try:
             collection = self.client.get_collection(name=collection_name.value)
             self._collections[collection_name.value] = collection
@@ -185,7 +185,7 @@ class CollectionManager:
             metadata: Collection metadata including distance function
         
         Returns:
-            ChromaDB Collection instance
+            Collection instance
         """
         collection = self.client.get_or_create_collection(
             name=name,
@@ -207,7 +207,7 @@ def initialize_all_collections(config: Optional[ChromaDBConfig] = None) -> Colle
     and initializes all collections in one call.
     
     Args:
-        config: ChromaDB configuration. If None, loads from environment.
+        config: Vector DB configuration. If None, loads from environment.
     
     Returns:
         Initialized CollectionManager instance
@@ -221,7 +221,7 @@ def get_books_collection(config: Optional[ChromaDBConfig] = None) -> Collection:
     """Get the books collection.
     
     Args:
-        config: ChromaDB configuration. If None, loads from environment.
+        config: Vector DB configuration. If None, loads from environment.
     
     Returns:
         Books Collection instance
@@ -234,7 +234,7 @@ def get_users_collection(config: Optional[ChromaDBConfig] = None) -> Collection:
     """Get the users collection.
     
     Args:
-        config: ChromaDB configuration. If None, loads from environment.
+        config: Vector DB configuration. If None, loads from environment.
     
     Returns:
         Users Collection instance
@@ -247,7 +247,7 @@ def get_reviews_collection(config: Optional[ChromaDBConfig] = None) -> Collectio
     """Get the reviews collection.
     
     Args:
-        config: ChromaDB configuration. If None, loads from environment.
+        config: Vector DB configuration. If None, loads from environment.
     
     Returns:
         Reviews Collection instance
