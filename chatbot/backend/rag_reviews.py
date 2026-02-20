@@ -2,14 +2,14 @@
 
 from typing import Any, Dict, List
 
-import chromadb
 import httpx
 import polars as pl
+from qdrant_client import QdrantClient
 
 # Hardcoded defaults
 EMBEDDING_ENDPOINT = "http://127.0.0.1:8000/embed"
-MODEL_NAME = "finetuned" #'base'
-CHROMA_DIR = "./chroma_db"
+MODEL_NAME = "finetuned"  # 'base'
+QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "reviews_collection"
 REVIEWS_PARQUET = "data/goodreads_reviews_dedup_clean.parquet"
 
@@ -33,23 +33,24 @@ def generate_embedding(text: str) -> List[float]:
 def search_similar_reviews(
     query_embedding: List[float], top_k: int = 10
 ) -> List[Dict[str, Any]]:
-    """Search Chroma for similar reviews."""
-    client = chromadb.PersistentClient(path=CHROMA_DIR)
-    collection = client.get_collection(name=COLLECTION_NAME)
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+    """Search Qdrant for similar reviews."""
+    client = QdrantClient(url=QDRANT_URL)
+    results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_embedding,
+        limit=top_k,
+    )
 
     reviews = []
-    for i, review_id in enumerate(results["ids"][0]):
-        distance = results["distances"][0][i] if results["distances"] else 0.0
+    for point in results.points:
         reviews.append(
             {
-                "review_id": review_id,
-                "similarity_score": 1.0 - distance,
-                "distance": distance,
+                "review_id": point.payload.get("review_id"),
+                "similarity_score": point.score,
             }
         )
-
     return reviews
+
 
 
 def get_review_metadata(review_ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -98,3 +99,17 @@ def search_reviews(query_text: str, top_k: int = 10) -> Dict[str, Any]:
         results.append(review_result)
 
     return {"query": query_text, "top_k": top_k, "results": results}
+
+
+"""
+REVIEWS = [
+    {
+        "review_id": "101",
+        "book_title": "A Throne of Ash and Starlight",
+        "review": (
+            "I devoured this in one sitting. Mira and Caelen have the most infuriating, "
+            "electric dynamic — every scene crackles. The slow build is worth every page. "
+            "My only gripe is the middle act drags slightly, but the payoff more than "
+            "makes up for it. Absolutely staying on my all-time favourites shelf."
+        ),
+"""
