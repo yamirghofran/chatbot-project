@@ -1,27 +1,24 @@
-"""Vector database module for ChromaDB integration.
+"""Vector database module.
 
-This module provides a clean interface for interacting with ChromaDB,
+This module provides a clean interface for interacting with the vector backend,
 including client management, configuration, and CRUD operations.
 
 Example:
-    >>> from bookdb.vector_db import get_chroma_client, initialize_all_collections
-    >>> client = get_chroma_client()
+    >>> from bookdb.vector_db import initialize_all_collections, CollectionNames
     >>> manager = initialize_all_collections()
     >>> books = manager.get_collection(CollectionNames.BOOKS)
 """
 
 from .client import (
-    get_chroma_client,
+    get_qdrant_client,
     reset_client,
     get_client_info,
 )
-from .config import ChromaDBConfig
+from .config import QdrantConfig
 from .schemas import (
     CollectionNames,
-    BookMetadata,
     UserMetadata,
     ReviewMetadata,
-    validate_book_metadata,
     validate_user_metadata,
     validate_review_metadata,
 )
@@ -43,17 +40,15 @@ from .review_crud import ReviewVectorCRUD
 
 __all__ = [
     # Client
-    "get_chroma_client",
+    "get_qdrant_client",
     "reset_client",
     "get_client_info",
     # Config
-    "ChromaDBConfig",
+    "QdrantConfig",
     # Schemas
     "CollectionNames",
-    "BookMetadata",
     "UserMetadata",
     "ReviewMetadata",
-    "validate_book_metadata",
     "validate_user_metadata",
     "validate_review_metadata",
     # Collections
