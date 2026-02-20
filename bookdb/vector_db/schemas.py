@@ -2,7 +2,6 @@
 
 from enum import Enum
 from typing import Optional
-from datetime import datetime, timezone
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -28,24 +27,16 @@ class BookMetadata(BaseModel):
 
     Attributes:
         title: Book title
-        author: Book author(s)
-        genre: Book genre/category
         publication_year: Year the book was published
-        created_at: Timestamp when embedding was created
     """
 
     title: str = Field(..., description="Book title")
-    author: str = Field(..., description="Book author(s)")
-    genre: Optional[str] = Field(None, description="Book genre/category")
     publication_year: Optional[int] = Field(None, description="Publication year", ge=1000, le=9999)
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "title": "The Great Gatsby",
-                "author": "F. Scott Fitzgerald",
-                "genre": "Fiction",
                 "publication_year": 1925,
             }
         }
@@ -62,12 +53,10 @@ class UserMetadata(BaseModel):
     Attributes:
         user_id: Unique user identifier (from PostgreSQL)
         name: User display name
-        created_at: Timestamp when embedding was created
     """
     
     user_id: int = Field(..., description="User ID from PostgreSQL", ge=1)
     name: str = Field(..., description="User display name")
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -92,30 +81,16 @@ class ReviewMetadata(BaseModel):
     Attributes:
         user_id: User identifier who wrote the review
         book_id: Book identifier being reviewed
-        rating: Rating given (1-5)
-        date_added: Date when review was added
-        date_updated: Date when review was last updated
-        read_at: Date when book was read
-        created_at: Timestamp when embedding was created
     """
     
-    user_id: str = Field(..., description="User ID who wrote the review")
-    book_id: str = Field(..., description="Book ID being reviewed")
-    rating: int = Field(..., description="Rating given (1-5)", ge=1, le=5)
-    date_added: Optional[str] = Field(None, description="Date when review was added")
-    date_updated: Optional[str] = Field(None, description="Date when review was last updated")
-    read_at: Optional[str] = Field(None, description="Date when book was read")
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Creation timestamp")
+    user_id: int = Field(..., description="User ID who wrote the review", ge=1)
+    book_id: int = Field(..., description="Book ID being reviewed", ge=1)
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "user_id": "user_12345",
-                "book_id": "book_789",
-                "rating": 5,
-                "date_added": "2024-01-15",
-                "date_updated": "2024-01-20",
-                "read_at": "2024-01-10",
+                "user_id": 12345,
+                "book_id": 789,
             }
         }
     )

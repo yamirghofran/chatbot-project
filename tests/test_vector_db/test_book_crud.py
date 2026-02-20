@@ -44,17 +44,15 @@ class TestBookVectorCRUDQdrant:
         book_crud.add_book(
             book_id="book_123",
             title="Test Book",
-            author="Test Author",
         )
 
         kwargs = mock_client.upsert.call_args.kwargs
         assert kwargs["collection_name"] == "books"
         point = kwargs["points"][0]
         assert point.id == "book_123"
-        assert point.payload["document"] == "Test Book by Test Author"
+        assert point.payload["document"] == "Test Book"
         assert point.payload["metadata"]["title"] == "Test Book"
-        assert point.payload["metadata"]["author"] == "Test Author"
-        assert "created_at" in point.payload["metadata"]
+        assert "publication_year" not in point.payload["metadata"]
 
     def test_add_book_with_description_and_embedding(self, book_crud, mock_client):
         mock_client.retrieve.return_value = []
@@ -63,16 +61,13 @@ class TestBookVectorCRUDQdrant:
         book_crud.add_book(
             book_id="book_456",
             title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
             description="A novel about the American Dream",
-            genre="Fiction",
             publication_year=1925,
             embedding=embedding,
         )
 
         point = mock_client.upsert.call_args.kwargs["points"][0]
         assert point.payload["document"] == "A novel about the American Dream"
-        assert point.payload["metadata"]["genre"] == "Fiction"
         assert point.payload["metadata"]["publication_year"] == 1925
         assert point.vector == embedding
 
@@ -83,7 +78,6 @@ class TestBookVectorCRUDQdrant:
             book_crud.add_book(
                 book_id="book_123",
                 title="Test Book",
-                author="Test Author",
             )
 
     def test_add_book_invalid_metadata(self, book_crud, mock_client):
@@ -93,7 +87,6 @@ class TestBookVectorCRUDQdrant:
             book_crud.add_book(
                 book_id="book_123",
                 title="Test Book",
-                author="Test Author",
                 publication_year=999,
             )
 
@@ -106,10 +99,7 @@ class TestBookVectorCRUDQdrant:
                 document="Original doc",
                 metadata={
                     "title": "Original Title",
-                    "author": "Original Author",
-                    "genre": "Fiction",
                     "publication_year": 2020,
-                    "created_at": "2024-01-01T00:00:00+00:00",
                 },
                 embedding=[0.1, 0.2, 0.3],
             )
@@ -134,8 +124,6 @@ class TestBookVectorCRUDQdrant:
                 document="Original doc",
                 metadata={
                     "title": "Original Title",
-                    "author": "Original Author",
-                    "created_at": "2024-01-01T00:00:00+00:00",
                 },
                 embedding=[0.1, 0.2, 0.3],
             )
@@ -162,11 +150,11 @@ class TestBookVectorCRUDQdrant:
 
     def test_search_by_metadata_single_filter(self, book_crud, mock_client):
         mock_client.scroll.return_value = ([
-            _record("book_1", "Doc 1", {"title": "Book 1", "genre": "Fiction"}, [0.1]),
-            _record("book_2", "Doc 2", {"title": "Book 2", "genre": "Fiction"}, [0.2]),
+            _record("book_1", "Doc 1", {"title": "Book 1"}, [0.1]),
+            _record("book_2", "Doc 2", {"title": "Book 1"}, [0.2]),
         ], None)
 
-        results = book_crud.search_by_metadata(genre="Fiction", limit=5)
+        results = book_crud.search_by_metadata(title="Book 1", limit=5)
 
         assert len(results) == 2
         kwargs = mock_client.scroll.call_args.kwargs
@@ -174,8 +162,8 @@ class TestBookVectorCRUDQdrant:
         assert kwargs["limit"] == 5
         scroll_filter = kwargs["scroll_filter"]
         assert len(scroll_filter.must) == 1
-        assert scroll_filter.must[0].key == "metadata.genre"
-        assert scroll_filter.must[0].match.value == "Fiction"
+        assert scroll_filter.must[0].key == "metadata.title"
+        assert scroll_filter.must[0].match.value == "Book 1"
 
     def test_search_by_metadata_multiple_filters(self, book_crud, mock_client):
         mock_client.scroll.return_value = ([
@@ -183,17 +171,15 @@ class TestBookVectorCRUDQdrant:
         ], None)
 
         book_crud.search_by_metadata(
-            genre="Fiction",
-            author="Test Author",
+            title="Book 1",
             min_year=1900,
             max_year=2000,
         )
 
         scroll_filter = mock_client.scroll.call_args.kwargs["scroll_filter"]
-        assert len(scroll_filter.must) == 3
+        assert len(scroll_filter.must) == 2
         by_key = {condition.key: condition for condition in scroll_filter.must}
-        assert by_key["metadata.genre"].match.value == "Fiction"
-        assert by_key["metadata.author"].match.value == "Test Author"
+        assert by_key["metadata.title"].match.value == "Book 1"
         assert by_key["metadata.publication_year"].range.gte == 1900
         assert by_key["metadata.publication_year"].range.lte == 2000
 
@@ -213,7 +199,7 @@ class TestBookVectorCRUDQdrant:
         mock_client.scroll.side_effect = RuntimeError("boom")
 
         with pytest.raises(Exception, match="Failed to search by metadata"):
-            book_crud.search_by_metadata(genre="Fiction")
+            book_crud.search_by_metadata(title="Book 1")
 
     def test_search_similar_books_not_implemented(self, book_crud):
         result = book_crud.search_similar_books(

@@ -27,18 +27,14 @@ class TestBookMetadata:
     def test_book_metadata_minimal(self):
         metadata = BookMetadata(
             title="Test Book",
-            author="Test Author",
         )
 
         assert metadata.title == "Test Book"
-        assert metadata.author == "Test Author"
-        assert metadata.created_at is not None
+        assert metadata.publication_year is None
 
     def test_book_metadata_full(self):
         metadata = BookMetadata(
             title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
-            genre="Fiction",
             publication_year=1925,
         )
 
@@ -49,15 +45,13 @@ class TestBookMetadata:
         with pytest.raises(ValueError):
             BookMetadata(
                 title="Test",
-                author="Test",
                 publication_year=999,
             )
 
     def test_validate_book_metadata_function(self):
         data = {
             "title": "Test Book",
-            "author": "Test Author",
-            "genre": "Fiction",
+            "publication_year": 2020,
         }
 
         metadata = validate_book_metadata(data)
@@ -74,7 +68,6 @@ class TestUserMetadata:
 
         assert metadata.user_id == 123
         assert metadata.name == "Alice"
-        assert metadata.created_at is not None
 
     def test_user_metadata_invalid_user_id(self):
         with pytest.raises(ValueError):

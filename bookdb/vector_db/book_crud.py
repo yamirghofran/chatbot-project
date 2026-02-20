@@ -22,7 +22,6 @@ class BookVectorCRUD(BaseVectorCRUD):
         ...     book_id="123",
         ...     title="The Great Gatsby",
         ...     description="A novel about...",
-        ...     author="F. Scott Fitzgerald",
         ... )
     """
     
@@ -38,9 +37,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self,
         book_id: str,
         title: str,
-        author: str,
         description: Optional[str] = None,
-        genre: Optional[str] = None,
         publication_year: Optional[int] = None,
         embedding: Optional[List[float]] = None,
     ) -> None:
@@ -49,9 +46,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         Args:
             book_id: Unique identifier for the book
             title: Book title (required)
-            author: Book author (required)
             description: Book description or summary
-            genre: Book genre/category
             publication_year: Year of publication
             embedding: Optional pre-computed embedding vector
 
@@ -62,13 +57,11 @@ class BookVectorCRUD(BaseVectorCRUD):
         # Validate metadata
         metadata = BookMetadata(
             title=title,
-            author=author,
-            genre=genre,
             publication_year=publication_year,
         )
         
         # Use description as document, or create default
-        document = description or f"{title} by {author}"
+        document = description or title
         
         # TODO: Generate embedding if not provided
         # if embedding is None:
@@ -77,8 +70,6 @@ class BookVectorCRUD(BaseVectorCRUD):
         #     embedding = service.generate_book_embedding(
         #         title=title,
         #         description=description,
-        #         author=author,
-        #         genre=genre,
         #     )
         
         self.add(
@@ -92,9 +83,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self,
         book_id: str,
         title: Optional[str] = None,
-        author: Optional[str] = None,
         description: Optional[str] = None,
-        genre: Optional[str] = None,
         publication_year: Optional[int] = None,
         embedding: Optional[List[float]] = None,
     ) -> None:
@@ -103,9 +92,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         Args:
             book_id: Unique identifier of the book to update
             title: New book title
-            author: New author name
             description: New description
-            genre: New genre
             publication_year: New publication year
             embedding: Optional new embedding vector
 
@@ -123,8 +110,6 @@ class BookVectorCRUD(BaseVectorCRUD):
         # Build updated metadata (keep existing values if not provided)
         updated_data = {
             "title": title if title is not None else existing_metadata.get("title"),
-            "author": author if author is not None else existing_metadata.get("author"),
-            "genre": genre if genre is not None else existing_metadata.get("genre"),
             "publication_year": publication_year if publication_year is not None else existing_metadata.get("publication_year"),
         }
         
@@ -143,8 +128,6 @@ class BookVectorCRUD(BaseVectorCRUD):
             #     embedding = service.generate_book_embedding(
             #         title=metadata.title,
             #         description=description,
-            #         author=metadata.author,
-            #         genre=metadata.genre,
             #     )
         
         # Update in collection
@@ -157,8 +140,7 @@ class BookVectorCRUD(BaseVectorCRUD):
     
     def search_by_metadata(
         self,
-        genre: Optional[str] = None,
-        author: Optional[str] = None,
+        title: Optional[str] = None,
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
         limit: int = 10,
@@ -166,8 +148,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         """Search books by metadata filters.
 
         Args:
-            genre: Filter by genre
-            author: Filter by author name
+            title: Filter by exact title
             min_year: Minimum publication year
             max_year: Maximum publication year
             limit: Maximum number of results
@@ -177,8 +158,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         """
         try:
             scroll_filter = self._build_qdrant_filter(
-                genre=genre,
-                author=author,
+                title=title,
                 min_year=min_year,
                 max_year=max_year,
             )
@@ -195,26 +175,17 @@ class BookVectorCRUD(BaseVectorCRUD):
 
     def _build_qdrant_filter(
         self,
-        genre: Optional[str],
-        author: Optional[str],
+        title: Optional[str],
         min_year: Optional[int],
         max_year: Optional[int],
     ) -> Optional[Filter]:
         must: List[FieldCondition] = []
 
-        if genre:
+        if title:
             must.append(
                 FieldCondition(
-                    key="metadata.genre",
-                    match=MatchValue(value=genre),
-                )
-            )
-
-        if author:
-            must.append(
-                FieldCondition(
-                    key="metadata.author",
-                    match=MatchValue(value=author),
+                    key="metadata.title",
+                    match=MatchValue(value=title),
                 )
             )
 
@@ -232,8 +203,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self,
         query_text: str,
         n_results: int = 10,
-        genre: Optional[str] = None,
-        author: Optional[str] = None,
+        title: Optional[str] = None,
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -246,7 +216,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         self,
         book_id: str,
         n_results: int = 10,
-        genre: Optional[str] = None,
+        title: Optional[str] = None,
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:

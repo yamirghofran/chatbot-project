@@ -85,6 +85,23 @@ Return shape for callers is preserved as:
 - `metadata`
 - `embedding`
 
+## Metadata Contract
+
+Vector metadata is intentionally aligned with SQL primary entities:
+
+- `books` metadata:
+  - `title`
+  - `publication_year` (optional)
+- `users` metadata:
+  - `user_id` (PostgreSQL `users.id`)
+  - `name`
+- `reviews` metadata:
+  - `user_id` (PostgreSQL `users.id`)
+  - `book_id` (PostgreSQL `books.id`)
+
+Fields like `author`, `rating`, and ad-hoc vector timestamps are intentionally excluded
+to avoid divergence from relational source-of-truth tables.
+
 ## Verification
 
 Quick checks:
