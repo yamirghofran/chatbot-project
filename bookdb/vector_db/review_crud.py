@@ -1,10 +1,11 @@
-"""Review-specific CRUD operations for ChromaDB."""
+"""Review-specific CRUD operations for Qdrant."""
 
-from typing import List, Optional, Dict, Any
-from chromadb import Collection
+from typing import Any, Dict, List, Optional
+
+from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
 from .crud import BaseVectorCRUD
-from .schemas import ReviewMetadata, validate_review_metadata
+from .schemas import CollectionNames, ReviewMetadata
 
 
 class ReviewVectorCRUD(BaseVectorCRUD):
@@ -14,11 +15,11 @@ class ReviewVectorCRUD(BaseVectorCRUD):
     metadata validation and sentiment-based search.
     """
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: Any = CollectionNames.REVIEWS.value):
         """Initialize review CRUD operations.
-        
+
         Args:
-            collection: ChromaDB collection for reviews
+            collection: Collection reference. Prefer collection name for Qdrant.
         """
         super().__init__(collection)
     
@@ -186,57 +187,180 @@ class ReviewVectorCRUD(BaseVectorCRUD):
             List of reviews matching the filters
         """
         try:
-            # Build where clause for metadata filtering
-            where = {}
-            
-            if user_id is not None:
-                where["user_id"] = user_id
-            
-            if book_id is not None:
-                where["book_id"] = book_id
-            
-            if min_rating is not None:
-                where["rating"] = {"$gte": min_rating}
-            
-            if max_rating is not None:
-                if "rating" in where:
-                    # Combine with existing rating filter
-                    where["rating"]["$lte"] = max_rating
-                else:
-                    where["rating"] = {"$lte": max_rating}
-            
-            # Date filtering (if implemented in ChromaDB)
-            # Note: ChromaDB's metadata filtering for dates may be limited
-            # You may need to filter results in Python after retrieval
-            
-            # Query with filters
-            if where:
-                result = self.collection.get(
-                    where=where,
+            if self._legacy_mode:
+                return self._search_by_metadata_legacy(
+                    user_id=user_id,
+                    book_id=book_id,
+                    min_rating=min_rating,
+                    max_rating=max_rating,
+                    date_added_after=date_added_after,
+                    date_added_before=date_added_before,
                     limit=limit,
-                    include=["documents", "metadatas", "embeddings"],
                 )
-            else:
-                # No filters, get all (up to limit)
-                result = self.collection.get(
+
+            scroll_filter = self._build_qdrant_filter(
+                user_id=user_id,
+                book_id=book_id,
+                min_rating=min_rating,
+                max_rating=max_rating,
+            )
+            has_date_filter = date_added_after is not None or date_added_before is not None
+
+            if not has_date_filter:
+                points, _ = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=scroll_filter,
                     limit=limit,
-                    include=["documents", "metadatas", "embeddings"],
+                    with_payload=True,
+                    with_vectors=True,
                 )
-            
-            # Format results
-            items = []
-            for i in range(len(result["ids"])):
-                items.append({
-                    "id": result["ids"][i],
-                    "document": result["documents"][i] if result["documents"] is not None and len(result["documents"]) > i else None,
-                    "metadata": result["metadatas"][i] if result["metadatas"] is not None and len(result["metadatas"]) > i else None,
-                    "embedding": result["embeddings"][i] if result["embeddings"] is not None and len(result["embeddings"]) > i else None,
-                })
-            
+                return [self._record_to_item(point) for point in points]
+
+            items: List[Dict[str, Any]] = []
+            next_offset = None
+            while True:
+                points, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=scroll_filter,
+                    offset=next_offset,
+                    limit=100,
+                    with_payload=True,
+                    with_vectors=True,
+                )
+                if not points:
+                    break
+
+                for point in points:
+                    item = self._record_to_item(point)
+                    metadata = item.get("metadata") or {}
+                    date_added = metadata.get("date_added")
+                    if self._matches_date_filter(
+                        date_added=date_added,
+                        date_added_after=date_added_after,
+                        date_added_before=date_added_before,
+                    ):
+                        items.append(item)
+                        if len(items) >= limit:
+                            return items
+
+                if next_offset is None:
+                    break
+
             return items
-            
         except Exception as e:
             raise Exception(f"Failed to search by metadata: {str(e)}") from e
+
+    def _build_qdrant_filter(
+        self,
+        user_id: Optional[str],
+        book_id: Optional[str],
+        min_rating: Optional[int],
+        max_rating: Optional[int],
+    ) -> Optional[Filter]:
+        must: List[FieldCondition] = []
+
+        if user_id is not None:
+            must.append(
+                FieldCondition(
+                    key="metadata.user_id",
+                    match=MatchValue(value=user_id),
+                )
+            )
+
+        if book_id is not None:
+            must.append(
+                FieldCondition(
+                    key="metadata.book_id",
+                    match=MatchValue(value=book_id),
+                )
+            )
+
+        if min_rating is not None or max_rating is not None:
+            must.append(
+                FieldCondition(
+                    key="metadata.rating",
+                    range=Range(gte=min_rating, lte=max_rating),
+                )
+            )
+
+        return Filter(must=must) if must else None
+
+    def _matches_date_filter(
+        self,
+        date_added: Optional[str],
+        date_added_after: Optional[str],
+        date_added_before: Optional[str],
+    ) -> bool:
+        if date_added is None:
+            return False
+        if date_added_after is not None and date_added < date_added_after:
+            return False
+        if date_added_before is not None and date_added > date_added_before:
+            return False
+        return True
+
+    def _search_by_metadata_legacy(
+        self,
+        user_id: Optional[str] = None,
+        book_id: Optional[str] = None,
+        min_rating: Optional[int] = None,
+        max_rating: Optional[int] = None,
+        date_added_after: Optional[str] = None,
+        date_added_before: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        where = {}
+
+        if user_id is not None:
+            where["user_id"] = user_id
+
+        if book_id is not None:
+            where["book_id"] = book_id
+
+        if min_rating is not None:
+            where["rating"] = {"$gte": min_rating}
+
+        if max_rating is not None:
+            if "rating" in where:
+                where["rating"]["$lte"] = max_rating
+            else:
+                where["rating"] = {"$lte": max_rating}
+
+        if where:
+            result = self.collection.get(
+                where=where,
+                limit=limit,
+                include=["documents", "metadatas", "embeddings"],
+            )
+        else:
+            result = self.collection.get(
+                limit=limit,
+                include=["documents", "metadatas", "embeddings"],
+            )
+
+        items = []
+        for i in range(len(result["ids"])):
+            metadata = result["metadatas"][i] if result["metadatas"] is not None and len(result["metadatas"]) > i else None
+            if date_added_after is not None or date_added_before is not None:
+                value = metadata.get("date_added") if metadata else None
+                if not self._matches_date_filter(
+                    date_added=value,
+                    date_added_after=date_added_after,
+                    date_added_before=date_added_before,
+                ):
+                    continue
+
+            items.append({
+                "id": result["ids"][i],
+                "document": result["documents"][i] if result["documents"] is not None and len(result["documents"]) > i else None,
+                "metadata": metadata,
+                "embedding": result["embeddings"][i] if result["embeddings"] is not None and len(result["embeddings"]) > i else None,
+            })
+
+            if len(items) >= limit:
+                break
+
+        return items
     
     def search_similar_reviews(
         self,

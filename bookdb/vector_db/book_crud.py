@@ -1,10 +1,11 @@
-"""Book-specific CRUD operations for ChromaDB."""
+"""Book-specific CRUD operations for Qdrant."""
 
-from typing import List, Optional, Dict, Any
-from chromadb import Collection
+from typing import Any, Dict, List, Optional
+
+from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
 
 from .crud import BaseVectorCRUD
-from .schemas import BookMetadata, validate_book_metadata
+from .schemas import BookMetadata, CollectionNames
 
 
 class BookVectorCRUD(BaseVectorCRUD):
@@ -25,11 +26,11 @@ class BookVectorCRUD(BaseVectorCRUD):
         ... )
     """
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: Any = CollectionNames.BOOKS.value):
         """Initialize book CRUD operations.
-        
+
         Args:
-            collection: ChromaDB collection for books
+            collection: Collection reference. Prefer collection name for Qdrant.
         """
         super().__init__(collection)
     
@@ -174,7 +175,76 @@ class BookVectorCRUD(BaseVectorCRUD):
         Returns:
             List of matching books
         """
-        # Build where filter for ChromaDB
+        try:
+            if self._legacy_mode:
+                return self._search_by_metadata_legacy(
+                    genre=genre,
+                    author=author,
+                    min_year=min_year,
+                    max_year=max_year,
+                    limit=limit,
+                )
+
+            scroll_filter = self._build_qdrant_filter(
+                genre=genre,
+                author=author,
+                min_year=min_year,
+                max_year=max_year,
+            )
+            points, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=True,
+            )
+            return [self._record_to_item(point) for point in points]
+        except Exception as e:
+            raise Exception(f"Failed to search by metadata: {str(e)}") from e
+
+    def _build_qdrant_filter(
+        self,
+        genre: Optional[str],
+        author: Optional[str],
+        min_year: Optional[int],
+        max_year: Optional[int],
+    ) -> Optional[Filter]:
+        must: List[FieldCondition] = []
+
+        if genre:
+            must.append(
+                FieldCondition(
+                    key="metadata.genre",
+                    match=MatchValue(value=genre),
+                )
+            )
+
+        if author:
+            must.append(
+                FieldCondition(
+                    key="metadata.author",
+                    match=MatchValue(value=author),
+                )
+            )
+
+        if min_year is not None or max_year is not None:
+            must.append(
+                FieldCondition(
+                    key="metadata.publication_year",
+                    range=Range(gte=min_year, lte=max_year),
+                )
+            )
+
+        return Filter(must=must) if must else None
+
+    def _search_by_metadata_legacy(
+        self,
+        genre: Optional[str] = None,
+        author: Optional[str] = None,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
         where_filter = {}
 
         if genre:
@@ -183,45 +253,37 @@ class BookVectorCRUD(BaseVectorCRUD):
         if author:
             where_filter["author"] = author
 
-        # ChromaDB supports comparison operators in where filters
         if min_year is not None:
             where_filter["publication_year"] = {"$gte": min_year}
 
         if max_year is not None:
             if "publication_year" in where_filter:
-                # Combine with existing year filter
                 where_filter["publication_year"]["$lte"] = max_year
             else:
                 where_filter["publication_year"] = {"$lte": max_year}
-        
-        # Query collection with filters
-        try:
-            if where_filter:
-                result = self.collection.get(
-                    where=where_filter,
-                    limit=limit,
-                    include=["documents", "metadatas", "embeddings"],
-                )
-            else:
-                result = self.collection.get(
-                    limit=limit,
-                    include=["documents", "metadatas", "embeddings"],
-                )
-            
-            # Format results
-            items = []
-            for i in range(len(result["ids"])):
-                items.append({
-                    "id": result["ids"][i],
-                    "document": result["documents"][i] if result["documents"] else None,
-                    "metadata": result["metadatas"][i] if result["metadatas"] else None,
-                    "embedding": result["embeddings"][i] if result["embeddings"] else None,
-                })
-            
-            return items
-            
-        except Exception as e:
-            raise Exception(f"Failed to search by metadata: {str(e)}") from e
+
+        if where_filter:
+            result = self.collection.get(
+                where=where_filter,
+                limit=limit,
+                include=["documents", "metadatas", "embeddings"],
+            )
+        else:
+            result = self.collection.get(
+                limit=limit,
+                include=["documents", "metadatas", "embeddings"],
+            )
+
+        items = []
+        for i in range(len(result["ids"])):
+            items.append({
+                "id": result["ids"][i],
+                "document": result["documents"][i] if result["documents"] else None,
+                "metadata": result["metadatas"][i] if result["metadatas"] else None,
+                "embedding": result["embeddings"][i] if result["embeddings"] else None,
+            })
+
+        return items
     
     def search_similar_books(
         self,
