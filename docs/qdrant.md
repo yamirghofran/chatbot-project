@@ -90,8 +90,7 @@ Return shape for callers is preserved as:
 Vector metadata is intentionally aligned with SQL primary entities:
 
 - `books` metadata:
-  - `title`
-  - `publication_year` (optional)
+  - none (books store only `document` + `embedding`)
 - `users` metadata:
   - `user_id` (PostgreSQL `users.id`)
   - `name`

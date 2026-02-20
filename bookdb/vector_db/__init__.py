@@ -17,10 +17,8 @@ from .client import (
 from .config import QdrantConfig
 from .schemas import (
     CollectionNames,
-    BookMetadata,
     UserMetadata,
     ReviewMetadata,
-    validate_book_metadata,
     validate_user_metadata,
     validate_review_metadata,
 )
@@ -49,10 +47,8 @@ __all__ = [
     "QdrantConfig",
     # Schemas
     "CollectionNames",
-    "BookMetadata",
     "UserMetadata",
     "ReviewMetadata",
-    "validate_book_metadata",
     "validate_user_metadata",
     "validate_review_metadata",
     # Collections

@@ -1,7 +1,6 @@
 """Schemas and metadata definitions for vector collections."""
 
 from enum import Enum
-from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -17,30 +16,6 @@ class CollectionNames(str, Enum):
     BOOKS = "books"
     USERS = "users"
     REVIEWS = "reviews"
-
-
-class BookMetadata(BaseModel):
-    """Metadata schema for book embeddings.
-
-    This metadata is stored alongside book embeddings
-    and can be used for filtering during similarity search.
-
-    Attributes:
-        title: Book title
-        publication_year: Year the book was published
-    """
-
-    title: str = Field(..., description="Book title")
-    publication_year: Optional[int] = Field(None, description="Publication year", ge=1000, le=9999)
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "title": "The Great Gatsby",
-                "publication_year": 1925,
-            }
-        }
-    )
 
 
 
@@ -94,21 +69,6 @@ class ReviewMetadata(BaseModel):
             }
         }
     )
-
-
-def validate_book_metadata(metadata: dict) -> BookMetadata:
-    """Validate and parse book metadata.
-    
-    Args:
-        metadata: Dictionary containing book metadata
-    
-    Returns:
-        Validated BookMetadata instance
-    
-    Raises:
-        ValueError: If metadata validation fails
-    """
-    return BookMetadata(**metadata)
 
 
 

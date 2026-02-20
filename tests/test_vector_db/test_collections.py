@@ -13,51 +13,10 @@ from bookdb.vector_db.collections import (
     initialize_all_collections,
 )
 from bookdb.vector_db.schemas import (
-    BookMetadata,
     CollectionNames,
     UserMetadata,
-    validate_book_metadata,
     validate_user_metadata,
 )
-
-
-class TestBookMetadata:
-    """Tests for BookMetadata schema."""
-
-    def test_book_metadata_minimal(self):
-        metadata = BookMetadata(
-            title="Test Book",
-        )
-
-        assert metadata.title == "Test Book"
-        assert metadata.publication_year is None
-
-    def test_book_metadata_full(self):
-        metadata = BookMetadata(
-            title="The Great Gatsby",
-            publication_year=1925,
-        )
-
-        assert metadata.title == "The Great Gatsby"
-        assert metadata.publication_year == 1925
-
-    def test_book_metadata_invalid_year(self):
-        with pytest.raises(ValueError):
-            BookMetadata(
-                title="Test",
-                publication_year=999,
-            )
-
-    def test_validate_book_metadata_function(self):
-        data = {
-            "title": "Test Book",
-            "publication_year": 2020,
-        }
-
-        metadata = validate_book_metadata(data)
-
-        assert isinstance(metadata, BookMetadata)
-        assert metadata.title == "Test Book"
 
 
 class TestUserMetadata:
