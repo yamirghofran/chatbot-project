@@ -209,6 +209,17 @@ class TestBaseVectorCRUDQdrant:
         assert point.payload["metadata"] == {"title": "New Title"}
         assert point.vector == [0.1, 0.2, 0.3]
 
+    def test_update_allows_clearing_metadata(self, crud, mock_client):
+        mock_client.retrieve.side_effect = [
+            [_record("test_1", "Old", {"title": "Old"}, [0.1, 0.2, 0.3])],
+            [_record("test_1", "Old", {"title": "Old"}, [0.1, 0.2, 0.3])],
+        ]
+
+        crud.update(id="test_1", metadata=None)
+
+        point = mock_client.upsert.call_args.kwargs["points"][0]
+        assert "metadata" not in point.payload
+
     def test_delete_success(self, crud, mock_client):
         mock_client.retrieve.return_value = [_record("test_1")]
 

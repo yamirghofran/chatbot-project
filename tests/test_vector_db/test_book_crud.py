@@ -111,7 +111,7 @@ class TestBookVectorCRUDQdrant:
 
         point = mock_client.upsert.call_args.kwargs["points"][0]
         assert point.payload["document"] == "New title"
-        assert point.payload["metadata"] == {}
+        assert "metadata" not in point.payload
         assert point.vector == [0.1, 0.2, 0.3]
 
     def test_update_book_with_description(self, book_crud, mock_client):
@@ -141,7 +141,7 @@ class TestBookVectorCRUDQdrant:
 
         point = mock_client.upsert.call_args.kwargs["points"][0]
         assert point.payload["document"] == "New description"
-        assert point.payload["metadata"] == {}
+        assert "metadata" not in point.payload
 
     def test_update_book_nonexistent(self, book_crud, mock_client):
         mock_client.retrieve.return_value = []

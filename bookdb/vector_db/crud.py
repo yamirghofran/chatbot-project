@@ -9,6 +9,8 @@ from qdrant_client.models import PointIdsList, PointStruct
 
 from .client import get_qdrant_client
 
+_UNSET = object()
+
 
 class BaseVectorCRUD:
     """Base CRUD operations for Qdrant collections."""
@@ -122,7 +124,7 @@ class BaseVectorCRUD:
         self,
         id: str,
         document: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Any = _UNSET,
         embedding: Optional[List[float]] = None,
     ) -> None:
         """Update an existing item."""
@@ -131,7 +133,7 @@ class BaseVectorCRUD:
             raise ValueError(f"Item with ID '{id}' does not exist")
 
         merged_document = existing["document"] if document is None else document
-        merged_metadata = existing["metadata"] if metadata is None else metadata
+        merged_metadata = existing["metadata"] if metadata is _UNSET else metadata
         merged_embedding = existing["embedding"] if embedding is None else embedding
 
         point = self._make_point(
