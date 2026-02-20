@@ -68,6 +68,14 @@ class TestBaseVectorCRUDQdrant:
         point = mock_client.upsert.call_args.kwargs["points"][0]
         assert point.vector == embedding
 
+    def test_add_preserves_empty_metadata_dict(self, crud, mock_client):
+        mock_client.retrieve.return_value = []
+
+        crud.add(id="test_1", document="Test", metadata={})
+
+        point = mock_client.upsert.call_args.kwargs["points"][0]
+        assert point.payload["metadata"] == {}
+
     def test_add_uses_zero_vector_when_embedding_missing(self, crud, mock_client):
         mock_client.retrieve.return_value = []
 
@@ -137,6 +145,20 @@ class TestBaseVectorCRUDQdrant:
         result = crud.get("nonexistent")
 
         assert result is None
+
+    def test_get_handles_named_vector_shape(self, crud, mock_client):
+        mock_client.retrieve.return_value = [
+            _record(
+                id="test_1",
+                document="Doc 1",
+                metadata={"title": "T1"},
+                embedding={"default": [0.1, 0.2, 0.3]},
+            )
+        ]
+
+        result = crud.get("test_1")
+
+        assert result["embedding"] == [0.1, 0.2, 0.3]
 
     def test_get_batch_success(self, crud, mock_client):
         mock_client.retrieve.return_value = [

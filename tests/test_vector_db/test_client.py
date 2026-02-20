@@ -9,7 +9,6 @@ from bookdb.vector_db.client import (
     _create_local_client,
     _create_server_client,
     _validate_connection,
-    get_chroma_client,
     get_client_info,
     get_qdrant_client,
     reset_client,
@@ -182,17 +181,6 @@ class TestGetQdrantClient:
 
         assert client is mock_client
         mock_from_env.assert_called_once()
-
-    @patch("bookdb.vector_db.client.QdrantClient")
-    def test_get_chroma_client_compatibility_wrapper(self, mock_qdrant_client, server_config):
-        mock_client = MagicMock()
-        mock_client.get_collections.return_value = MagicMock()
-        mock_qdrant_client.return_value = mock_client
-
-        client = get_chroma_client(server_config)
-
-        assert client is mock_client
-
 
 class TestResetClient:
     """Tests for reset_client function."""

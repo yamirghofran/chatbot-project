@@ -8,6 +8,7 @@ from qdrant_client.models import Distance
 from bookdb.vector_db.collections import (
     CollectionManager,
     get_books_collection,
+    get_reviews_collection,
     get_users_collection,
     initialize_all_collections,
 )
@@ -320,3 +321,15 @@ class TestConvenienceFunctions:
 
         assert result == mock_collection
         mock_manager.get_collection.assert_called_once_with(CollectionNames.USERS)
+
+    @patch("bookdb.vector_db.collections.CollectionManager")
+    def test_get_reviews_collection(self, mock_manager_class):
+        mock_manager = MagicMock()
+        mock_collection = MagicMock()
+        mock_manager.get_collection.return_value = mock_collection
+        mock_manager_class.return_value = mock_manager
+
+        result = get_reviews_collection()
+
+        assert result == mock_collection
+        mock_manager.get_collection.assert_called_once_with(CollectionNames.REVIEWS)
