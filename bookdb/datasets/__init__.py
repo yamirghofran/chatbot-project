@@ -37,7 +37,7 @@ __all__ = [
     "BookListCRUD",
     "ReviewCRUD",
     "RatingCRUD",
-    # Repository (unified PG + ChromaDB)
+    # Repository (unified PG + vector store)
     "Repository",
     # Goodreads imports
     "import_authors",
