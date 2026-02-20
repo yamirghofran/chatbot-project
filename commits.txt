@@ -1,0 +1,28 @@
+Scope for this migration plan: only bookdb/vector_db + infra/docs/tests; no changes to deprecated repository.py; no authors vector collection.
+
+chore(vector-db): remove authors/chroma assumptions from vector module surface
+Clean remaining “AUTHORS” and Chroma wording in collections.py, schemas.py, __init__.py, and related tests to lock scope to books/users/reviews.
+
+chore(infra): switch runtime dependencies and local services to qdrant
+Replace chromadb with qdrant-client in pyproject.toml; replace Chroma service/volume in docker-compose.yml; rename Make targets in Makefile to qdrant-up/down/reset/logs; replace CHROMA_* envs in .env.example with QDRANT_*.
+
+feat(vector-db): implement qdrant config + singleton client
+Replace ChromaDBConfig/get_chroma_client in config.py and client.py with Qdrant-native config/client APIs and health check.
+
+feat(vector-db): rewrite collection manager for qdrant collections
+Port collections.py to create/get/reset/list/count for books/users/reviews using Qdrant collection APIs and explicit vector params (size + cosine).
+
+refactor(vector-db): port BaseVectorCRUD to qdrant point/payload model
+Rewrite crud.py from Chroma collection calls to Qdrant upsert/retrieve/scroll/delete/count; preserve current return shape (id/document/metadata/embedding) for callers.
+
+refactor(vector-db): migrate book/user/review CRUD to qdrant filters
+Update book_crud.py, user_crud.py, review_crud.py to use Qdrant payload filters instead of Chroma where dict behavior.
+
+test(vector-db): replace chroma-mock tests with qdrant-focused tests
+Rewrite test_client.py, test_collections.py, test_crud_base.py, test_book_crud.py for Qdrant interfaces and result shapes.
+
+docs(cleanup): remove chroma docs and finalize qdrant-only API
+Replace chromadb.md with qdrant.md, update index.md, remove all Chroma exports/names from __init__.py, then verify no active references remain via rg -n "chroma|chromadb".
+
+ci(gate): final verification and regression sweep
+Run uv run pytest tests/test_vector_db -q and project test subset you use for backend modules; ensure imports and docs are Qdrant-only and no Chroma codepaths remain.
