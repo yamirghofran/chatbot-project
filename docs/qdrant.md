@@ -50,8 +50,18 @@ QDRANT_API_KEY=
 QDRANT_HTTPS=false
 QDRANT_PATH=./qdrant_data
 QDRANT_TIMEOUT=10.0
-QDRANT_VECTOR_SIZE=384
+QDRANT_VECTOR_SIZE=768
+QDRANT_BOOKS_ON_DISK=true
+QDRANT_BOOKS_INT8_QUANTIZATION=true
+QDRANT_BOOKS_QUANTILE=0.99
+QDRANT_BOOKS_QUANT_ALWAYS_RAM=true
+QDRANT_BOOKS_HNSW_ON_DISK=true
+QDRANT_BOOKS_HNSW_M=16
 ```
+
+For large books collections, this configuration stores full vectors on disk,
+keeps an Int8 quantized index in RAM, and places HNSW graph structures on disk.
+This significantly reduces RAM pressure while preserving fast search.
 
 ## Runtime API
 

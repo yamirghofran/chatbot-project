@@ -2,14 +2,22 @@
 
 from typing import Any, Dict, List, Optional
 
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    HnswConfigDiff,
+    ScalarQuantization,
+    ScalarQuantizationConfig,
+    ScalarType,
+    VectorParams,
+    VectorParamsDiff,
+)
 
 from .client import get_qdrant_client
 from .config import QdrantConfig
 from .schemas import CollectionNames
 
 
-DEFAULT_VECTOR_SIZE = 384
+DEFAULT_VECTOR_SIZE = 768
 
 _COLLECTION_DESCRIPTIONS = {
     CollectionNames.BOOKS: "Book embeddings and metadata for semantic search",
@@ -24,19 +32,27 @@ class CollectionManager:
     def __init__(
         self,
         config: Optional[QdrantConfig] = None,
-        vector_size: int = DEFAULT_VECTOR_SIZE,
+        vector_size: Optional[int] = None,
     ):
         """Initialize collection manager.
 
         Args:
             config: Qdrant configuration. If None, loads from environment.
             vector_size: Vector dimensionality used for all collections.
+                Defaults to config.vector_size.
         """
-        if vector_size <= 0:
+        self.config = config or QdrantConfig.from_env()
+        resolved_vector_size = (
+            self.config.vector_size
+            if vector_size is None
+            else vector_size
+        )
+
+        if resolved_vector_size <= 0:
             raise ValueError("vector_size must be > 0")
 
-        self.client = get_qdrant_client(config)
-        self.vector_size = vector_size
+        self.client = get_qdrant_client(self.config)
+        self.vector_size = resolved_vector_size
         self._collections: Dict[str, Any] = {}
 
     def initialize_collections(self) -> None:
@@ -58,7 +74,11 @@ class CollectionManager:
                 "Call initialize_collections() first."
             )
 
+        if collection_name is CollectionNames.BOOKS:
+            self._apply_books_collection_tuning()
+
         collection = self.client.get_collection(collection_name=collection_name.value)
+        self._validate_collection_schema(collection_name.value, collection)
         self._collections[collection_name.value] = collection
         return collection
 
@@ -104,15 +124,92 @@ class CollectionManager:
         if not self.client.collection_exists(collection_name=name):
             self.client.create_collection(
                 collection_name=name,
-                vectors_config=VectorParams(
-                    size=self.vector_size,
-                    distance=Distance.COSINE,
-                ),
+                vectors_config=self._build_vector_params(name),
             )
+        elif name == CollectionNames.BOOKS.value:
+            self._apply_books_collection_tuning()
 
         collection = self.client.get_collection(collection_name=name)
+        self._validate_collection_schema(name, collection)
         self._collections[name] = collection
         return collection
+
+    def _build_vector_params(self, collection_name: str) -> VectorParams:
+        params = VectorParams(
+            size=self.vector_size,
+            distance=Distance.COSINE,
+        )
+
+        if collection_name == CollectionNames.BOOKS.value:
+            params.on_disk = self.config.books_on_disk
+            params.hnsw_config = HnswConfigDiff(
+                on_disk=self.config.books_hnsw_on_disk,
+                m=self.config.books_hnsw_m,
+            )
+            quantization = self._books_quantization_config()
+            if quantization is not None:
+                params.quantization_config = quantization
+
+        return params
+
+    def _books_quantization_config(self) -> Optional[ScalarQuantization]:
+        if not self.config.books_int8_quantization:
+            return None
+
+        return ScalarQuantization(
+            scalar=ScalarQuantizationConfig(
+                type=ScalarType.INT8,
+                quantile=self.config.books_quantile,
+                always_ram=self.config.books_quantization_always_ram,
+            )
+        )
+
+    def _apply_books_collection_tuning(self) -> None:
+        self.client.update_collection(
+            collection_name=CollectionNames.BOOKS.value,
+            vectors_config={
+                "": VectorParamsDiff(on_disk=self.config.books_on_disk),
+            },
+            hnsw_config=HnswConfigDiff(
+                on_disk=self.config.books_hnsw_on_disk,
+                m=self.config.books_hnsw_m,
+            ),
+            quantization_config=self._books_quantization_config(),
+        )
+
+    def _validate_collection_schema(self, collection_name: str, collection: Any) -> None:
+        vector_params = self._extract_vector_params(collection)
+        if vector_params is None:
+            return
+
+        size = getattr(vector_params, "size", None)
+        if isinstance(size, int) and size != self.vector_size:
+            raise ValueError(
+                f"Collection '{collection_name}' vector size is {size}, "
+                f"but configured QDRANT_VECTOR_SIZE is {self.vector_size}. "
+                "Reset or recreate the collection with matching dimensions."
+            )
+
+        distance = getattr(vector_params, "distance", None)
+        if isinstance(distance, Distance) and distance != Distance.COSINE:
+            raise ValueError(
+                f"Collection '{collection_name}' distance is {distance}, "
+                "but this application expects COSINE."
+            )
+
+    def _extract_vector_params(self, collection: Any) -> Optional[Any]:
+        config = getattr(collection, "config", None)
+        params = getattr(config, "params", None)
+        vectors = getattr(params, "vectors", None)
+        if vectors is None:
+            return None
+
+        if isinstance(vectors, dict):
+            if "" in vectors:
+                return vectors[""]
+            return next(iter(vectors.values()), None)
+
+        return vectors
 
 
 def initialize_all_collections(config: Optional[QdrantConfig] = None) -> CollectionManager:

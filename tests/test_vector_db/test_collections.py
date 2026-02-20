@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from qdrant_client.models import Distance
+from qdrant_client.models import Distance, ScalarType
 
 from bookdb.vector_db.collections import (
     CollectionManager,
@@ -75,7 +75,7 @@ class TestCollectionManager:
 
         assert manager.client == mock_client
         assert manager._collections == {}
-        assert manager.vector_size == 384
+        assert manager.vector_size == 768
 
     @patch("bookdb.vector_db.collections.get_qdrant_client")
     def test_collection_manager_init_invalid_vector_size(self, mock_get_client):
@@ -100,8 +100,15 @@ class TestCollectionManager:
         for i, name in enumerate(expected_names):
             assert calls[i].kwargs["collection_name"] == name
             vectors_config = calls[i].kwargs["vectors_config"]
-            assert vectors_config.size == 384
+            assert vectors_config.size == 768
             assert vectors_config.distance == Distance.COSINE
+            if name == "books":
+                assert vectors_config.on_disk is True
+                assert vectors_config.hnsw_config.on_disk is True
+                assert vectors_config.hnsw_config.m == 16
+                assert vectors_config.quantization_config.scalar.type == ScalarType.INT8
+                assert vectors_config.quantization_config.scalar.quantile == 0.99
+                assert vectors_config.quantization_config.scalar.always_ram is True
 
     @patch("bookdb.vector_db.collections.get_qdrant_client")
     def test_initialize_collections_skips_existing(self, mock_get_client):
@@ -114,6 +121,7 @@ class TestCollectionManager:
         manager.initialize_collections()
 
         mock_client.create_collection.assert_not_called()
+        mock_client.update_collection.assert_called_once()
         assert mock_client.get_collection.call_count == 3
 
     @patch("bookdb.vector_db.collections.get_qdrant_client")
@@ -143,8 +151,23 @@ class TestCollectionManager:
 
         assert collection == mock_collection
         mock_client.collection_exists.assert_called_once_with(collection_name="books")
+        mock_client.update_collection.assert_called_once()
         mock_client.get_collection.assert_called_once_with(collection_name="books")
         assert manager._collections["books"] == mock_collection
+
+    @patch("bookdb.vector_db.collections.get_qdrant_client")
+    def test_get_collection_raises_on_vector_size_mismatch(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_collection.config.params.vectors = MagicMock(size=384, distance=Distance.COSINE)
+        mock_client.collection_exists.return_value = True
+        mock_client.get_collection.return_value = mock_collection
+        mock_get_client.return_value = mock_client
+
+        manager = CollectionManager()
+
+        with pytest.raises(ValueError, match="vector size is 384"):
+            manager.get_collection(CollectionNames.BOOKS)
 
     @patch("bookdb.vector_db.collections.get_qdrant_client")
     def test_get_collection_not_found(self, mock_get_client):

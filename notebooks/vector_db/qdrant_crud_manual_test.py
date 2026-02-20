@@ -60,7 +60,7 @@ def _(mo):
 
 @app.cell
 def _(mo, os):
-    default_vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "384"))
+    default_vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "768"))
     vector_size_input = mo.ui.number(
         start=1,
         stop=4096,
@@ -157,7 +157,7 @@ def _(
     reviews_filtered = []
     batch_records = []
     run_id = uuid.uuid4().hex[:8]
-    vector_size = int(vector_size_input.value or 384)
+    vector_size = int(vector_size_input.value or 768)
     status_block = mo.md("Click **Run CRUD smoke test** to execute against local Qdrant.")
 
     if run_crud.value:

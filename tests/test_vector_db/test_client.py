@@ -56,6 +56,13 @@ class TestQdrantConfig:
         assert config.port == 6333
         assert config.path == "./qdrant_data"
         assert config.timeout == 10.0
+        assert config.vector_size == 768
+        assert config.books_on_disk is True
+        assert config.books_int8_quantization is True
+        assert config.books_quantile == 0.99
+        assert config.books_quantization_always_ram is True
+        assert config.books_hnsw_on_disk is True
+        assert config.books_hnsw_m == 16
 
     def test_config_from_env(self):
         with patch.dict(os.environ, {
@@ -66,6 +73,13 @@ class TestQdrantConfig:
             "QDRANT_HTTPS": "true",
             "QDRANT_PATH": "/tmp/qdrant",
             "QDRANT_TIMEOUT": "5.5",
+            "QDRANT_VECTOR_SIZE": "1024",
+            "QDRANT_BOOKS_ON_DISK": "false",
+            "QDRANT_BOOKS_INT8_QUANTIZATION": "false",
+            "QDRANT_BOOKS_QUANTILE": "0.95",
+            "QDRANT_BOOKS_QUANT_ALWAYS_RAM": "false",
+            "QDRANT_BOOKS_HNSW_ON_DISK": "false",
+            "QDRANT_BOOKS_HNSW_M": "24",
         }):
             config = QdrantConfig.from_env()
             assert config.mode == "local"
@@ -75,6 +89,13 @@ class TestQdrantConfig:
             assert config.https is True
             assert config.path == "/tmp/qdrant"
             assert config.timeout == 5.5
+            assert config.vector_size == 1024
+            assert config.books_on_disk is False
+            assert config.books_int8_quantization is False
+            assert config.books_quantile == 0.95
+            assert config.books_quantization_always_ram is False
+            assert config.books_hnsw_on_disk is False
+            assert config.books_hnsw_m == 24
 
     def test_config_from_env_invalid_mode(self):
         with patch.dict(os.environ, {"QDRANT_MODE": "invalid"}):
@@ -107,6 +128,21 @@ class TestQdrantConfig:
     def test_config_validate_timeout(self):
         config = QdrantConfig(timeout=0)
         with pytest.raises(ValueError, match="Timeout must be > 0"):
+            config.validate()
+
+    def test_config_validate_vector_size(self):
+        config = QdrantConfig(vector_size=0)
+        with pytest.raises(ValueError, match="Vector size must be > 0"):
+            config.validate()
+
+    def test_config_validate_quantile(self):
+        config = QdrantConfig(books_quantile=1.5)
+        with pytest.raises(ValueError, match="QDRANT_BOOKS_QUANTILE"):
+            config.validate()
+
+    def test_config_validate_hnsw_m(self):
+        config = QdrantConfig(books_hnsw_m=0)
+        with pytest.raises(ValueError, match="QDRANT_BOOKS_HNSW_M"):
             config.validate()
 
 

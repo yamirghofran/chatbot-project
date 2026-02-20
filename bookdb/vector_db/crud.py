@@ -28,7 +28,7 @@ class BaseVectorCRUD:
         """
         self.collection = collection
         self.collection_name = self._resolve_collection_name(collection)
-        self.vector_size = vector_size or int(os.getenv("QDRANT_VECTOR_SIZE", "384"))
+        self.vector_size = vector_size or int(os.getenv("QDRANT_VECTOR_SIZE", "768"))
         self.client = client or get_qdrant_client()
 
     def add(
