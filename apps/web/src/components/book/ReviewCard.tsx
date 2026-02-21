@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { ThumbsUpIcon } from "@/components/icons/ThumbsUpIcon";
 import type { Review, Reply } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -28,9 +29,13 @@ export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewC
       </Avatar>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
+          <Link
+            to="/users/$userId"
+            params={{ userId: review.user.id }}
+            className="text-sm font-medium text-foreground hover:underline"
+          >
             {review.user.displayName}
-          </span>
+          </Link>
           <span className="text-xs text-muted-foreground">{review.timestamp}</span>
         </div>
         <p className="text-sm text-foreground mt-1 leading-relaxed">{review.text}</p>

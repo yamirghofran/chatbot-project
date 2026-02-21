@@ -67,7 +67,7 @@ export function BookPage({
     <div className="grid grid-cols-[1fr_4fr] gap-8">
       <div className="sticky top-6 self-start">
         <img
-          src={book.coverUrl}
+          src={book.coverUrl ?? "/brand/book-placeholder.png"}
           alt={`Cover of ${book.title}`}
           className="w-full aspect-[2/3] rounded-sm object-cover"
         />

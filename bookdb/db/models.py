@@ -56,6 +56,7 @@ class Book(TimestampMixin, Base):
     isbn13: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     authors: Mapped[list["BookAuthor"]] = relationship(back_populates="book", cascade="all, delete-orphan")
+    tags: Mapped[list["BookTag"]] = relationship(back_populates="book", cascade="all, delete-orphan")
     list_entries: Mapped[list["ListBook"]] = relationship(back_populates="book", cascade="all, delete-orphan")
     shell_entries: Mapped[list["ShellBook"]] = relationship(back_populates="book", cascade="all, delete-orphan")
     ratings: Mapped[list["BookRating"]] = relationship(back_populates="book", cascade="all, delete-orphan")
@@ -70,6 +71,25 @@ class BookAuthor(TimestampMixin, Base):
 
     book: Mapped["Book"] = relationship(back_populates="authors")
     author: Mapped["Author"] = relationship(back_populates="books")
+
+
+class Tag(TimestampMixin, Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+
+    books: Mapped[list["BookTag"]] = relationship(back_populates="tag", cascade="all, delete-orphan")
+
+
+class BookTag(TimestampMixin, Base):
+    __tablename__ = "book_tags"
+
+    book_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("books.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+    book: Mapped["Book"] = relationship(back_populates="tags")
+    tag: Mapped["Tag"] = relationship(back_populates="books")
 
 
 class BookList(TimestampMixin, Base):

@@ -20,12 +20,14 @@ from .models import (
     BookAuthor,
     BookList,
     BookRating,
+    BookTag,
     ListBook,
     Review,
     ReviewComment,
     ReviewLike,
     Shell,
     ShellBook,
+    Tag,
     User,
 )
 
@@ -747,6 +749,61 @@ class ReviewLikeCRUD:
         session.delete(existing)
         session.flush()
         return True
+
+
+class TagCRUD:
+    @staticmethod
+    def get_by_name(session: Session, name: str) -> Tag | None:
+        stmt = select(Tag).where(Tag.name == name)
+        return session.scalar(stmt)
+
+    @staticmethod
+    def get_or_create_by_name(session: Session, name: str) -> Tag:
+        name = _require_non_empty(name, "name")
+        existing = TagCRUD.get_by_name(session, name)
+        if existing:
+            return existing
+        tag = Tag(name=name)
+        session.add(tag)
+        session.flush()
+        return tag
+
+    @staticmethod
+    def bulk_get_or_create(session: Session, names: list[str]) -> dict[str, Tag]:
+        unique_names = list(dict.fromkeys(n for n in names if n))
+        if not unique_names:
+            return {}
+        stmt = select(Tag).where(Tag.name.in_(unique_names))
+        existing = {t.name: t for t in session.scalars(stmt).all()}
+        to_create = [name for name in unique_names if name not in existing]
+        if to_create:
+            new_tags = [Tag(name=name) for name in to_create]
+            session.add_all(new_tags)
+            session.flush()
+            for tag in new_tags:
+                existing[tag.name] = tag
+        return existing
+
+    @staticmethod
+    def get_tags_for_book(session: Session, book_id: int) -> list[Tag]:
+        stmt = (
+            select(Tag)
+            .join(BookTag, BookTag.tag_id == Tag.id)
+            .where(BookTag.book_id == book_id)
+        )
+        return session.scalars(stmt).all()
+
+    @staticmethod
+    def link_tags_to_book(session: Session, book_id: int, tag_names: list[str]) -> None:
+        tags = TagCRUD.bulk_get_or_create(session, tag_names)
+        for name in tag_names:
+            tag = tags.get(name)
+            if tag is None:
+                continue
+            existing = session.get(BookTag, (book_id, tag.id))
+            if not existing:
+                session.add(BookTag(book_id=book_id, tag_id=tag.id))
+        session.flush()
 
 
 # Compatibility alias for older callsites using RatingCRUD.

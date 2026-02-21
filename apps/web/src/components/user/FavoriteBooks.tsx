@@ -16,7 +16,7 @@ export function FavoriteBooks({ books }: FavoriteBooksProps) {
       {books.slice(0, 3).map((book) => (
         <div key={book.id} className="w-28 shrink-0">
           <img
-            src={book.coverUrl}
+            src={book.coverUrl ?? "/brand/book-placeholder.png"}
             alt={`Cover of ${book.title}`}
             className="w-28 h-[168px] rounded-md object-cover"
           />

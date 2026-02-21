@@ -2,7 +2,7 @@ export type Book = {
   id: string;
   title: string;
   author: string;
-  coverUrl: string;
+  coverUrl: string | null | undefined;
   description?: string;
   tags?: string[];
 };

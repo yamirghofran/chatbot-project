@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { Link } from "@tanstack/react-router";
 import { ListPlus, MessageCircle, Star } from "lucide-react";
 import type { Book, List } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -121,7 +122,7 @@ export function BookRow({
     >
       <img
         ref={imageRef}
-        src={book.coverUrl}
+        src={book.coverUrl ?? "/brand/book-placeholder.png"}
         alt={`Cover of ${book.title}`}
         className={cn(
           "rounded-[12px] supports-[corner-shape:squircle]:rounded-[15px] supports-[corner-shape:squircle]:[corner-shape:squircle] object-cover shrink-0",
@@ -131,14 +132,16 @@ export function BookRow({
 
       <div ref={contentRef} className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p
+          <Link
+            to="/books/$bookId"
+            params={{ bookId: book.id }}
             className={cn(
-              "min-w-0 flex-1 font-medium text-foreground truncate",
+              "min-w-0 flex-1 font-medium text-foreground truncate hover:underline",
               isCompact ? "text-sm" : "text-base",
             )}
           >
             {book.title}
-          </p>
+          </Link>
 
           {showActions && (
             <TooltipProvider>

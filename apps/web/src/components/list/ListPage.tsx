@@ -295,7 +295,7 @@ export function ListPage({
           {list.books.map((book) => (
             <div key={book.id} className="min-w-0">
               <img
-                src={book.coverUrl}
+                src={book.coverUrl ?? "/brand/book-placeholder.png"}
                 alt={`Cover of ${book.title}`}
                 className="w-full aspect-[2/3] rounded-md object-cover"
               />

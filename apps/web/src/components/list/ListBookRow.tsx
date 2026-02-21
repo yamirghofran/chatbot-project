@@ -12,7 +12,7 @@ export function ListBookRow({ book, compact = false }: ListBookRowProps) {
       className={cn("flex items-center gap-3 py-2", compact && "gap-2 py-1.5")}
     >
       <img
-        src={book.coverUrl}
+        src={book.coverUrl ?? "/brand/book-placeholder.png"}
         alt={`Cover of ${book.title}`}
         className={cn(
           "rounded-[10px] supports-[corner-shape:squircle]:rounded-[15px] supports-[corner-shape:squircle]:[corner-shape:squircle] object-cover shrink-0",
