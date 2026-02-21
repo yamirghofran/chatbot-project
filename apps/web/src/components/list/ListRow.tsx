@@ -10,7 +10,7 @@ export function ListRow({ list }: ListRowProps) {
 
   return (
     <div className="flex items-center gap-4 py-3">
-      <div className="flex -space-x-2 shrink-0">
+      <div className="flex -space-x-4 shrink-0">
         {previewBooks.map((book) => (
           <img
             key={book.id}
