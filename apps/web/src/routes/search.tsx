@@ -33,7 +33,11 @@ function SearchRoute() {
   }
 
   if (searchQuery.isPending) {
-    return <p className="text-sm text-muted-foreground">Searching...</p>;
+    return (
+      <div className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">
+        Searching...
+      </div>
+    );
   }
 
   if (searchQuery.isError) {

@@ -59,30 +59,41 @@ def search_books(
         .subquery()
     )
 
-    author_match = (
-        select(1)
+    author_name_l = func.lower(Author.name)
+    author_scores = (
+        select(
+            BookAuthor.book_id.label("book_id"),
+            func.max(
+                case(
+                    (author_name_l == query, 1200),
+                    (author_name_l.like(f"{query}%"), 950),
+                    (author_name_l.like(f"% {query}%"), 800),
+                    (author_name_l.like(f"%{query}%"), 700),
+                    else_=0,
+                )
+            ).label("author_score"),
+        )
         .select_from(BookAuthor)
         .join(Author, Author.id == BookAuthor.author_id)
-        .where(
-            BookAuthor.book_id == Book.id,
-            func.lower(Author.name).like(f"%{query}%"),
-        )
-        .exists()
+        .group_by(BookAuthor.book_id)
+        .subquery()
     )
 
     # Lightweight ranking: intent first, popularity second.
-    rank_score = case(
+    title_score = case(
         (title_l == query, 1000),
         (title_l.like(f"{query}%"), 800),
         (title_l.like(f"% {query}%"), 650),
         (title_l.like(f"%{query}%"), 500),
-        (author_match, 300),
         else_=0,
     )
+    author_score = func.coalesce(author_scores.c.author_score, 0)
+    rank_score = func.greatest(title_score, author_score)
     popularity = func.coalesce(rating_counts.c.rating_count, 0)
     combined_score = rank_score + func.log(func.greatest(popularity, 1)) * 50
 
-    # TODO: add a pg_trgm GIN index on lower(books.title) so LIKE '%...%' stops full-scanning
+    # TODO: add pg_trgm GIN indexes on lower(books.title) and lower(authors.name)
+    #       so LIKE '%...%' stops full-scanning.
     rows = db.execute(
         select(
             Book.id,
@@ -90,10 +101,11 @@ def search_books(
             func.length(Book.title).label("title_len"),
         )
         .outerjoin(rating_counts, rating_counts.c.book_id == Book.id)
+        .outerjoin(author_scores, author_scores.c.book_id == Book.id)
         .where(
             or_(
                 title_l.like(f"%{query}%"),
-                author_match,
+                author_scores.c.author_score > 0,
             )
         )
         .order_by(combined_score.desc(), func.length(Book.title).asc(), Book.id.asc())
