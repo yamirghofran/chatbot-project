@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPage } from "@/components/user/UserPage";
+import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
 import { useCurrentUser, clearToken } from "@/lib/auth";
 
@@ -62,7 +63,7 @@ function UserProfilePage() {
   }
 
   if (userQuery.isLoading) {
-    return <div className="py-8 text-muted-foreground text-sm">Loading…</div>;
+    return <CenteredLoading />;
   }
 
   if (userQuery.isError || !userQuery.data) {

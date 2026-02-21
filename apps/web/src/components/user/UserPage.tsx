@@ -97,7 +97,7 @@ export function UserPage({
       <section>
         <h2 className="font-heading text-lg font-semibold mb-2">Recent Activity</h2>
         {activity.length > 0 ? (
-          <ActivityFeed items={activity} />
+          <ActivityFeed items={activity.slice(0, 5)} />
         ) : (
           <p className="text-sm text-muted-foreground py-4">No recent activity.</p>
         )}

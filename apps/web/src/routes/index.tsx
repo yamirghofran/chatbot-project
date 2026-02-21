@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MarketingAuthGate } from "@/components/auth/MarketingAuthGate";
@@ -42,13 +42,7 @@ function Home() {
   });
 
   const resolvedTrendingLists = teamListsQuery.data ?? homeTrendingLists;
-  const resolvedStaffPicks = useMemo(() => {
-    if (!teamListsQuery.data || teamListsQuery.data.length === 0) {
-      return homeStaffPicks;
-    }
-    const picks = teamListsQuery.data.flatMap((list) => list.books).slice(0, 3);
-    return picks.length > 0 ? picks : homeStaffPicks;
-  }, [teamListsQuery.data]);
+  const resolvedStaffPicks = homeStaffPicks;
 
   async function handleAuthenticated({
     email,

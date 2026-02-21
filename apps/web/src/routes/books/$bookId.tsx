@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookPage } from "@/components/book/BookPage";
+import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
 import { useMyLists } from "@/lib/useMyLists";
 import { useCurrentUser } from "@/lib/auth";
@@ -122,7 +123,7 @@ function BookDetailPage() {
   });
 
   if (bookQuery.isLoading) {
-    return <div className="py-8 text-muted-foreground text-sm">Loading…</div>;
+    return <CenteredLoading />;
   }
 
   if (bookQuery.isError || !bookQuery.data) {

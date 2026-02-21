@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ListPage } from "@/components/list/ListPage";
+import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
 import { useCurrentUser } from "@/lib/auth";
 
@@ -70,7 +71,7 @@ function ListDetailPage() {
   });
 
   if (listQuery.isLoading) {
-    return <div className="py-8 text-muted-foreground text-sm">Loading…</div>;
+    return <CenteredLoading />;
   }
 
   if (listQuery.isError || !listQuery.data) {
