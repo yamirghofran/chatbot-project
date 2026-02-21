@@ -63,7 +63,6 @@ export function ProfileHeader({
         {isOwnProfile ? (
           <>
             <Button variant="ghost" onClick={onLogout} aria-label="Log out">
-              <LogOut className="size-4" />
               Log Out
             </Button>
             <Button variant="outline" size="sm" onClick={onEditProfile}>

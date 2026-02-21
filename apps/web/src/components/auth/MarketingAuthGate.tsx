@@ -2,12 +2,22 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 export type MarketingAuthGateProps = {
-  onAuthenticated?: (payload: { email: string; password: string; mode: "signin" | "signup"; name?: string; username?: string }) => void;
+  onAuthenticated?: (payload: {
+    email: string;
+    password: string;
+    mode: "signin" | "signup";
+    name?: string;
+    username?: string;
+  }) => void;
   error?: string | null;
   isLoading?: boolean;
 };
 
-export function MarketingAuthGate({ onAuthenticated, error, isLoading }: MarketingAuthGateProps) {
+export function MarketingAuthGate({
+  onAuthenticated,
+  error,
+  isLoading,
+}: MarketingAuthGateProps) {
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -20,7 +30,13 @@ export function MarketingAuthGate({ onAuthenticated, error, isLoading }: Marketi
     const nextEmail = email.trim();
     const nextPassword = password.trim();
     if (!nextEmail || !nextPassword) return;
-    onAuthenticated?.({ email: nextEmail, password: nextPassword, mode, name: fullName.trim() || undefined, username: username.trim() || undefined });
+    onAuthenticated?.({
+      email: nextEmail,
+      password: nextPassword,
+      mode,
+      name: fullName.trim() || undefined,
+      username: username.trim() || undefined,
+    });
   }
 
   function handleModeChange(next: "signin" | "signup") {
@@ -31,14 +47,11 @@ export function MarketingAuthGate({ onAuthenticated, error, isLoading }: Marketi
     <section className="mx-auto w-full max-w-xs pt-[10rem]">
       <div className="space-y-4 text-center">
         <div className="space-y-4 pt-4">
-          <img src="/logo.svg" alt="BookDB logo" className="mx-auto h-14 w-auto" />
-          <h1 className="font-heading text-lg font-semibold text-foreground sm:text-xl">
-            Track what you read. Find what to read next.
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Keep your shelf current, discover new books from your network, and
-            build lists worth sharing.
-          </p>
+          <img
+            src="/logo.svg"
+            alt="BookDB logo"
+            className="mx-auto h-10 w-auto"
+          />
 
           <div className="py-4 text-left sm:py-5">
             <form onSubmit={handleSubmit}>
@@ -131,7 +144,9 @@ export function MarketingAuthGate({ onAuthenticated, error, isLoading }: Marketi
                   <input
                     id="auth-password"
                     type="password"
-                    autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                    autoComplete={
+                      mode === "signin" ? "current-password" : "new-password"
+                    }
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"

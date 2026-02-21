@@ -5,6 +5,8 @@ import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
 import { useCurrentUser, clearToken } from "@/lib/auth";
 
+const OPEN_EDIT_ONCE_KEY = "bookdb:open-list-edit-once";
+
 export const Route = createFileRoute("/user/$username")({
   component: UserProfilePage,
 });
@@ -49,17 +51,33 @@ function UserProfilePage() {
   const createListMutation = useMutation({
     mutationFn: (name: string) => api.createList(name),
     onSuccess: async (created) => {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(OPEN_EDIT_ONCE_KEY, created.id);
+      }
       await queryClient.invalidateQueries({ queryKey: ["myLists"] });
       await queryClient.invalidateQueries({ queryKey: ["userLists", username] });
       navigate({ to: "/lists/$listId", params: { listId: created.id } });
     },
   });
 
+  function getNextNewListName() {
+    const existingNames = new Set(
+      (listsQuery.data ?? []).map((list) => list.name.trim().toLowerCase()),
+    );
+
+    if (!existingNames.has("new list")) {
+      return "New list";
+    }
+
+    let suffix = 2;
+    while (existingNames.has(`new list (${suffix})`)) {
+      suffix += 1;
+    }
+    return `New list (${suffix})`;
+  }
+
   function handleCreateList() {
-    const name = window.prompt("List name");
-    const trimmed = name?.trim();
-    if (!trimmed) return;
-    createListMutation.mutate(trimmed);
+    createListMutation.mutate(getNextNewListName());
   }
 
   if (userQuery.isLoading) {
