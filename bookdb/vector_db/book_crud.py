@@ -8,10 +8,10 @@ from .schemas import CollectionNames
 
 class BookVectorCRUD(BaseVectorCRUD):
     """CRUD operations specialized for book embeddings.
-    
+
     This class extends BaseVectorCRUD with book-specific operations including
     document updates and semantic search hooks.
-    
+
     Example:
         >>> from bookdb.vector_db import get_books_collection, BookVectorCRUD
         >>> collection = get_books_collection()
@@ -22,7 +22,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         ...     description="A novel about...",
         ... )
     """
-    
+
     def __init__(self, collection: Any = CollectionNames.BOOKS.value):
         """Initialize book CRUD operations.
 
@@ -30,7 +30,7 @@ class BookVectorCRUD(BaseVectorCRUD):
             collection: Collection reference. Prefer collection name for Qdrant.
         """
         super().__init__(collection)
-    
+
     def add_book(
         self,
         book_id: str,
@@ -52,7 +52,7 @@ class BookVectorCRUD(BaseVectorCRUD):
         """
         # Use description as document, or create default
         document = description or title
-        
+
         # TODO: Generate embedding if not provided
         # if embedding is None:
         #     from .embeddings import get_embedding_service
@@ -61,14 +61,14 @@ class BookVectorCRUD(BaseVectorCRUD):
         #         title=title,
         #         description=description,
         #     )
-        
+
         self.add(
             id=book_id,
             document=document,
             metadata=None,
             embedding=embedding,
         )
-    
+
     def update_book(
         self,
         book_id: str,
@@ -99,7 +99,7 @@ class BookVectorCRUD(BaseVectorCRUD):
             document = description
         elif title is not None:
             document = title
-            
+
             # TODO: Regenerate embedding if description changed
             # if embedding is None:
             #     from .embeddings import get_embedding_service
@@ -108,14 +108,14 @@ class BookVectorCRUD(BaseVectorCRUD):
             #         title=title or existing.get("document") or "",
             #         description=description,
             #     )
-        
+
         self.update(
             id=book_id,
             document=document,
             metadata=None,
             embedding=embedding,
         )
-    
+
     def search_by_metadata(
         self,
         title: Optional[str] = None,
@@ -146,17 +146,82 @@ class BookVectorCRUD(BaseVectorCRUD):
 
     def search_similar_books(
         self,
-        query_text: str,
+        query_text: Optional[str] = None,
+        query_embedding: Optional[List[float]] = None,
         n_results: int = 10,
         title: Optional[str] = None,
         min_year: Optional[int] = None,
         max_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Search for books similar to a query text using semantic search."""
-        # TODO: Implement semantic search
+        """Search for books similar to a query text using semantic search.
 
-        pass
-    
+        Args:
+            query_text: Text to search for (optional if query_embedding provided)
+            query_embedding: Pre-computed embedding vector (optional if query_text provided)
+            n_results: Number of results to return
+            title: Deprecated metadata filter (unsupported).
+            min_year: Deprecated metadata filter (unsupported).
+            max_year: Deprecated metadata filter (unsupported).
+
+        Returns:
+            List of books with similarity scores and distances
+
+        Raises:
+            ValueError: If neither query_text nor query_embedding is provided
+        """
+        import os
+
+        import httpx
+
+        if title is not None or min_year is not None or max_year is not None:
+            raise ValueError(
+                "Book metadata filters are not supported; books no longer store metadata fields."
+            )
+
+        if query_text is None and query_embedding is None:
+            raise ValueError("Either query_text or query_embedding must be provided")
+
+        # Generate embedding if not provided
+        if query_embedding is None:
+            embedding_endpoint = os.getenv(
+                "EMBEDDING_ENDPOINT", "https://bookdb-models.up.railway.app/embed"
+            )
+            response = httpx.post(
+                embedding_endpoint,
+                json={
+                    "model": "finetuned",
+                    "texts": [query_text],
+                    "normalize_embeddings": True,
+                    "batch_size": 1,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            query_embedding = data["embeddings"][0]
+
+        # Search Qdrant
+        search_results = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=query_embedding,
+            limit=n_results,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        # Map results to expected format
+        results = []
+        for hit in search_results:
+            results.append(
+                {
+                    "book_id": hit.id,
+                    "similarity_score": hit.score,  # similarity score
+                    "distance": 1.0 - hit.score,  # convert similarity to distance
+                    "document": hit.payload.get("document"),
+                }
+            )
+
+        return results
+
     def get_book_recommendations(
         self,
         book_id: str,
