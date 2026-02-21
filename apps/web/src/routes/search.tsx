@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchPage } from "@/components/search/SearchPage";
 import * as api from "@/lib/api";
+import type { Book } from "@/lib/types";
 
 type SearchParams = {
   q?: string;
@@ -13,6 +14,21 @@ export const Route = createFileRoute("/search")({
   }),
   component: SearchRoute,
 });
+
+function dedupeBooksById(books: Book[]): Book[] {
+  const seen = new Set<string>();
+  const deduped: Book[] = [];
+
+  for (const book of books) {
+    if (seen.has(book.id)) {
+      continue;
+    }
+    seen.add(book.id);
+    deduped.push(book);
+  }
+
+  return deduped;
+}
 
 function SearchRoute() {
   const { q = "" } = Route.useSearch();
@@ -46,15 +62,28 @@ function SearchRoute() {
     );
   }
 
-  const books = searchQuery.data ?? [];
-  const directHit = books[0];
-  const keywordResults = books.slice(1);
+  const result = searchQuery.data ?? {
+    directHit: null,
+    keywordResults: [],
+    aiNarrative: undefined,
+    aiBooks: [],
+  };
+
+  const aiBooks = result.aiBooks ?? [];
+  const aiTopBooks = aiBooks.slice(0, 4);
+  const aiOverflowBooks = aiBooks.slice(4);
+  const keywordResults = dedupeBooksById([
+    ...aiOverflowBooks,
+    ...(result.keywordResults ?? []),
+  ]);
 
   return (
     <SearchPage
       query={query}
-      directHit={directHit}
+      directHit={result.directHit ?? undefined}
       keywordResults={keywordResults}
+      aiNarrative={result.aiNarrative ?? undefined}
+      aiBooks={aiTopBooks}
     />
   );
 }

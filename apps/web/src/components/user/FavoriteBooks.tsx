@@ -76,7 +76,16 @@ export function FavoriteBooks({
   const visibleResults = useMemo(() => {
     const currentSlotBookId =
       activeSlot !== null ? slots[activeSlot]?.id : undefined;
-    return (searchQuery.data ?? []).filter((result) => {
+    const data = searchQuery.data;
+    const mergedResults = [
+      data?.directHit ?? null,
+      ...(data?.keywordResults ?? []),
+      ...(data?.aiBooks ?? []),
+    ].filter((result): result is Book => Boolean(result));
+    const dedupedResults = Array.from(
+      new Map(mergedResults.map((result) => [result.id, result])).values(),
+    );
+    return dedupedResults.filter((result) => {
       if (result.id === currentSlotBookId) return true;
       return !books.some((book) => book.id === result.id);
     });
