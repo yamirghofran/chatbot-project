@@ -1,3 +1,45 @@
+"""Serve finetuned EmbeddingGemma artifacts as a REST API.
+
+Usage:
+    # Load finetuned model from Hugging Face Hub
+    python scripts/serve_embeddinggemma.py --finetuned-model-id your-username/finetuned_embeddinggemma_books
+
+    # Load finetuned model from local artifacts (default behavior)
+    python scripts/serve_embeddinggemma.py --artifact-root models/finetuned_embeddinggemma_books
+
+    # Combine with other options
+    python scripts/serve_embeddinggemma.py \\
+        --finetuned-model-id your-username/finetuned_embeddinggemma_books \\
+        --base-model-path unsloth/embeddinggemma-300m \\
+        --port 8000
+
+    # Show all options
+    python scripts/serve_embeddinggemma.py --help
+
+Flags for finetuned model source:
+    --finetuned-model-id    HF model ID (e.g., 'username/model-name'). Takes precedence
+                            over local paths if provided.
+    --artifact-root         Local artifact location (default: models/finetuned_embeddinggemma_books).
+                            Ignored if --finetuned-model-id is set.
+    --model-path            Explicit local model directory. Overrides artifact auto-resolution.
+
+Other flags:
+    --base-model-path       Base model directory or HF model id (default: unsloth/embeddinggemma-300m)
+    --default-model         Default model for requests: 'finetuned' or 'base' (default: finetuned)
+    --device                Device override: cpu/cuda/mps (auto-detects if omitted)
+    --batch-size            Default batch size for encoding (default: 32)
+    --host                  Server host (default: 0.0.0.0)
+    --port                  Server port (default: 8000)
+    --reload                Enable autoreload for development
+
+API Endpoints:
+    GET  /health    - Health check with model info
+    POST /embed     - Generate embeddings for text list
+
+Make sure to set HF_TOKEN environment variable or run `huggingface-cli login` first
+when using --finetuned-model-id with a private model.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -24,17 +66,26 @@ def parse_args() -> argparse.Namespace:
         description="Serve finetuned EmbeddingGemma artifacts as a REST API.",
     )
     parser.add_argument(
+        "--finetuned-model-id",
+        default=None,
+        help=(
+            "Hugging Face model ID for the finetuned model (e.g., 'username/model-name'). "
+            "If provided, this takes precedence over local artifact resolution."
+        ),
+    )
+    parser.add_argument(
         "--artifact-root",
         default="models/finetuned_embeddinggemma_books",
         help=(
-            "Artifact location. Accepts artifact root, merged_16bit/lora model dir, "
-            "deployment_manifest.json path, file:// URI, or alias paths."
+            "Local artifact location. Accepts artifact root, merged_16bit/lora model dir, "
+            "deployment_manifest.json path, file:// URI, or alias paths. "
+            "Ignored if --finetuned-model-id is provided."
         ),
     )
     parser.add_argument(
         "--model-path",
         default=None,
-        help="Explicit model directory. If set, it overrides artifact auto-resolution.",
+        help="Explicit local model directory. If set, it overrides artifact auto-resolution.",
     )
     parser.add_argument(
         "--base-model-path",
@@ -94,15 +145,26 @@ def main() -> None:
     uvicorn, FastAPI, HTTPException, Body = _import_fastapi_runtime()
     resolved_device = detect_inference_device(args.device)
 
-    finetuned_model_path, manifest = resolve_artifact_model_path(
-        artifact_root=args.artifact_root,
-        model_path=args.model_path,
-    )
-    finetuned_model = load_embedding_model(
-        model_path=finetuned_model_path,
-        manifest=manifest,
-        device=resolved_device,
-    )
+    # Load finetuned model - either from HF Hub or local artifacts
+    if args.finetuned_model_id:
+        finetuned_model_path = args.finetuned_model_id
+        manifest = None
+        finetuned_model = load_embedding_model(
+            model_path=finetuned_model_path,
+            manifest=manifest,
+            device=resolved_device,
+        )
+    else:
+        finetuned_model_path, manifest = resolve_artifact_model_path(
+            artifact_root=args.artifact_root,
+            model_path=args.model_path,
+        )
+        finetuned_model = load_embedding_model(
+            model_path=finetuned_model_path,
+            manifest=manifest,
+            device=resolved_device,
+        )
+
     base_model_path = _resolve_base_model_path(args.base_model_path)
     base_model = load_embedding_model(
         model_path=base_model_path,
