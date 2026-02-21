@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
-from .core.embeddings import get_qdrant_client
+from .core.embeddings import COLLECTION_NAME, get_qdrant_client
 from .routers import auth, books, discovery, lists, me, reviews, users
 
 app = FastAPI(title="BookDB API", version="0.1.0")
@@ -36,7 +36,18 @@ app.include_router(discovery.router)
 
 @app.on_event("startup")
 async def startup_event():
-    app.state.qdrant = get_qdrant_client(settings.QDRANT_URL, settings.QDRANT_API_KEY)
+    try:
+        qdrant = get_qdrant_client(
+            settings.QDRANT_URL,
+            settings.QDRANT_API_KEY,
+            timeout_seconds=settings.QDRANT_TIMEOUT_SECONDS,
+        )
+        qdrant.get_collection(COLLECTION_NAME)
+        app.state.qdrant = qdrant
+        print(f"Qdrant connected: {settings.QDRANT_URL} ({COLLECTION_NAME})")
+    except Exception as e:
+        app.state.qdrant = None
+        print(f"WARNING: Qdrant unavailable: {e}. Related-books endpoint will use fallback.")
 
     # Use configured URL/path, or fall back to default local path
     bpr_path = settings.BPR_PARQUET_URL

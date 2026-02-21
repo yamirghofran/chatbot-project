@@ -22,6 +22,7 @@ from ..schemas.review import CreateReviewRequest
 router = APIRouter(prefix="/books", tags=["books"])
 
 _qdrant_cache: TTLCache = TTLCache(maxsize=500, ttl=1800)
+_qdrant_failure_cache: TTLCache = TTLCache(maxsize=500, ttl=60)
 _qdrant_lock = threading.Lock()
 
 
@@ -290,19 +291,26 @@ def get_related_books(
     if qdrant is not None and goodreads_id is not None:
         with _qdrant_lock:
             cached_ids = _qdrant_cache.get(goodreads_id)
+            recent_failure = _qdrant_failure_cache.get(goodreads_id, False)
 
         if cached_ids is not None:
             related = load_books_by_goodreads_ids(db, cached_ids)
             return serialize_books_with_engagement(db, related)
 
+        if recent_failure:
+            qdrant = None
+
         try:
-            similar_goodreads_ids = most_similar(qdrant, goodreads_id, top_k=limit)
-            if similar_goodreads_ids:
-                with _qdrant_lock:
-                    _qdrant_cache[goodreads_id] = similar_goodreads_ids
-                related = load_books_by_goodreads_ids(db, similar_goodreads_ids)
-                return serialize_books_with_engagement(db, related)
+            if qdrant is not None:
+                similar_goodreads_ids = most_similar(qdrant, goodreads_id, top_k=limit)
+                if similar_goodreads_ids:
+                    with _qdrant_lock:
+                        _qdrant_cache[goodreads_id] = similar_goodreads_ids
+                    related = load_books_by_goodreads_ids(db, similar_goodreads_ids)
+                    return serialize_books_with_engagement(db, related)
         except Exception as e:
+            with _qdrant_lock:
+                _qdrant_failure_cache[goodreads_id] = True
             print(f"Qdrant recommend failed for book {book_id}: {e}")
 
     # Fallback: popular books.

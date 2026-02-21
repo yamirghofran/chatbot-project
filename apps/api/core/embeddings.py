@@ -7,9 +7,12 @@ from qdrant_client.models import Filter, HasIdCondition
 
 COLLECTION_NAME = "books"
 
-
-def get_qdrant_client(url: str, api_key: str | None = None) -> QdrantClient:
-    return QdrantClient(url=url, api_key=api_key or None)
+def get_qdrant_client(
+    url: str,
+    api_key: str | None = None,
+    timeout_seconds: float = 8.0,
+) -> QdrantClient:
+    return QdrantClient(url=url,port=None, api_key=api_key or None, timeout=timeout_seconds)
 
 
 def most_similar(
@@ -26,12 +29,13 @@ def most_similar(
     exclude = set(exclude_ids or set())
     exclude.add(goodreads_id)
 
-    results = client.recommend(
+    results = client.query_points(
         collection_name=COLLECTION_NAME,
-        positive=[goodreads_id],
+        query=goodreads_id,
         limit=top_k,
         query_filter=Filter(
             must_not=[HasIdCondition(has_id=list(exclude))]
         ),
     )
-    return [hit.id for hit in results]
+    points = getattr(results, "points", results)
+    return [int(hit.id) for hit in points if hit.id is not None]
