@@ -1,363 +1,200 @@
-"""Tests for book CRUD operations."""
+from __future__ import annotations
+
+"""Tests for Qdrant-backed book CRUD operations."""
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime
 
 from bookdb.vector_db.book_crud import BookVectorCRUD
-from bookdb.vector_db.schemas import BookMetadata
+from bookdb.vector_db.schemas import CollectionNames
 
 
-class TestBookVectorCRUD:
-    """Tests for BookVectorCRUD class."""
-    
+def _record(
+    id: str,
+    document: str | None = None,
+    metadata: dict | None = None,
+    embedding: list[float] | None = None,
+):
+    payload = {}
+    if document is not None:
+        payload["document"] = document
+    if metadata is not None:
+        payload["metadata"] = metadata
+    return SimpleNamespace(id=id, payload=payload, vector=embedding)
+
+
+class TestBookVectorCRUDQdrant:
+    """Tests for BookVectorCRUD against Qdrant interfaces."""
+
     @pytest.fixture
-    def mock_collection(self):
-        """Create a mock ChromaDB collection."""
-        collection = MagicMock()
-        collection.count.return_value = 0
-        return collection
-    
+    def mock_client(self):
+        return MagicMock()
+
     @pytest.fixture
-    def book_crud(self, mock_collection):
-        """Create a BookVectorCRUD instance with mock collection."""
-        return BookVectorCRUD(mock_collection)
-    
-    def test_init(self, mock_collection):
-        """Test BookVectorCRUD initialization."""
-        crud = BookVectorCRUD(mock_collection)
-        assert crud.collection == mock_collection
-    
-    def test_add_book_minimal(self, book_crud, mock_collection):
-        """Test adding a book with minimal required fields."""
-        mock_collection.get.return_value = {"ids": []}  # Book doesn't exist
-        
+    def book_crud(self, mock_client):
+        with patch("bookdb.vector_db.crud.get_qdrant_client", return_value=mock_client):
+            yield BookVectorCRUD()
+
+    def test_init_defaults_to_books_collection(self, book_crud):
+        assert book_crud.collection_name == CollectionNames.BOOKS.value
+
+    def test_add_book_minimal(self, book_crud, mock_client):
+        mock_client.retrieve.return_value = []
+
         book_crud.add_book(
             book_id="book_123",
             title="Test Book",
-            author="Test Author",
         )
-        
-        # Verify add was called
-        mock_collection.add.assert_called_once()
-        call_args = mock_collection.add.call_args
-        
-        # Check arguments
-        assert call_args[1]["ids"] == ["book_123"]
-        assert "Test Book" in call_args[1]["documents"][0]
-        assert "Test Author" in call_args[1]["documents"][0]
-        
-        # Check metadata
-        metadata = call_args[1]["metadatas"][0]
-        assert metadata["title"] == "Test Book"
-        assert metadata["author"] == "Test Author"
-    
-    def test_add_book_full(self, book_crud, mock_collection):
-        """Test adding a book with all fields."""
-        mock_collection.get.return_value = {"ids": []}
+
+        kwargs = mock_client.upsert.call_args.kwargs
+        assert kwargs["collection_name"] == "books"
+        point = kwargs["points"][0]
+        assert point.id == "book_123"
+        assert point.payload["document"] == "Test Book"
+        assert "metadata" not in point.payload
+
+    def test_add_book_with_description_and_embedding(self, book_crud, mock_client):
+        mock_client.retrieve.return_value = []
+        embedding = [0.1, 0.2, 0.3]
 
         book_crud.add_book(
             book_id="book_456",
             title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
             description="A novel about the American Dream",
-            genre="Fiction",
-            publication_year=1925,
-        )
-
-        mock_collection.add.assert_called_once()
-        call_args = mock_collection.add.call_args
-
-        # Check metadata
-        metadata = call_args[1]["metadatas"][0]
-        assert metadata["title"] == "The Great Gatsby"
-        assert metadata["author"] == "F. Scott Fitzgerald"
-        assert metadata["genre"] == "Fiction"
-        assert metadata["publication_year"] == 1925
-    
-    def test_add_book_with_embedding(self, book_crud, mock_collection):
-        """Test adding a book with pre-computed embedding."""
-        mock_collection.get.return_value = {"ids": []}
-        embedding = [0.1, 0.2, 0.3, 0.4]
-        
-        book_crud.add_book(
-            book_id="book_789",
-            title="Test Book",
-            author="Test Author",
             embedding=embedding,
         )
-        
-        call_args = mock_collection.add.call_args
-        assert call_args[1]["embeddings"] == [embedding]
-    
-    def test_add_book_duplicate_id(self, book_crud, mock_collection):
-        """Test error when adding book with duplicate ID."""
-        mock_collection.get.return_value = {"ids": ["book_123"]}  # Already exists
-        
+
+        point = mock_client.upsert.call_args.kwargs["points"][0]
+        assert point.payload["document"] == "A novel about the American Dream"
+        assert "metadata" not in point.payload
+        assert point.vector == embedding
+
+    def test_add_book_duplicate_id(self, book_crud, mock_client):
+        mock_client.retrieve.return_value = [_record(id="book_123")]
+
         with pytest.raises(ValueError, match="already exists"):
             book_crud.add_book(
                 book_id="book_123",
                 title="Test Book",
-                author="Test Author",
             )
-    
-    def test_add_book_invalid_metadata(self, book_crud, mock_collection):
-        """Test error with invalid metadata."""
-        mock_collection.get.return_value = {"ids": []}
-        
-        with pytest.raises(ValueError):
-            book_crud.add_book(
-                book_id="book_123",
-                title="Test Book",
-                author="Test Author",
-                publication_year=999,  # Invalid year
-            )
-    
-    def test_add_book_with_description(self, book_crud, mock_collection):
-        """Test that description is used as the document."""
-        mock_collection.get.return_value = {"ids": []}
-        
-        book_crud.add_book(
-            book_id="book_123",
-            title="1984",
-            author="George Orwell",
-            description="A dystopian novel",
-            genre="Dystopian",
-        )
-        
-        call_args = mock_collection.add.call_args
-        document = call_args[1]["documents"][0]
-        
-        # Document should be the description
-        assert document == "A dystopian novel"
-    
-    def test_update_book_single_field(self, book_crud, mock_collection):
-        """Test updating a single book field."""
-        # Mock existing book - first call is from get(), second is from update()'s exists check
-        mock_collection.get.side_effect = [
-            {  # get() call for existing data
-                "ids": ["book_123"],
-                "documents": ["Original doc"],
-                "metadatas": [{
-                    "title": "Original Title",
-                    "author": "Original Author",
-                    "genre": "Fiction",
-                    "publication_year": 2020,
-                }],
-                "embeddings": [[0.1, 0.2]],
-            },
-            {"ids": ["book_123"]},  # exists check in update()
+
+    def test_update_book_title_updates_document_and_clears_metadata(
+        self,
+        book_crud,
+        mock_client,
+    ):
+        mock_client.retrieve.side_effect = [
+            [
+                _record(
+                    id="book_123",
+                    document="Original doc",
+                    metadata={"title": "Old", "publication_year": 2020},
+                    embedding=[0.1, 0.2, 0.3],
+                )
+            ],
+            [
+                _record(
+                    id="book_123",
+                    document="Original doc",
+                    metadata={"title": "Old", "publication_year": 2020},
+                    embedding=[0.1, 0.2, 0.3],
+                )
+            ],
         ]
 
         book_crud.update_book(
             book_id="book_123",
-            publication_year=2023,
+            title="New title",
         )
 
-        mock_collection.update.assert_called_once()
-        call_args = mock_collection.update.call_args
+        point = mock_client.upsert.call_args.kwargs["points"][0]
+        assert point.payload["document"] == "New title"
+        assert "metadata" not in point.payload
+        assert point.vector == [0.1, 0.2, 0.3]
 
-        # Check that only metadata was updated, not document
-        assert call_args[1]["documents"] is None
-
-        metadata = call_args[1]["metadatas"][0]
-        assert metadata["publication_year"] == 2023
-        assert metadata["title"] == "Original Title"  # Unchanged
-    
-    def test_update_book_with_description(self, book_crud, mock_collection):
-        """Test updating description updates the document."""
-        mock_collection.get.side_effect = [
-            {  # get() call for existing data
-                "ids": ["book_123"],
-                "documents": ["Original doc"],
-                "metadatas": [{
-                    "title": "Original Title",
-                    "author": "Original Author",
-                }],
-                "embeddings": [[0.1]],
-            },
-            {"ids": ["book_123"]},  # exists check in update()
+    def test_update_book_with_description(self, book_crud, mock_client):
+        mock_client.retrieve.side_effect = [
+            [
+                _record(
+                    id="book_123",
+                    document="Original doc",
+                    metadata={"title": "Old"},
+                    embedding=[0.1, 0.2, 0.3],
+                )
+            ],
+            [
+                _record(
+                    id="book_123",
+                    document="Original doc",
+                    metadata={"title": "Old"},
+                    embedding=[0.1, 0.2, 0.3],
+                )
+            ],
         ]
 
         book_crud.update_book(
             book_id="book_123",
-            title="New Title",
             description="New description",
         )
-        
-        call_args = mock_collection.update.call_args
-        
-        # Document should be the new description
-        assert call_args[1]["documents"] is not None
-        document = call_args[1]["documents"][0]
-        assert document == "New description"
-    
-    def test_update_book_nonexistent(self, book_crud, mock_collection):
-        """Test error when updating non-existent book."""
-        mock_collection.get.return_value = {"ids": []}  # Doesn't exist
-        
+
+        point = mock_client.upsert.call_args.kwargs["points"][0]
+        assert point.payload["document"] == "New description"
+        assert "metadata" not in point.payload
+
+    def test_update_book_nonexistent(self, book_crud, mock_client):
+        mock_client.retrieve.return_value = []
+
         with pytest.raises(ValueError, match="does not exist"):
             book_crud.update_book(
                 book_id="nonexistent",
                 title="New Title",
             )
-    
-    def test_update_book_multiple_fields(self, book_crud, mock_collection):
-        """Test updating multiple fields at once."""
-        mock_collection.get.side_effect = [
-            {  # get() call for existing data
-                "ids": ["book_123"],
-                "documents": ["Doc"],
-                "metadatas": [{
-                    "title": "Title",
-                    "author": "Author",
-                }],
-                "embeddings": [[0.1]],
-            },
-            {"ids": ["book_123"]},  # exists check in update()
-        ]
-        
-        book_crud.update_book(
-            book_id="book_123",
-            title="New Title",
-            author="New Author",
-            genre="New Genre",
-            publication_year=2023,
-        )
-        
-        call_args = mock_collection.update.call_args
-        metadata = call_args[1]["metadatas"][0]
-        
-        assert metadata["title"] == "New Title"
-        assert metadata["author"] == "New Author"
-        assert metadata["genre"] == "New Genre"
-        assert metadata["publication_year"] == 2023
-    
-    def test_search_by_metadata_single_filter(self, book_crud, mock_collection):
-        """Test searching by single metadata field."""
-        mock_collection.get.return_value = {
-            "ids": ["book_1", "book_2"],
-            "documents": ["Doc 1", "Doc 2"],
-            "metadatas": [
-                {"title": "Book 1", "genre": "Fiction"},
-                {"title": "Book 2", "genre": "Fiction"},
+
+    def test_search_by_metadata_without_filters(self, book_crud, mock_client):
+        mock_client.scroll.return_value = (
+            [
+                _record("book_1", "Doc 1", None, [0.1]),
             ],
-            "embeddings": [[0.1], [0.2]],
-        }
-        
-        results = book_crud.search_by_metadata(genre="Fiction")
-        
-        assert len(results) == 2
-        mock_collection.get.assert_called_once()
-        call_args = mock_collection.get.call_args
-        assert call_args[1]["where"]["genre"] == "Fiction"
-    
-    def test_search_by_metadata_multiple_filters(self, book_crud, mock_collection):
-        """Test searching with multiple metadata filters."""
-        mock_collection.get.return_value = {
-            "ids": ["book_1"],
-            "documents": ["Doc 1"],
-            "metadatas": [{"title": "Book 1"}],
-            "embeddings": [[0.1]],
-        }
-        
-        results = book_crud.search_by_metadata(
-            genre="Fiction",
-            author="Test Author",
-            min_year=1900,
+            None,
         )
 
-        call_args = mock_collection.get.call_args
-        where_filter = call_args[1]["where"]
-
-        assert where_filter["genre"] == "Fiction"
-        assert where_filter["author"] == "Test Author"
-        assert where_filter["publication_year"]["$gte"] == 1900
-    
-    def test_search_by_metadata_year_range(self, book_crud, mock_collection):
-        """Test searching with year range."""
-        mock_collection.get.return_value = {
-            "ids": [],
-            "documents": [],
-            "metadatas": [],
-            "embeddings": [],
-        }
-        
-        book_crud.search_by_metadata(
-            min_year=1900,
-            max_year=2000,
-        )
-        
-        call_args = mock_collection.get.call_args
-        year_filter = call_args[1]["where"]["publication_year"]
-        
-        assert year_filter["$gte"] == 1900
-        assert year_filter["$lte"] == 2000
-    
-    def test_search_by_metadata_with_limit(self, book_crud, mock_collection):
-        """Test search with result limit."""
-        mock_collection.get.return_value = {
-            "ids": ["book_1", "book_2", "book_3"],
-            "documents": ["Doc 1", "Doc 2", "Doc 3"],
-            "metadatas": [{"title": "B1"}, {"title": "B2"}, {"title": "B3"}],
-            "embeddings": [[0.1], [0.2], [0.3]],
-        }
-        
-        results = book_crud.search_by_metadata(
-            genre="Fiction",
-            limit=5,
-        )
-        
-        assert len(results) == 3
-        call_args = mock_collection.get.call_args
-        assert call_args[1]["limit"] == 5
-    
-    def test_search_by_metadata_no_filters(self, book_crud, mock_collection):
-        """Test search without any filters returns all."""
-        mock_collection.get.return_value = {
-            "ids": ["book_1"],
-            "documents": ["Doc 1"],
-            "metadatas": [{"title": "Book 1"}],
-            "embeddings": [[0.1]],
-        }
-        
         results = book_crud.search_by_metadata(limit=10)
-        
+
         assert len(results) == 1
-        # Should call get without where filter
-        call_args = mock_collection.get.call_args
-        assert "where" not in call_args[1] or not call_args[1].get("where")
-    
-    def test_search_by_metadata_empty_results(self, book_crud, mock_collection):
-        """Test search returning no results."""
-        mock_collection.get.return_value = {
-            "ids": [],
-            "documents": [],
-            "metadatas": [],
-            "embeddings": [],
-        }
-        
-        results = book_crud.search_by_metadata(genre="NonexistentGenre")
-        
-        assert len(results) == 0
-        assert isinstance(results, list)
-    
+        kwargs = mock_client.scroll.call_args.kwargs
+        assert kwargs["collection_name"] == "books"
+        assert kwargs["limit"] == 1000
+        assert kwargs["with_payload"] is True
+        assert kwargs["with_vectors"] is True
+
+    def test_search_by_metadata_rejects_filters(self, book_crud):
+        with pytest.raises(ValueError, match="no longer store metadata fields"):
+            book_crud.search_by_metadata(title="Book 1")
+
+        with pytest.raises(ValueError, match="no longer store metadata fields"):
+            book_crud.search_by_metadata(min_year=1900)
+
+        with pytest.raises(ValueError, match="no longer store metadata fields"):
+            book_crud.search_by_metadata(max_year=2000)
+
+    def test_search_by_metadata_wraps_errors(self, book_crud, mock_client):
+        mock_client.scroll.side_effect = RuntimeError("boom")
+
+        with pytest.raises(Exception, match="Failed to search by metadata"):
+            book_crud.search_by_metadata(limit=10)
+
     def test_search_similar_books_not_implemented(self, book_crud):
-        """Test that search_similar_books is TODO."""
         result = book_crud.search_similar_books(
             query_text="test query",
             n_results=5,
         )
-        
-        # Should return None (TODO not implemented)
         assert result is None
-    
+
     def test_get_book_recommendations_not_implemented(self, book_crud):
-        """Test that get_book_recommendations is TODO."""
         result = book_crud.get_book_recommendations(
             book_id="book_123",
             n_results=5,
         )
-        
-        # Should return None (TODO not implemented)
         assert result is None
