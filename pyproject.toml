@@ -54,6 +54,7 @@ dependencies = [
     "groq>=1.0.0",
     "dotenv>=0.9.9",
     "cachetools>=5.0.0",
+    "bcrypt>=5.0.0",
 ]
 
 [project.optional-dependencies]
