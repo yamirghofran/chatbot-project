@@ -34,7 +34,7 @@ export function RatingPicker({
             aria-label={`Rate ${star} out of 5`}
           >
             {/* Empty star (always rendered as base layer) */}
-            <Star className={`absolute inset-0 ${starSizeClass} text-border`} />
+            <Star className={`absolute inset-0 ${starSizeClass} text-input`} />
 
             {/* Filled overlay */}
             {isFilled && (

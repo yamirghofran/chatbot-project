@@ -53,6 +53,7 @@ dependencies = [
     "unsloth>=2026.1.2",
     "groq>=1.0.0",
     "dotenv>=0.9.9",
+    "cachetools>=5.0.0",
 ]
 
 [project.optional-dependencies]

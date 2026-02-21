@@ -1,6 +1,16 @@
-import type { Book, User, List, ActivityItem, RatedBook, BookStats, Review } from "./types";
+import type {
+  Book,
+  User,
+  List,
+  ActivityItem,
+  RatedBook,
+  BookStats,
+  Review,
+} from "./types";
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8001";
+const BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  "http://localhost:8001";
 
 function getToken(): string | null {
   return localStorage.getItem("bookdb_token");
@@ -45,7 +55,10 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export async function login(email: string, password: string): Promise<TokenResponse> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<TokenResponse> {
   return apiFetch<TokenResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -64,7 +77,12 @@ export async function register(
   });
 }
 
-type UserApiData = { id: string; handle: string; displayName: string; avatarUrl?: string | null };
+type UserApiData = {
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarUrl?: string | null;
+};
 function mapUser(data: UserApiData): User {
   return {
     id: data.id,
@@ -98,8 +116,10 @@ export async function getActivityFeed(limit = 10): Promise<ActivityItem[]> {
 // Books
 // ---------------------------------------------------------------------------
 
-export async function searchBooks(q: string, limit = 20): Promise<Book[]> {
-  return apiFetch<Book[]>(`/books/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+export async function searchBooks(q: string, limit = 10): Promise<Book[]> {
+  return apiFetch<Book[]>(
+    `/books/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+  );
 }
 
 export interface BookDetail extends Book {
@@ -117,11 +137,20 @@ export interface ReviewsPage {
   total: number;
 }
 
-export async function getBookReviews(id: string | number, limit = 20, offset = 0): Promise<ReviewsPage> {
-  return apiFetch<ReviewsPage>(`/books/${id}/reviews?limit=${limit}&offset=${offset}`);
+export async function getBookReviews(
+  id: string | number,
+  limit = 20,
+  offset = 0,
+): Promise<ReviewsPage> {
+  return apiFetch<ReviewsPage>(
+    `/books/${id}/reviews?limit=${limit}&offset=${offset}`,
+  );
 }
 
-export async function postReview(bookId: string | number, text: string): Promise<Review> {
+export async function postReview(
+  bookId: string | number,
+  text: string,
+): Promise<Review> {
   return apiFetch<Review>(`/books/${bookId}/reviews`, {
     method: "POST",
     body: JSON.stringify({ text }),
@@ -140,18 +169,29 @@ export async function unlikeReview(reviewId: string | number): Promise<void> {
   return apiFetch<void>(`/reviews/${reviewId}/likes`, { method: "DELETE" });
 }
 
-export async function postReviewComment(reviewId: string | number, text: string): Promise<Review["replies"][number]> {
+export async function postReviewComment(
+  reviewId: string | number,
+  text: string,
+): Promise<Review["replies"][number]> {
   return apiFetch(`/reviews/${reviewId}/comments`, {
     method: "POST",
     body: JSON.stringify({ text }),
   });
 }
 
-export async function deleteReviewComment(reviewId: string | number, commentId: string | number): Promise<void> {
-  return apiFetch<void>(`/reviews/${reviewId}/comments/${commentId}`, { method: "DELETE" });
+export async function deleteReviewComment(
+  reviewId: string | number,
+  commentId: string | number,
+): Promise<void> {
+  return apiFetch<void>(`/reviews/${reviewId}/comments/${commentId}`, {
+    method: "DELETE",
+  });
 }
 
-export async function getRelatedBooks(id: string | number, limit = 6): Promise<Book[]> {
+export async function getRelatedBooks(
+  id: string | number,
+  limit = 6,
+): Promise<Book[]> {
   return apiFetch<Book[]>(`/books/${id}/related?limit=${limit}`);
 }
 
@@ -168,18 +208,26 @@ export async function getUserRatings(
   limit = 50,
   sort: "recent" | "rating" = "recent",
 ): Promise<RatedBook[]> {
-  return apiFetch<RatedBook[]>(`/user/${id}/ratings?limit=${limit}&sort=${sort}`);
+  return apiFetch<RatedBook[]>(
+    `/user/${id}/ratings?limit=${limit}&sort=${sort}`,
+  );
 }
 
 export async function getUserLists(id: string | number): Promise<List[]> {
   return apiFetch<List[]>(`/user/${id}/lists`);
 }
 
-export async function getUserFavorites(id: string | number, limit = 3): Promise<Book[]> {
+export async function getUserFavorites(
+  id: string | number,
+  limit = 3,
+): Promise<Book[]> {
   return apiFetch<Book[]>(`/user/${id}/favorites?limit=${limit}`);
 }
 
-export async function getUserActivity(id: string | number, limit = 10): Promise<ActivityItem[]> {
+export async function getUserActivity(
+  id: string | number,
+  limit = 10,
+): Promise<ActivityItem[]> {
   return apiFetch<ActivityItem[]>(`/user/${id}/activity?limit=${limit}`);
 }
 
@@ -191,7 +239,10 @@ export async function getList(id: string | number): Promise<List> {
   return apiFetch<List>(`/lists/${id}`);
 }
 
-export async function createList(name: string, description?: string): Promise<{ id: string; name: string }> {
+export async function createList(
+  name: string,
+  description?: string,
+): Promise<{ id: string; name: string }> {
   return apiFetch<{ id: string; name: string }>("/me/lists", {
     method: "POST",
     body: JSON.stringify({ name, description }),
@@ -212,15 +263,26 @@ export async function deleteList(id: string | number): Promise<void> {
   return apiFetch<void>(`/lists/${id}`, { method: "DELETE" });
 }
 
-export async function addBookToList(listId: string | number, bookId: string | number): Promise<void> {
+export async function addBookToList(
+  listId: string | number,
+  bookId: string | number,
+): Promise<void> {
   return apiFetch<void>(`/lists/${listId}/books/${bookId}`, { method: "POST" });
 }
 
-export async function removeBookFromList(listId: string | number, bookId: string | number): Promise<void> {
-  return apiFetch<void>(`/lists/${listId}/books/${bookId}`, { method: "DELETE" });
+export async function removeBookFromList(
+  listId: string | number,
+  bookId: string | number,
+): Promise<void> {
+  return apiFetch<void>(`/lists/${listId}/books/${bookId}`, {
+    method: "DELETE",
+  });
 }
 
-export async function reorderList(listId: string | number, bookIds: (string | number)[]): Promise<void> {
+export async function reorderList(
+  listId: string | number,
+  bookIds: (string | number)[],
+): Promise<void> {
   return apiFetch<void>(`/lists/${listId}/reorder`, {
     method: "PUT",
     body: JSON.stringify(bookIds.map(Number)),
@@ -247,16 +309,25 @@ export async function addToMyFavorites(bookId: string | number): Promise<void> {
   return apiFetch<void>(`/me/favorites/${bookId}`, { method: "POST" });
 }
 
-export async function removeFromMyFavorites(bookId: string | number): Promise<void> {
+export async function removeFromMyFavorites(
+  bookId: string | number,
+): Promise<void> {
   return apiFetch<void>(`/me/favorites/${bookId}`, { method: "DELETE" });
 }
 
-export async function getMyRating(bookId: string | number): Promise<{ rating: number | null }> {
+export async function getMyRating(
+  bookId: string | number,
+): Promise<{ rating: number | null }> {
   return apiFetch<{ rating: number | null }>(`/me/ratings/${bookId}`);
 }
 
-export async function upsertRating(bookId: string | number, rating: number): Promise<void> {
-  return apiFetch<void>(`/me/ratings?book_id=${bookId}&rating=${rating}`, { method: "POST" });
+export async function upsertRating(
+  bookId: string | number,
+  rating: number,
+): Promise<void> {
+  return apiFetch<void>(`/me/ratings?book_id=${bookId}&rating=${rating}`, {
+    method: "POST",
+  });
 }
 
 export async function deleteRating(bookId: string | number): Promise<void> {

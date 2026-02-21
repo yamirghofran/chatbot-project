@@ -13,26 +13,21 @@ const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
-function deriveEngagement(book: Book) {
-  const seed = Number.parseInt(book.id, 10) || book.title.length;
-  return {
-    averageRating: (3.6 + (seed % 14) / 10).toFixed(1),
-    ratingCount: 140 + seed * 37,
-    commentCount: 42 + seed * 11,
-    shellCount: 24 + seed * 5,
-  };
-}
-
 export function SearchResultRow({ book }: SearchResultRowProps) {
-  const { averageRating, ratingCount, commentCount, shellCount } =
-    deriveEngagement(book);
+  const averageRating =
+    typeof book.averageRating === "number"
+      ? book.averageRating.toFixed(1)
+      : "—";
+  const ratingCount = book.ratingCount ?? 0;
+  const commentCount = book.commentCount ?? 0;
+  const shellCount = book.shellCount ?? 0;
   const tags = book.tags?.slice(0, 2) ?? [];
 
   return (
     <Link
       to="/books/$bookId"
       params={{ bookId: book.id }}
-      className="group flex items-center gap-4 py-3 hover:bg-muted/40 -mx-2 px-2 rounded-md transition-colors"
+      className="group flex items-center gap-4 py-3  -mx-2 px-2 rounded-md transition-colors"
     >
       <img
         src={book.coverUrl ?? "/brand/book-placeholder.png"}

@@ -52,6 +52,16 @@ def _cold_start(db: Session, limit: int) -> list[Book]:
     return load_books_by_ids(db, book_ids)
 
 
+# TODO: improve recommendations
+#   Current approach is fully pre-computed static BPR parquet (generated offline, never updates):
+#   - Users registered after parquet was built always hit cold start
+#   - Books added after parquet was built never appear in personalised results
+#   - Requires goodreads_id — users who didn't import from Goodreads always hit cold start
+#   - Cold start is just most-rated-overall, identical for every unauthenticated/new user
+#   Better approach: real-time personalisation using the ratings already in Postgres —
+#   e.g. item-based CF (find books similar to what the user rated highly) or
+#   re-run BPR periodically and hot-swap the parquet, or use Qdrant to blend
+#   user taste profile (average embedding of liked books) with popularity signal
 @router.get("/recommendations")
 def get_recommendations(
     limit: int = Query(20, ge=1, le=100),

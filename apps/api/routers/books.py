@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import threading
+
+from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from bookdb.db.crud import BookCRUD, ReviewCRUD
-from bookdb.db.models import Author, Book, BookAuthor, BookRating, BookTag, Review, ReviewComment, ShellBook, User
+from bookdb.db.models import Author, Book, BookAuthor, BookRating, BookTag, Review, ReviewComment, ReviewLike, ShellBook, User
 
 from ..core.book_engagement import build_book_engagement_map
 from ..core.book_queries import BOOK_LOAD_OPTIONS, load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
@@ -15,6 +18,9 @@ from ..core.serialize import serialize_book, serialize_review
 from ..schemas.review import CreateReviewRequest
 
 router = APIRouter(prefix="/books", tags=["books"])
+
+_qdrant_cache: TTLCache = TTLCache(maxsize=500, ttl=1800)
+_qdrant_lock = threading.Lock()
 
 
 def _load_book(db: Session, book_id: int) -> Book:
@@ -26,6 +32,11 @@ def _load_book(db: Session, book_id: int) -> Book:
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
     return book
+
+
+def _check_book_exists(db: Session, book_id: int) -> None:
+    if db.scalar(select(Book.id).where(Book.id == book_id).limit(1)) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
 
 
 @router.get("/search")
@@ -69,11 +80,13 @@ def search_books(
         else_=0,
     )
     popularity = func.coalesce(rating_counts.c.rating_count, 0)
+    combined_score = rank_score + func.log(func.greatest(popularity, 1)) * 50
 
+    # TODO: add a pg_trgm GIN index on lower(books.title) so LIKE '%...%' stops full-scanning
     rows = db.execute(
         select(
             Book.id,
-            rank_score.label("score"),
+            combined_score.label("score"),
             func.length(Book.title).label("title_len"),
         )
         .outerjoin(rating_counts, rating_counts.c.book_id == Book.id)
@@ -83,7 +96,7 @@ def search_books(
                 author_match,
             )
         )
-        .order_by(rank_score.desc(), popularity.desc(), func.length(Book.title).asc(), Book.id.asc())
+        .order_by(combined_score.desc(), func.length(Book.title).asc(), Book.id.asc())
         .limit(limit)
     ).all()
 
@@ -114,7 +127,7 @@ def get_book_reviews(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
-    _load_book(db, book_id)
+    _check_book_exists(db, book_id)
     total: int = db.scalar(
         select(func.count()).select_from(Review).where(Review.book_id == book_id)
     ) or 0
@@ -126,19 +139,43 @@ def get_book_reviews(
         order_clauses.append(case((Review.user_id == uid, 1), else_=0).desc())
     order_clauses.append(Review.created_at.desc())
 
-    reviews = db.scalars(
-        select(Review)
+    likes_count_sq = (
+        select(func.count())
+        .where(ReviewLike.review_id == Review.id)
+        .correlate(Review)
+        .scalar_subquery()
+        .label("likes_count")
+    )
+    is_liked_sq = (
+        select(func.count())
+        .where(ReviewLike.review_id == Review.id, ReviewLike.user_id == uid)
+        .correlate(Review)
+        .scalar_subquery()
+        .label("is_liked_by_me")
+    ) if uid else literal(0).label("is_liked_by_me")
+
+    rows = db.execute(
+        select(Review, likes_count_sq, is_liked_sq)
         .where(Review.book_id == book_id)
         .options(
             selectinload(Review.user),
-            selectinload(Review.likes),
             selectinload(Review.comments).selectinload(ReviewComment.user),
         )
         .order_by(*order_clauses)
         .offset(offset)
         .limit(limit)
     ).all()
-    return {"items": [serialize_review(r, uid) for r in reviews], "total": total}
+
+    items = [
+        serialize_review(
+            row.Review,
+            uid,
+            likes_count=int(row.likes_count or 0),
+            is_liked=bool(row.is_liked_by_me),
+        )
+        for row in rows
+    ]
+    return {"items": items, "total": total}
 
 
 @router.post("/{book_id}/reviews")
@@ -148,7 +185,7 @@ def post_book_review(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _load_book(db, book_id)
+    _check_book_exists(db, book_id)
     existing = ReviewCRUD.get_by_user_and_book(db, current_user.id, book_id)
     if existing:
         raise HTTPException(
@@ -162,13 +199,22 @@ def post_book_review(
         .where(Review.id == review.id)
         .options(
             selectinload(Review.user),
-            selectinload(Review.likes),
             selectinload(Review.comments).selectinload(ReviewComment.user),
         )
     )
     return serialize_review(review, current_user.id)
 
 
+# TODO: improve related books retrieval
+#   Happy path (Qdrant available):
+#   1. Fetch Book.goodreads_id from Postgres for the requested book_id
+#   2. Check the in-process TTL cache (30 min) — if the goodreads_id has been looked up recently,
+#      return cached goodreads_id list immediately
+#   3. Otherwise call Qdrant's recommend API — passing the book's goodreads_id as a positive example,
+#      Qdrant finds the top_k nearest vectors in the "books" collection using its stored embeddings
+#   4. The returned IDs are goodreads_ids — fetch full book rows from Postgres, then attach engagement stats
+#   Issues: fallback is insertion-order (useless); books missing from Qdrant silently hit the fallback;
+#   Qdrant recommend throws if the source point doesn't exist in the collection
 @router.get("/{book_id}/related")
 def get_related_books(
     book_id: int,
@@ -176,13 +222,26 @@ def get_related_books(
     request: Request = None,
     db: Session = Depends(get_db),
 ):
-    book = _load_book(db, book_id)
+    row = db.execute(select(Book.id, Book.goodreads_id).where(Book.id == book_id)).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    goodreads_id = row.goodreads_id
+
     qdrant = getattr(request.app.state, "qdrant", None)
 
-    if qdrant is not None and book.goodreads_id is not None:
+    if qdrant is not None and goodreads_id is not None:
+        with _qdrant_lock:
+            cached_ids = _qdrant_cache.get(goodreads_id)
+
+        if cached_ids is not None:
+            related = load_books_by_goodreads_ids(db, cached_ids)
+            return serialize_books_with_engagement(db, related)
+
         try:
-            similar_goodreads_ids = most_similar(qdrant, book.goodreads_id, top_k=limit)
+            similar_goodreads_ids = most_similar(qdrant, goodreads_id, top_k=limit)
             if similar_goodreads_ids:
+                with _qdrant_lock:
+                    _qdrant_cache[goodreads_id] = similar_goodreads_ids
                 related = load_books_by_goodreads_ids(db, similar_goodreads_ids)
                 return serialize_books_with_engagement(db, related)
         except Exception as e:

@@ -47,7 +47,7 @@ function DirectHitCard({ book }: { book: Book }) {
       />
 
       <div className="flex-1 min-w-0">
-        <p className="text-base font-semibold text-foreground group-hover:underline leading-snug">
+        <p className="text-base font-semibold text-foreground leading-snug">
           {book.title}
         </p>
         <p className="text-sm text-muted-foreground mt-0.5">{book.author}</p>
@@ -213,9 +213,7 @@ export function SearchPage({
       {/* 4. More results */}
       {hasMoreResults && (
         <section className="space-y-2">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">
-            More results
-          </p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide"></p>
           <SearchResultList books={keywordResults} />
         </section>
       )}

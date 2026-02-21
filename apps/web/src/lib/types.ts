@@ -5,6 +5,7 @@ export type Book = {
   coverUrl: string | null | undefined;
   description?: string;
   tags?: string[];
+  publicationYear?: number | null;
   averageRating?: number | null;
   ratingCount?: number;
   commentCount?: number;

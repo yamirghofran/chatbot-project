@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 export type NavbarProps = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  onSearchSubmit?: (value: string) => void;
   brand?: string;
   user?: User;
 };
@@ -13,6 +14,7 @@ export type NavbarProps = {
 export function Navbar({
   searchValue,
   onSearchChange,
+  onSearchSubmit,
   brand = "BookDB",
   user,
 }: NavbarProps) {
@@ -37,7 +39,15 @@ export function Navbar({
           <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
             {hasSearch && (
               <div className="w-full sm:w-72">
-                <SearchBar value={searchValue} onChange={onSearchChange} />
+                <SearchBar
+                  value={searchValue}
+                  onChange={onSearchChange}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      onSearchSubmit?.(searchValue ?? "");
+                    }
+                  }}
+                />
               </div>
             )}
             <div className="flex items-center gap-2">

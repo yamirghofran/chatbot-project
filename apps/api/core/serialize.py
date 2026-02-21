@@ -91,9 +91,13 @@ def serialize_list(book_list: BookList) -> dict:
     }
 
 
-def serialize_review(review: Review, current_user_id: int | None = None) -> dict:
-    likes_count = len(review.likes)
-    is_liked = any(like.user_id == current_user_id for like in review.likes) if current_user_id else False
+def serialize_review(
+    review: Review,
+    current_user_id: int | None = None,
+    *,
+    likes_count: int = 0,
+    is_liked: bool = False,
+) -> dict:
     comments = [
         {
             "id": str(c.id),
