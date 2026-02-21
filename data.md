@@ -106,6 +106,10 @@ Inside notebooks/data/processing you will find:
     **Input:** 1_goodreads_books_cleaned.parquet, raw_book_id_map.parquet  
     **Output:** 2_goodreads_books_standardized.parquet
 
+3. **books/3_aggregate_book_metrics.py:** Aggregates interaction metrics per book (num_interactions, num_read, num_ratings, num_reviews, avg_rating) using DuckDB and left-joins them onto the books dataset. Books with no interactions receive 0 for count columns.
+    **Input:** 2_goodreads_books_standardized.parquet, 3_goodreads_interactions_reduced.parquet
+    **Output:** 3_goodreads_books_with_metrics.parquet
+
 ---
 
 ### Interactions Pipeline:
@@ -139,3 +143,7 @@ Inside notebooks/data/processing you will find:
 3. **reviews/3_clean_dedup_reviews.py:** Cleans the reduced reviews data: drops unnecessary columns, parses dates to unix timestamps, and saves the cleaned result.  
     **Input:** 2_goodreads_reviews_dedup_reduced.parquet  
     **Output:** 3_goodreads_reviews_dedup_clean.parquet
+
+4. **reviews/4_reduce_reviews.py:** Reduces reviews to at most k top-quality reviews per book, targeting around 2M total reviews. Reviews are scored by vote count, text length, and rating extremity; only non-empty review texts are kept.
+    **Input:** 3_goodreads_reviews_dedup_clean.parquet, 3_goodreads_books_with_metrics.parquet
+    **Output:** 4_goodreads_reviews_reduced.parquet
