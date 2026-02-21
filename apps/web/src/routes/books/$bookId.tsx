@@ -12,7 +12,7 @@ export const Route = createFileRoute("/books/$bookId")({
   component: BookDetailPage,
 });
 
-const REVIEWS_LIMIT = 20;
+const REVIEWS_LIMIT = 10;
 
 function BookDetailPage() {
   const { bookId } = Route.useParams();
@@ -48,7 +48,11 @@ function BookDetailPage() {
   async function handleLoadMore() {
     setLoadingMore(true);
     try {
-      const data = await api.getBookReviews(bookId, REVIEWS_LIMIT, reviewsLoaded);
+      const data = await api.getBookReviews(
+        bookId,
+        REVIEWS_LIMIT,
+        reviewsLoaded,
+      );
       setReviews((prev) => [...prev, ...data.items]);
       setTotalReviews(data.total);
       setReviewsLoaded((prev) => prev + data.items.length);
@@ -83,7 +87,8 @@ function BookDetailPage() {
     enabled: !!me,
   });
 
-  const { lists, selectedListIds, toggleBook, createListForBook } = useMyLists(bookId);
+  const { lists, selectedListIds, toggleBook, createListForBook } =
+    useMyLists(bookId);
 
   // ---------------------------------------------------------------------------
   // Rating / shell mutations (unchanged)
@@ -96,8 +101,12 @@ function BookDetailPage() {
         : api.upsertRating(bookId, rating),
     onMutate: async (nextRating) => {
       await queryClient.cancelQueries({ queryKey: myRatingQueryKey });
-      const previous = queryClient.getQueryData<{ rating: number | null }>(myRatingQueryKey);
-      queryClient.setQueryData(myRatingQueryKey, { rating: nextRating ?? null });
+      const previous = queryClient.getQueryData<{ rating: number | null }>(
+        myRatingQueryKey,
+      );
+      queryClient.setQueryData(myRatingQueryKey, {
+        rating: nextRating ?? null,
+      });
       return { previous };
     },
     onError: (_error, _nextRating, context) => {
@@ -108,8 +117,12 @@ function BookDetailPage() {
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["book", bookId] });
       await queryClient.invalidateQueries({ queryKey: myRatingQueryKey });
-      await queryClient.invalidateQueries({ queryKey: ["userFavorites", me?.handle] });
-      await queryClient.invalidateQueries({ queryKey: ["userActivity", me?.handle] });
+      await queryClient.invalidateQueries({
+        queryKey: ["userFavorites", me?.handle],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["userActivity", me?.handle],
+      });
       await queryClient.invalidateQueries({ queryKey: ["activityFeed"] });
     },
   });
@@ -123,21 +136,28 @@ function BookDetailPage() {
       const nextShell = [...(previousShell ?? [])];
       if (nextShelled) {
         const alreadyShelled = nextShell.some((item) => item.id === bookId);
-        if (!alreadyShelled && bookQuery.data) nextShell.unshift(bookQuery.data);
+        if (!alreadyShelled && bookQuery.data)
+          nextShell.unshift(bookQuery.data);
       } else {
-        queryClient.setQueryData(["myShell"], nextShell.filter((item) => item.id !== bookId));
+        queryClient.setQueryData(
+          ["myShell"],
+          nextShell.filter((item) => item.id !== bookId),
+        );
         return { previousShell };
       }
       queryClient.setQueryData(["myShell"], nextShell);
       return { previousShell };
     },
     onError: (_error, _nextShelled, context) => {
-      if (context?.previousShell) queryClient.setQueryData(["myShell"], context.previousShell);
+      if (context?.previousShell)
+        queryClient.setQueryData(["myShell"], context.previousShell);
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["myShell"] });
       await queryClient.invalidateQueries({ queryKey: ["book", bookId] });
-      await queryClient.invalidateQueries({ queryKey: ["userActivity", me?.handle] });
+      await queryClient.invalidateQueries({
+        queryKey: ["userActivity", me?.handle],
+      });
       await queryClient.invalidateQueries({ queryKey: ["activityFeed"] });
     },
   });
@@ -193,8 +213,8 @@ function BookDetailPage() {
         prev.map((r) =>
           r.id === reviewId
             ? { ...r, isLikedByMe: liked, likes: r.likes + (liked ? 1 : -1) }
-            : r
-        )
+            : r,
+        ),
       );
     },
     onError: (_err, { reviewId, liked }) => {
@@ -203,8 +223,8 @@ function BookDetailPage() {
         prev.map((r) =>
           r.id === reviewId
             ? { ...r, isLikedByMe: !liked, likes: r.likes + (!liked ? 1 : -1) }
-            : r
-        )
+            : r,
+        ),
       );
     },
   });
@@ -224,8 +244,10 @@ function BookDetailPage() {
       };
       setReviews((prev) =>
         prev.map((r) =>
-          r.id === reviewId ? { ...r, replies: [...(r.replies ?? []), optimisticReply] } : r
-        )
+          r.id === reviewId
+            ? { ...r, replies: [...(r.replies ?? []), optimisticReply] }
+            : r,
+        ),
       );
     },
     onError: () => {
@@ -237,15 +259,25 @@ function BookDetailPage() {
   });
 
   const deleteCommentMutation = useMutation({
-    mutationFn: ({ reviewId, commentId }: { reviewId: string; commentId: string }) =>
-      api.deleteReviewComment(reviewId, commentId),
+    mutationFn: ({
+      reviewId,
+      commentId,
+    }: {
+      reviewId: string;
+      commentId: string;
+    }) => api.deleteReviewComment(reviewId, commentId),
     onMutate: ({ reviewId, commentId }) => {
       setReviews((prev) =>
         prev.map((r) =>
           r.id === reviewId
-            ? { ...r, replies: (r.replies ?? []).filter((reply) => reply.id !== commentId) }
-            : r
-        )
+            ? {
+                ...r,
+                replies: (r.replies ?? []).filter(
+                  (reply) => reply.id !== commentId,
+                ),
+              }
+            : r,
+        ),
       );
     },
     onError: () => {
@@ -281,7 +313,7 @@ function BookDetailPage() {
       totalReviews={totalReviews}
       hasMoreReviews={hasMore}
       isLoadingMoreReviews={loadingMore}
-      currentUser={me}
+      currentUser={me ?? undefined}
       listOptions={lists}
       selectedListIds={selectedListIds}
       onToggleList={(listId, nextSelected) => toggleBook(listId, nextSelected)}
@@ -294,7 +326,9 @@ function BookDetailPage() {
         const review = reviews.find((r) => r.id === reviewId);
         likeReviewMutation.mutate({ reviewId, liked: !review?.isLikedByMe });
       }}
-      onReply={(reviewId, text) => postCommentMutation.mutate({ reviewId, text })}
+      onReply={(reviewId, text) =>
+        postCommentMutation.mutate({ reviewId, text })
+      }
       onDeleteReply={(reviewId, replyId) =>
         deleteCommentMutation.mutate({ reviewId, commentId: replyId })
       }

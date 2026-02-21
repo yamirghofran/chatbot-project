@@ -139,7 +139,7 @@ export interface ReviewsPage {
 
 export async function getBookReviews(
   id: string | number,
-  limit = 20,
+  limit = 10,
   offset = 0,
 ): Promise<ReviewsPage> {
   return apiFetch<ReviewsPage>(
