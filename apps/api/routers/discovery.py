@@ -3,16 +3,15 @@ from __future__ import annotations
 import duckdb
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from bookdb.db.models import (
     Book,
-    BookAuthor,
     BookRating,
-    BookTag,
 )
 
 from ..core.book_queries import load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
+from ..core.book_metrics import get_top_popular_goodreads_ids, get_top_staff_pick_goodreads_ids
 from ..core.deps import get_db, get_optional_user
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -33,8 +32,16 @@ def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) 
     return [row[0] for row in rows]
 
 
-def _cold_start(db: Session, limit: int) -> list[Book]:
+def _cold_start(db: Session, limit: int, metrics_parquet_path: str | None = None) -> list[Book]:
     """Return most-rated books as a fallback."""
+    if metrics_parquet_path is not None:
+        # Request more than needed so we can tolerate IDs that may not exist in Postgres.
+        candidate_ids = get_top_popular_goodreads_ids(metrics_parquet_path, limit=max(limit * 5, 100))
+        if candidate_ids:
+            books = load_books_by_goodreads_ids(db, candidate_ids)
+            if books:
+                return books[:limit]
+
     popular = db.execute(
         select(BookRating.book_id, func.count(BookRating.book_id).label("cnt"))
         .group_by(BookRating.book_id)
@@ -69,7 +76,11 @@ def get_recommendations(
     db: Session = Depends(get_db),
     current_user=Depends(get_optional_user),
 ):
-    bpr_path: str | None = getattr(request.app.state, "bpr_parquet_path", None)
+    bpr_path: str | None = None
+    metrics_parquet_path: str | None = None
+    if request is not None:
+        bpr_path = getattr(request.app.state, "bpr_parquet_path", None)
+        metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
 
     # BPR recommendations: user must exist and have a goodreads_id in the parquet.
     if current_user is not None and bpr_path is not None and current_user.goodreads_id is not None:
@@ -80,15 +91,31 @@ def get_recommendations(
                 return serialize_books_with_engagement(db, books)
 
     # Cold start fallback.
-    return serialize_books_with_engagement(db, _cold_start(db, limit))
+    return serialize_books_with_engagement(db, _cold_start(db, limit, metrics_parquet_path))
 
 
 @router.get("/staff-picks")
 def get_staff_picks(
     limit: int = Query(6, ge=1, le=50),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """Return a curated set of well-rated books as staff picks."""
+    metrics_parquet_path: str | None = None
+    if request is not None:
+        metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
+
+    if metrics_parquet_path is not None:
+        candidate_ids = get_top_staff_pick_goodreads_ids(
+            metrics_parquet_path,
+            limit=max(limit * 5, 100),
+            min_ratings=5,
+        )
+        if candidate_ids:
+            books = load_books_by_goodreads_ids(db, candidate_ids)
+            if books:
+                return serialize_books_with_engagement(db, books[:limit])
+
     from ..core.book_queries import BOOK_LOAD_OPTIONS
     popular = db.execute(
         select(BookRating.book_id, func.avg(BookRating.rating).label("avg_rating"), func.count(BookRating.rating).label("cnt"))

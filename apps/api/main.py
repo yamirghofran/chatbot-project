@@ -55,6 +55,21 @@ async def startup_event():
         app.state.bpr_parquet_path = None
         print("WARNING: BPR recommendations parquet not found, will use cold-start fallback.")
 
+    metrics_path = settings.BOOK_METRICS_PARQUET_URL
+    if metrics_path is None:
+        metrics_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "3_goodreads_books_with_metrics.parquet",
+        )
+
+    is_metrics_remote = metrics_path.startswith(("http://", "https://", "s3://", "gs://", "az://"))
+    if is_metrics_remote or os.path.exists(metrics_path):
+        app.state.book_metrics_parquet_path = metrics_path
+        print(f"Book metrics parquet loaded: {metrics_path}")
+    else:
+        app.state.book_metrics_parquet_path = None
+        print("WARNING: Book metrics parquet not found, popularity/ranking fallbacks will use Postgres.")
+
 
 @app.get("/")
 def health_check():

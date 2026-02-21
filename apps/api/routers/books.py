@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 
 from cachetools import TTLCache
@@ -7,10 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from bookdb.db.crud import BookCRUD, ReviewCRUD
-from bookdb.db.models import Author, Book, BookAuthor, BookRating, BookTag, Review, ReviewComment, ReviewLike, ShellBook, User
+from bookdb.db.crud import ReviewCRUD
+from bookdb.db.models import Author, Book, BookAuthor, BookRating, Review, ReviewComment, ReviewLike, User
 
 from ..core.book_engagement import build_book_engagement_map
+from ..core.book_metrics import get_metrics_for_goodreads_ids
 from ..core.book_queries import BOOK_LOAD_OPTIONS, load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
 from ..core.deps import get_current_user, get_db, get_optional_user
 from ..core.embeddings import most_similar
@@ -43,6 +45,7 @@ def _check_book_exists(db: Session, book_id: int) -> None:
 def search_books(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=100),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     query = q.strip().lower()
@@ -50,14 +53,6 @@ def search_books(
         return []
 
     title_l = func.lower(Book.title)
-    rating_counts = (
-        select(
-            BookRating.book_id.label("book_id"),
-            func.count(BookRating.book_id).label("rating_count"),
-        )
-        .group_by(BookRating.book_id)
-        .subquery()
-    )
 
     author_name_l = func.lower(Author.name)
     author_scores = (
@@ -75,6 +70,7 @@ def search_books(
         )
         .select_from(BookAuthor)
         .join(Author, Author.id == BookAuthor.author_id)
+        .where(author_name_l.like(f"%{query}%"))
         .group_by(BookAuthor.book_id)
         .subquery()
     )
@@ -89,18 +85,15 @@ def search_books(
     )
     author_score = func.coalesce(author_scores.c.author_score, 0)
     rank_score = func.greatest(title_score, author_score)
-    popularity = func.coalesce(rating_counts.c.rating_count, 0)
-    combined_score = rank_score + func.log(func.greatest(popularity, 1)) * 50
 
-    # TODO: add pg_trgm GIN indexes on lower(books.title) and lower(authors.name)
-    #       so LIKE '%...%' stops full-scanning.
+    candidate_limit = min(1000, max(limit * 12, 200))
     rows = db.execute(
         select(
             Book.id,
-            combined_score.label("score"),
+            Book.goodreads_id,
+            rank_score.label("rank_score"),
             func.length(Book.title).label("title_len"),
         )
-        .outerjoin(rating_counts, rating_counts.c.book_id == Book.id)
         .outerjoin(author_scores, author_scores.c.book_id == Book.id)
         .where(
             or_(
@@ -108,11 +101,50 @@ def search_books(
                 author_scores.c.author_score > 0,
             )
         )
-        .order_by(combined_score.desc(), func.length(Book.title).asc(), Book.id.asc())
-        .limit(limit)
+        .order_by(rank_score.desc(), func.length(Book.title).asc(), Book.id.asc())
+        .limit(candidate_limit)
     ).all()
 
-    ranked_ids = [int(row.id) for row in rows]
+    if not rows:
+        return []
+
+    candidate_ids = [int(row.id) for row in rows]
+    metrics_parquet_path: str | None = None
+    if request is not None:
+        metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
+    popularity_by_goodreads_id: dict[int, int] = {}
+
+    if metrics_parquet_path is not None:
+        goodreads_ids = [int(row.goodreads_id) for row in rows if row.goodreads_id is not None]
+        metrics_by_id = get_metrics_for_goodreads_ids(metrics_parquet_path, goodreads_ids)
+        popularity_by_goodreads_id = {
+            gid: int(metrics.get("num_ratings", 0) or 0)
+            for gid, metrics in metrics_by_id.items()
+        }
+    else:
+        rating_rows = db.execute(
+            select(
+                BookRating.book_id,
+                func.count(BookRating.book_id).label("rating_count"),
+            )
+            .where(BookRating.book_id.in_(candidate_ids))
+            .group_by(BookRating.book_id)
+        ).all()
+        rating_count_by_book_id = {int(row.book_id): int(row.rating_count or 0) for row in rating_rows}
+        popularity_by_goodreads_id = {
+            int(row.goodreads_id): rating_count_by_book_id.get(int(row.id), 0)
+            for row in rows
+            if row.goodreads_id is not None
+        }
+
+    scored = []
+    for row in rows:
+        popularity = popularity_by_goodreads_id.get(int(row.goodreads_id), 0) if row.goodreads_id is not None else 0
+        combined_score = float(row.rank_score or 0) + math.log(max(popularity, 1)) * 50.0
+        scored.append((combined_score, int(row.title_len or 0), int(row.id)))
+
+    scored.sort(key=lambda x: (-x[0], x[1], x[2]))
+    ranked_ids = [book_id for _, _, book_id in scored[:limit]]
     books = load_books_by_ids(db, ranked_ids)
     return serialize_books_with_engagement(db, books)
 
@@ -152,23 +184,22 @@ def get_book_reviews(
     order_clauses.append(Review.created_at.desc())
 
     likes_count_sq = (
-        select(func.count())
-        .where(ReviewLike.review_id == Review.id)
-        .correlate(Review)
-        .scalar_subquery()
-        .label("likes_count")
-    )
-    is_liked_sq = (
-        select(func.count())
-        .where(ReviewLike.review_id == Review.id, ReviewLike.user_id == uid)
-        .correlate(Review)
-        .scalar_subquery()
-        .label("is_liked_by_me")
-    ) if uid else literal(0).label("is_liked_by_me")
-
-    rows = db.execute(
-        select(Review, likes_count_sq, is_liked_sq)
+        select(
+            ReviewLike.review_id.label("review_id"),
+            func.count().label("likes_count"),
+        )
+        .join(Review, Review.id == ReviewLike.review_id)
         .where(Review.book_id == book_id)
+        .group_by(ReviewLike.review_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            Review,
+            func.coalesce(likes_count_sq.c.likes_count, 0).label("likes_count"),
+        )
+        .where(Review.book_id == book_id)
+        .outerjoin(likes_count_sq, likes_count_sq.c.review_id == Review.id)
         .options(
             selectinload(Review.user),
             selectinload(Review.comments).selectinload(ReviewComment.user),
@@ -176,7 +207,22 @@ def get_book_reviews(
         .order_by(*order_clauses)
         .offset(offset)
         .limit(limit)
-    ).all()
+    )
+
+    if uid:
+        my_likes_sq = (
+            select(ReviewLike.review_id.label("review_id"))
+            .join(Review, Review.id == ReviewLike.review_id)
+            .where(ReviewLike.user_id == uid, Review.book_id == book_id)
+            .subquery()
+        )
+        stmt = stmt.add_columns(
+            case((my_likes_sq.c.review_id.is_not(None), 1), else_=0).label("is_liked_by_me")
+        ).outerjoin(my_likes_sq, my_likes_sq.c.review_id == Review.id)
+    else:
+        stmt = stmt.add_columns(literal(0).label("is_liked_by_me"))
+
+    rows = db.execute(stmt).all()
 
     items = [
         serialize_review(

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
+    BOOK_METRICS_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
 
 
 settings = Settings()
