@@ -1,15 +1,15 @@
-"""Minimal RAG book search implementation."""
+"""Minimal RAG book search implementation using Qdrant."""
 
 from typing import Any, Dict, List
 
 import httpx
 import polars as pl
 
-# Hardcoded defaults
-EMBEDDING_ENDPOINT = "http://127.0.0.1:8000/embed"
+from bookdb.vector_db import BookVectorCRUD
+
+# Configuration
+EMBEDDING_ENDPOINT = "https://bookdb-models.up.railway.app/embed"
 MODEL_NAME = "finetuned"
-CHROMA_DIR = "./chroma_db"
-COLLECTION_NAME = "books_collection"
 BOOKS_PARQUET = "data/3_goodreads_books_with_metrics.parquet"
 
 
@@ -32,29 +32,13 @@ def generate_embedding(text: str) -> List[float]:
 def search_similar_books(
     query_embedding: List[float], top_k: int = 10
 ) -> List[Dict[str, Any]]:
-    """Search Chroma for similar books (mocked for testing)."""
-    # import chromadb
-    # client = chromadb.PersistentClient(path=CHROMA_DIR)
-    # collection = client.get_collection(name=COLLECTION_NAME)
-    # results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-
-    # Mock Chroma
-    import random
-
-    mock_book_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-
-    books = []
-    for i in range(min(top_k, len(mock_book_ids))):
-        distance = random.uniform(0.1, 0.9)
-        books.append(
-            {
-                "book_id": mock_book_ids[i],
-                "similarity_score": 1.0 - distance,
-                "distance": distance,
-            }
-        )
-
-    return books
+    """Search Qdrant for similar books."""
+    crud = BookVectorCRUD()
+    results = crud.search_similar_books(
+        query_embedding=query_embedding,
+        n_results=top_k,
+    )
+    return results
 
 
 def get_book_metadata(book_ids: List[int]) -> Dict[int, Dict[str, Any]]:
