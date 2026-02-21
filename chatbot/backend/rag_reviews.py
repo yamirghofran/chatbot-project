@@ -11,7 +11,8 @@ EMBEDDING_ENDPOINT = "http://127.0.0.1:8000/embed"
 MODEL_NAME = "finetuned"  # 'base'
 QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "reviews_collection"
-REVIEWS_PARQUET = "data/goodreads_reviews_dedup_clean.parquet"
+REVIEWS_PARQUET = "data/3_goodreads_reviews_dedup_clean.parquet"
+BOOKS_PARQUET = "data/3_goodreads_books_with_metrics.parquet"
 
 
 def generate_embedding(text: str) -> List[float]:
@@ -52,7 +53,6 @@ def search_similar_reviews(
     return reviews
 
 
-
 def get_review_metadata(review_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     """Retrieve review metadata from parquet file."""
     df = pl.read_parquet(REVIEWS_PARQUET)
@@ -66,7 +66,18 @@ def get_review_metadata(review_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     return metadata_by_id
 
 
-def search_reviews(query_text: str, top_k: int = 10) -> Dict[str, Any]:
+def get_book_titles(book_ids: List[str]) -> Dict[str, str]:
+    """Retrieve book titles from parquet file."""
+    df = pl.read_parquet(BOOKS_PARQUET)
+
+    filtered_df = df.filter(pl.col("book_id").is_in(book_ids))
+
+    return {
+        str(row["book_id"]): row["title"] for row in filtered_df.iter_rows(named=True)
+    }
+
+
+def search_reviews(query_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
     """
     Search for similar reviews given a text query.
 
@@ -75,41 +86,27 @@ def search_reviews(query_text: str, top_k: int = 10) -> Dict[str, Any]:
         top_k: Number of similar reviews to return
 
     Returns:
-        JSON with query, top_k, and results containing review metadata
+        List of reviews with format: {"review_id": str, "book_title": str, "review": str}
     """
     query_embedding = generate_embedding(query_text)
     similar_reviews = search_similar_reviews(query_embedding, top_k)
     review_ids = [review["review_id"] for review in similar_reviews]
     metadata_by_id = get_review_metadata(review_ids)
 
+    # Get book_ids and fetch titles
+    book_ids = [str(metadata_by_id.get(rid, {}).get("book_id", "")) for rid in review_ids]
+    book_titles = get_book_titles(book_ids)
+
     results = []
     for review in similar_reviews:
         review_id = review["review_id"]
         metadata = metadata_by_id.get(review_id, {})
-        review_result = {
-            **review,
-            "rating": metadata.get("rating"),
-            "review_text": metadata.get("review_text"),
-            "book_id": metadata.get("book_id"),
-            "user_id": metadata.get("user_id"),
-            "n_votes": metadata.get("n_votes"),
-            "n_comments": metadata.get("n_comments"),
-            "date_updated": metadata.get("date_updated"),
-        }
-        results.append(review_result)
+        book_id = str(metadata.get("book_id", ""))
+        results.append({
+            "review_id": review_id,
+            "book_title": book_titles.get(book_id, "Unknown"),
+            "review": metadata.get("review_text", ""),
+        })
 
-    return {"query": query_text, "top_k": top_k, "results": results}
+    return results
 
-
-"""
-REVIEWS = [
-    {
-        "review_id": "101",
-        "book_title": "A Throne of Ash and Starlight",
-        "review": (
-            "I devoured this in one sitting. Mira and Caelen have the most infuriating, "
-            "electric dynamic — every scene crackles. The slow build is worth every page. "
-            "My only gripe is the middle act drags slightly, but the payoff more than "
-            "makes up for it. Absolutely staying on my all-time favourites shelf."
-        ),
-"""
