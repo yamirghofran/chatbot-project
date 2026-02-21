@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str]
     QDRANT_URL: str
     QDRANT_API_KEY: str
+    BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
 
 
 settings = Settings()

@@ -38,11 +38,17 @@ app.include_router(discovery.router)
 async def startup_event():
     app.state.qdrant = get_qdrant_client(settings.QDRANT_URL, settings.QDRANT_API_KEY)
 
-    bpr_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "data", "bpr_model_predictions", "bpr_recommendations.parquet",
-    )
-    if os.path.exists(bpr_path):
+    # Use configured URL/path, or fall back to default local path
+    bpr_path = settings.BPR_PARQUET_URL
+    if bpr_path is None:
+        bpr_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "bpr_model_predictions", "bpr_recommendations.parquet",
+        )
+
+    # Check existence for local paths; skip for remote URLs (DuckDB handles errors)
+    is_remote = bpr_path.startswith(("http://", "https://", "s3://", "gs://", "az://"))
+    if is_remote or os.path.exists(bpr_path):
         app.state.bpr_parquet_path = bpr_path
         print(f"BPR recommendations loaded: {bpr_path}")
     else:
