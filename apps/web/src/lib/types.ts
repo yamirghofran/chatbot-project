@@ -45,6 +45,7 @@ export type ActivityItem = {
 export type BookStats = {
   averageRating: number;
   ratingCount: number;
+  commentCount: number;
   shellCount: number;
 };
 

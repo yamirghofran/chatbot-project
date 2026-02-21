@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -189,8 +191,6 @@ def get_user_activity(
             })
 
     # Sort by datetime desc and limit.
-    from datetime import timezone
-
     def sort_key(x):
         dt = x.get("_dt")
         if dt is None:

@@ -13,32 +13,33 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const queryClient = useQueryClient();
-  const [token, setTokenState] = useState<string | null>(getToken);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser, isLoading: meLoading } = useCurrentUser();
+
+  const hasToken = !!getToken();
 
   const recommendationsQuery = useQuery({
     queryKey: ["recommendations"],
     queryFn: () => api.getRecommendations(20),
-    enabled: !!token,
+    enabled: !!currentUser,
   });
 
   const activityQuery = useQuery({
     queryKey: ["activityFeed"],
     queryFn: () => api.getActivityFeed(10),
-    enabled: !!token,
+    enabled: !!currentUser,
   });
 
   const myListsQuery = useQuery({
     queryKey: ["myLists"],
     queryFn: () => api.getMyLists(),
-    enabled: !!token,
+    enabled: !!currentUser,
   });
   const teamListsQuery = useQuery({
     queryKey: ["userLists", "bookdb"],
     queryFn: () => api.getUserLists("bookdb"),
-    enabled: !!token,
+    enabled: !!currentUser,
   });
 
   const resolvedTrendingLists = teamListsQuery.data ?? homeTrendingLists;
@@ -67,7 +68,6 @@ function Home() {
         result = await api.login(email, password);
       }
       setToken(result.access_token);
-      setTokenState(result.access_token);
       await queryClient.invalidateQueries();
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Authentication failed. Please try again.");
@@ -76,7 +76,19 @@ function Home() {
     }
   }
 
-  if (!token) {
+  if (!hasToken) {
+    return (
+      <MarketingAuthGate
+        onAuthenticated={handleAuthenticated}
+        error={authError}
+        isLoading={authLoading}
+      />
+    );
+  }
+
+  if (meLoading) return null;
+
+  if (!currentUser) {
     return (
       <MarketingAuthGate
         onAuthenticated={handleAuthenticated}
@@ -89,7 +101,7 @@ function Home() {
   return (
     <DiscoveryPage
       books={recommendationsQuery.data ?? []}
-      currentUser={currentUser ?? undefined}
+      currentUser={currentUser}
       userLists={myListsQuery.data ?? []}
       staffPicks={resolvedStaffPicks}
       activity={activityQuery.data ?? []}

@@ -8,6 +8,7 @@ from bookdb.db.crud import BookCRUD, ReviewCRUD
 from bookdb.db.models import Author, Book, BookAuthor, BookRating, BookTag, ShellBook
 
 from ..core.book_engagement import build_book_engagement_map
+from ..core.book_queries import BOOK_LOAD_OPTIONS, load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
 from ..core.deps import get_db, get_optional_user
 from ..core.embeddings import most_similar
 from ..core.serialize import serialize_book, serialize_review
@@ -15,57 +16,15 @@ from ..core.serialize import serialize_book, serialize_review
 router = APIRouter(prefix="/books", tags=["books"])
 
 
-def _serialize_books_with_engagement(db: Session, books: list[Book]) -> list[dict]:
-    engagement_by_id = build_book_engagement_map(db, [b.id for b in books])
-    return [serialize_book(b, engagement=engagement_by_id.get(b.id)) for b in books]
-
-
-def _load_books_by_ids(db: Session, book_ids: list[int]) -> list[Book]:
-    if not book_ids:
-        return []
-    books = db.scalars(
-        select(Book)
-        .where(Book.id.in_(book_ids))
-        .options(
-            selectinload(Book.authors).selectinload(BookAuthor.author),
-            selectinload(Book.tags).selectinload(BookTag.tag),
-        )
-    ).all()
-    by_id = {b.id: b for b in books}
-    return [by_id[book_id] for book_id in book_ids if book_id in by_id]
-
-
 def _load_book(db: Session, book_id: int) -> Book:
     book = db.scalar(
         select(Book)
         .where(Book.id == book_id)
-        .options(
-            selectinload(Book.authors).selectinload(BookAuthor.author),
-            selectinload(Book.tags).selectinload(BookTag.tag),
-        )
+        .options(*BOOK_LOAD_OPTIONS)
     )
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
     return book
-
-
-def _book_stats(db: Session, book_id: int) -> dict:
-    rating_row = db.execute(
-        select(func.avg(BookRating.rating), func.count(BookRating.rating))
-        .where(BookRating.book_id == book_id)
-    ).one()
-    avg_rating = float(rating_row[0]) if rating_row[0] is not None else None
-    rating_count = int(rating_row[1])
-
-    shell_count = db.scalar(
-        select(func.count()).where(ShellBook.book_id == book_id)
-    ) or 0
-
-    return {
-        "averageRating": round(avg_rating, 2) if avg_rating is not None else None,
-        "ratingCount": rating_count,
-        "shellCount": shell_count,
-    }
 
 
 @router.get("/search")
@@ -128,15 +87,21 @@ def search_books(
     ).all()
 
     ranked_ids = [int(row.id) for row in rows]
-    books = _load_books_by_ids(db, ranked_ids)
-    return _serialize_books_with_engagement(db, books)
+    books = load_books_by_ids(db, ranked_ids)
+    return serialize_books_with_engagement(db, books)
 
 
 @router.get("/{book_id}")
 def get_book(book_id: int, db: Session = Depends(get_db)):
     book = _load_book(db, book_id)
+    engagement = build_book_engagement_map(db, [book_id]).get(book_id, {})
     data = serialize_book(book)
-    data["stats"] = _book_stats(db, book_id)
+    data["stats"] = {
+        "averageRating": engagement.get("averageRating"),
+        "ratingCount": int(engagement.get("ratingCount", 0) or 0),
+        "commentCount": int(engagement.get("commentCount", 0) or 0),
+        "shellCount": int(engagement.get("shellCount", 0) or 0),
+    }
     return data
 
 
@@ -175,15 +140,8 @@ def get_related_books(
         try:
             similar_goodreads_ids = most_similar(qdrant, book.goodreads_id, top_k=limit)
             if similar_goodreads_ids:
-                related = db.scalars(
-                    select(Book)
-                    .where(Book.goodreads_id.in_(similar_goodreads_ids))
-                    .options(
-                        selectinload(Book.authors).selectinload(BookAuthor.author),
-                        selectinload(Book.tags).selectinload(BookTag.tag),
-                    )
-                ).all()
-                return _serialize_books_with_engagement(db, related)
+                related = load_books_by_goodreads_ids(db, similar_goodreads_ids)
+                return serialize_books_with_engagement(db, related)
         except Exception as e:
             print(f"Qdrant recommend failed for book {book_id}: {e}")
 
@@ -191,10 +149,7 @@ def get_related_books(
     fallback = db.scalars(
         select(Book)
         .where(Book.id != book_id)
-        .options(
-            selectinload(Book.authors).selectinload(BookAuthor.author),
-            selectinload(Book.tags).selectinload(BookTag.tag),
-        )
+        .options(*BOOK_LOAD_OPTIONS)
         .limit(limit)
     ).all()
-    return _serialize_books_with_engagement(db, fallback)
+    return serialize_books_with_engagement(db, fallback)

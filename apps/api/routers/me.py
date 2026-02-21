@@ -9,6 +9,7 @@ from bookdb.db.models import (
     Book,
     BookAuthor,
     BookList,
+    BookRating,
     BookTag,
     ListBook,
     ShellBook,
@@ -21,13 +22,6 @@ from ..core.serialize import serialize_book, serialize_list
 from ..schemas.list import CreateListRequest
 
 router = APIRouter(prefix="/me", tags=["me"])
-
-
-def _book_options():
-    return [
-        selectinload(Book.authors).selectinload(BookAuthor.author),
-        selectinload(Book.tags).selectinload(BookTag.tag),
-    ]
 
 
 @router.get("/shell")
@@ -77,6 +71,21 @@ def remove_from_shell(
     if shell:
         ShellCRUD.remove_book(db, shell.id, book_id)
         db.commit()
+
+
+@router.get("/ratings/{book_id}")
+def get_my_rating(
+    book_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rating = db.scalar(
+        select(BookRating).where(
+            BookRating.user_id == current_user.id,
+            BookRating.book_id == book_id,
+        )
+    )
+    return {"rating": rating.rating if rating is not None else None}
 
 
 @router.post("/ratings", status_code=status.HTTP_204_NO_CONTENT)

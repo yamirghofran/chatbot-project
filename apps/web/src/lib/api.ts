@@ -45,18 +45,6 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem("bookdb_token", token);
-}
-
-export function clearToken(): void {
-  localStorage.removeItem("bookdb_token");
-}
-
-export function getStoredToken(): string | null {
-  return getToken();
-}
-
 export async function login(email: string, password: string): Promise<TokenResponse> {
   return apiFetch<TokenResponse>("/auth/login", {
     method: "POST",
@@ -76,19 +64,18 @@ export async function register(
   });
 }
 
-export async function getMe(): Promise<User> {
-  const data = await apiFetch<{
-    id: string;
-    handle: string;
-    displayName: string;
-    avatarUrl?: string | null;
-  }>("/auth/me");
+type UserApiData = { id: string; handle: string; displayName: string; avatarUrl?: string | null };
+function mapUser(data: UserApiData): User {
   return {
     id: data.id,
     handle: data.handle,
     displayName: data.displayName,
     avatarUrl: data.avatarUrl ?? undefined,
   };
+}
+
+export async function getMe(): Promise<User> {
+  return mapUser(await apiFetch<UserApiData>("/auth/me"));
 }
 
 // ---------------------------------------------------------------------------
@@ -138,18 +125,7 @@ export async function getRelatedBooks(id: string | number, limit = 6): Promise<B
 // ---------------------------------------------------------------------------
 
 export async function getUser(id: string | number): Promise<User> {
-  const data = await apiFetch<{
-    id: string;
-    handle: string;
-    displayName: string;
-    avatarUrl?: string | null;
-  }>(`/user/${id}`);
-  return {
-    id: data.id,
-    handle: data.handle,
-    displayName: data.displayName,
-    avatarUrl: data.avatarUrl ?? undefined,
-  };
+  return mapUser(await apiFetch<UserApiData>(`/user/${id}`));
 }
 
 export async function getUserRatings(
@@ -238,6 +214,10 @@ export async function addToMyFavorites(bookId: string | number): Promise<void> {
 
 export async function removeFromMyFavorites(bookId: string | number): Promise<void> {
   return apiFetch<void>(`/me/favorites/${bookId}`, { method: "DELETE" });
+}
+
+export async function getMyRating(bookId: string | number): Promise<{ rating: number | null }> {
+  return apiFetch<{ rating: number | null }>(`/me/ratings/${bookId}`);
 }
 
 export async function upsertRating(bookId: string | number, rating: number): Promise<void> {

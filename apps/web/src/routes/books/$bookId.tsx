@@ -5,7 +5,7 @@ import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
 import { useMyLists } from "@/lib/useMyLists";
 import { useCurrentUser } from "@/lib/auth";
-import type { Book, RatedBook } from "@/lib/types";
+import type { Book } from "@/lib/types";
 
 export const Route = createFileRoute("/books/$bookId")({
   component: BookDetailPage,
@@ -15,7 +15,7 @@ function BookDetailPage() {
   const { bookId } = Route.useParams();
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
-  const ratingsQueryKey = ["userRatings", me?.handle];
+  const myRatingQueryKey = ["myRating", bookId];
 
   const bookQuery = useQuery({
     queryKey: ["book", bookId],
@@ -38,10 +38,10 @@ function BookDetailPage() {
     enabled: !!me,
   });
 
-  const myRatingsQuery = useQuery({
-    queryKey: ["userRatings", me?.handle],
-    queryFn: () => api.getUserRatings(me!.handle, 200, "recent"),
-    enabled: !!me?.handle,
+  const myRatingQuery = useQuery({
+    queryKey: myRatingQueryKey,
+    queryFn: () => api.getMyRating(bookId),
+    enabled: !!me,
   });
 
   const { lists, selectedListIds, toggleBook, createListForBook } = useMyLists(bookId);
@@ -52,35 +52,19 @@ function BookDetailPage() {
         ? api.deleteRating(bookId)
         : api.upsertRating(bookId, rating),
     onMutate: async (nextRating) => {
-      await queryClient.cancelQueries({ queryKey: ratingsQueryKey });
-      const previousRatings = queryClient.getQueryData<RatedBook[]>(ratingsQueryKey);
-
-      const nextRatings = [...(previousRatings ?? [])];
-      const existingIndex = nextRatings.findIndex((entry) => entry.book.id === bookId);
-      if (nextRating === undefined) {
-        if (existingIndex >= 0) {
-          nextRatings.splice(existingIndex, 1);
-        }
-      } else if (existingIndex >= 0) {
-        nextRatings[existingIndex] = { ...nextRatings[existingIndex], rating: nextRating };
-      } else if (bookQuery.data) {
-        nextRatings.unshift({
-          book: bookQuery.data,
-          rating: nextRating,
-          ratedAt: new Date().toISOString(),
-        });
-      }
-      queryClient.setQueryData(ratingsQueryKey, nextRatings);
-      return { previousRatings };
+      await queryClient.cancelQueries({ queryKey: myRatingQueryKey });
+      const previous = queryClient.getQueryData<{ rating: number | null }>(myRatingQueryKey);
+      queryClient.setQueryData(myRatingQueryKey, { rating: nextRating ?? null });
+      return { previous };
     },
     onError: (_error, _nextRating, context) => {
-      if (context?.previousRatings) {
-        queryClient.setQueryData(ratingsQueryKey, context.previousRatings);
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(myRatingQueryKey, context.previous);
       }
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["book", bookId] });
-      await queryClient.invalidateQueries({ queryKey: ratingsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: myRatingQueryKey });
       await queryClient.invalidateQueries({ queryKey: ["userFavorites", me?.handle] });
       await queryClient.invalidateQueries({ queryKey: ["userActivity", me?.handle] });
       await queryClient.invalidateQueries({ queryKey: ["activityFeed"] });
@@ -133,7 +117,7 @@ function BookDetailPage() {
   const book = bookQuery.data;
   const stats = book.stats ?? undefined;
   const isShelled = (myShellQuery.data ?? []).some((b) => b.id === bookId);
-  const rating = myRatingsQuery.data?.find((entry) => entry.book.id === bookId)?.rating;
+  const rating = myRatingQuery.data?.rating ?? undefined;
 
   return (
     <BookPage

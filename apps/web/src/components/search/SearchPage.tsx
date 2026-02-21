@@ -18,28 +18,20 @@ export type SearchPageProps = {
   followUpSuggestions?: string[];
 };
 
-// ─── Shared engagement derivation ───────────────────────────────────────────
+// ─── Shared formatting ───────────────────────────────────────────────────────
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
 
-function deriveEngagement(book: Book) {
-  const seed = Number.parseInt(book.id, 10) || book.title.length;
-  return {
-    averageRating: (3.6 + (seed % 14) / 10).toFixed(1),
-    ratingCount: 140 + seed * 37,
-    commentCount: 42 + seed * 11,
-    shellCount: 24 + seed * 5,
-  };
-}
-
 // ─── Direct hit card ─────────────────────────────────────────────────────────
 
 function DirectHitCard({ book }: { book: Book }) {
-  const { averageRating, ratingCount, commentCount, shellCount } =
-    deriveEngagement(book);
+  const averageRating = book.averageRating?.toFixed(1);
+  const ratingCount = book.ratingCount ?? 0;
+  const commentCount = book.commentCount ?? 0;
+  const shellCount = book.shellCount ?? 0;
   const tags = book.tags?.slice(0, 3) ?? [];
 
   return (
