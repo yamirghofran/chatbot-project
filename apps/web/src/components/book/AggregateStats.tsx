@@ -12,9 +12,7 @@ export function AggregateStats({ stats }: AggregateStatsProps) {
       <span className="flex items-center gap-1">
         <Star className="size-3.5 text-[#FFCC00] fill-[#FFCC00]" />
         <span className="font-medium text-foreground">{stats.averageRating}</span>
-      </span>
-      <span>
-        <span className="font-medium text-foreground">{stats.ratingCount}</span> ratings
+        <span>({stats.ratingCount})</span>
       </span>
       <span className="flex items-center gap-1">
         <TurtleShellIcon className="size-3.5 text-primary" />

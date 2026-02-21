@@ -74,7 +74,6 @@ export function BookHero({ book, stats }: BookHeroProps) {
           )}
         </div>
       )}
-
     </div>
   );
 }

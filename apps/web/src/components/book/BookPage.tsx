@@ -1,4 +1,5 @@
 import { ListPlus } from "lucide-react";
+import { AmazonIcon } from "@/components/icons/AmazonIcon";
 import type {
   Book,
   BookStats,
@@ -63,6 +64,8 @@ export function BookPage({
   onLikeReply,
   onReply,
 }: BookPageProps) {
+  const amazonHref = `https://www.amazon.com/s?k=${encodeURIComponent(`${book.title} ${book.author} book`)}`;
+
   return (
     <div className="grid grid-cols-[1fr_4fr] gap-8">
       <div className="sticky top-6 self-start">
@@ -71,61 +74,68 @@ export function BookPage({
           alt={`Cover of ${book.title}`}
           className="w-full aspect-[2/3] rounded-sm object-cover"
         />
-        <div className="flex flex-col items-center gap-2 mt-3">
-          <div className="flex items-center gap-1">
+
+        <div className="flex flex-col items-center gap-2 mt-3 ">
+          <div className="flex items-center gap-2 mb-1">
             <RatingPicker
               value={rating}
               onChange={onRatingChange}
               size="large"
             />
           </div>
-          <Separator className="my-1 w-full" />
-          <Button
-            type="button"
-            variant={isShelled ? "secondary" : "default"}
-            size="sm"
-            className="w-full"
-            onClick={onShellToggle}
-          >
-            <TurtleShellIcon className="size-6" filled={isShelled} />
-            {isShelled ? "In shell" : "Add to shell"}
-          </Button>
-          {listOptions ? (
-            <AddToListMenu
-              lists={listOptions.map((list) => ({
-                id: list.id,
-                name: list.name,
-                bookCount: list.books.length,
-              }))}
-              selectedListIds={selectedListIds}
-              onToggleList={onToggleList}
-              onCreateList={onCreateList}
-              className="w-full"
-              trigger={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                >
-                  <ListPlus className="size-4" />
-                  Add to list
-                </Button>
-              }
-            />
-          ) : (
+
+          <div className="flex w-full gap-2">
             <Button
               type="button"
-              variant="outline"
+              variant={isShelled ? "secondary" : "default"}
               size="sm"
-              className="w-full"
-              onClick={onAddToList}
+              className="flex-1"
+              onClick={onShellToggle}
             >
-              <ListPlus className="size-4" />
-              Add to list
+              <TurtleShellIcon className="size-6" filled={isShelled} />
+              {isShelled ? "In shell" : "Add to shell"}
             </Button>
-          )}
+            {listOptions ? (
+              <AddToListMenu
+                lists={listOptions.map((list) => ({
+                  id: list.id,
+                  name: list.name,
+                  bookCount: list.books.length,
+                }))}
+                selectedListIds={selectedListIds}
+                onToggleList={onToggleList}
+                onCreateList={onCreateList}
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    <ListPlus className="size-4" />
+                  </Button>
+                }
+              />
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAddToList}
+              >
+                <ListPlus className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
+        <Separator className=" mt-3 mb-2" />
+
+        <a
+          href={amazonHref}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="w-full  "
+        >
+          <Button type="button" variant="link" size="sm" className="w-full ">
+            <AmazonIcon className="size-4" />
+            Buy on Amazon
+          </Button>
+        </a>
       </div>
 
       <div>
