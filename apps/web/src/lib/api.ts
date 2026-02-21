@@ -139,7 +139,7 @@ export async function getUser(id: string | number): Promise<User> {
     handle: string;
     displayName: string;
     avatarUrl?: string | null;
-  }>(`/users/${id}`);
+  }>(`/user/${id}`);
   return {
     id: data.id,
     handle: data.handle,
@@ -153,15 +153,15 @@ export async function getUserRatings(
   limit = 50,
   sort: "recent" | "rating" = "recent",
 ): Promise<RatedBook[]> {
-  return apiFetch<RatedBook[]>(`/users/${id}/ratings?limit=${limit}&sort=${sort}`);
+  return apiFetch<RatedBook[]>(`/user/${id}/ratings?limit=${limit}&sort=${sort}`);
 }
 
 export async function getUserLists(id: string | number): Promise<List[]> {
-  return apiFetch<List[]>(`/users/${id}/lists`);
+  return apiFetch<List[]>(`/user/${id}/lists`);
 }
 
 export async function getUserActivity(id: string | number, limit = 10): Promise<ActivityItem[]> {
-  return apiFetch<ActivityItem[]>(`/users/${id}/activity?limit=${limit}`);
+  return apiFetch<ActivityItem[]>(`/user/${id}/activity?limit=${limit}`);
 }
 
 // ---------------------------------------------------------------------------

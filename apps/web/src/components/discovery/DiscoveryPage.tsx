@@ -94,7 +94,7 @@ export function DiscoveryPage({
   }
 
   async function handleShareProfile() {
-    const profileUrl = `${window.location.origin}/profile/me`;
+    const profileUrl = `${window.location.origin}/user/${currentUser?.handle}`;
     try {
       await navigator.clipboard.writeText(profileUrl);
       setIsProfileLinkCopied(true);

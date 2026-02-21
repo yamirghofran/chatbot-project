@@ -10,7 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as UsersUserIdRouteImport } from './routes/users/$userId'
+import { Route as UserUsernameRouteImport } from './routes/user/$username'
 import { Route as ListsListIdRouteImport } from './routes/lists/$listId'
 import { Route as BooksBookIdRouteImport } from './routes/books/$bookId'
 
@@ -19,9 +19,9 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const UsersUserIdRoute = UsersUserIdRouteImport.update({
-  id: '/users/$userId',
-  path: '/users/$userId',
+const UserUsernameRoute = UserUsernameRouteImport.update({
+  id: '/user/$username',
+  path: '/user/$username',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ListsListIdRoute = ListsListIdRouteImport.update({
@@ -39,34 +39,34 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/users/$userId': typeof UsersUserIdRoute
+  '/user/$username': typeof UserUsernameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/users/$userId': typeof UsersUserIdRoute
+  '/user/$username': typeof UserUsernameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/users/$userId': typeof UsersUserIdRoute
+  '/user/$username': typeof UserUsernameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/books/$bookId' | '/lists/$listId' | '/users/$userId'
+  fullPaths: '/' | '/books/$bookId' | '/lists/$listId' | '/user/$username'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/books/$bookId' | '/lists/$listId' | '/users/$userId'
-  id: '__root__' | '/' | '/books/$bookId' | '/lists/$listId' | '/users/$userId'
+  to: '/' | '/books/$bookId' | '/lists/$listId' | '/user/$username'
+  id: '__root__' | '/' | '/books/$bookId' | '/lists/$listId' | '/user/$username'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BooksBookIdRoute: typeof BooksBookIdRoute
   ListsListIdRoute: typeof ListsListIdRoute
-  UsersUserIdRoute: typeof UsersUserIdRoute
+  UserUsernameRoute: typeof UserUsernameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -78,11 +78,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/users/$userId': {
-      id: '/users/$userId'
-      path: '/users/$userId'
-      fullPath: '/users/$userId'
-      preLoaderRoute: typeof UsersUserIdRouteImport
+    '/user/$username': {
+      id: '/user/$username'
+      path: '/user/$username'
+      fullPath: '/user/$username'
+      preLoaderRoute: typeof UserUsernameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lists/$listId': {
@@ -106,7 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BooksBookIdRoute: BooksBookIdRoute,
   ListsListIdRoute: ListsListIdRoute,
-  UsersUserIdRoute: UsersUserIdRoute,
+  UserUsernameRoute: UserUsernameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

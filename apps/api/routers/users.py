@@ -20,33 +20,33 @@ from bookdb.db.models import (
 from ..core.deps import get_db
 from ..core.serialize import relative_time, serialize_book, serialize_list, serialize_user
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(prefix="/user", tags=["users"])
 
 
-def _get_user_or_404(db: Session, user_id: int) -> User:
-    user = UserCRUD.get_by_id(db, user_id)
+def _get_user_or_404(db: Session, username: str) -> User:
+    user = UserCRUD.get_by_username(db, username)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 
-@router.get("/{user_id}")
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = _get_user_or_404(db, user_id)
+@router.get("/{username}")
+def get_user(username: str, db: Session = Depends(get_db)):
+    user = _get_user_or_404(db, username)
     return serialize_user(user)
 
 
-@router.get("/{user_id}/ratings")
+@router.get("/{username}/ratings")
 def get_user_ratings(
-    user_id: int,
+    username: str,
     limit: int = Query(50, ge=1, le=200),
     sort: str = Query("recent", pattern="^(recent|rating)$"),
     db: Session = Depends(get_db),
 ):
-    _get_user_or_404(db, user_id)
+    user = _get_user_or_404(db, username)
     stmt = (
         select(BookRating)
-        .where(BookRating.user_id == user_id)
+        .where(BookRating.user_id == user.id)
         .options(
             selectinload(BookRating.book)
             .selectinload(Book.authors)
@@ -73,12 +73,12 @@ def get_user_ratings(
     ]
 
 
-@router.get("/{user_id}/lists")
-def get_user_lists(user_id: int, db: Session = Depends(get_db)):
-    _get_user_or_404(db, user_id)
+@router.get("/{username}/lists")
+def get_user_lists(username: str, db: Session = Depends(get_db)):
+    user = _get_user_or_404(db, username)
     lists = db.scalars(
         select(BookList)
-        .where(BookList.user_id == user_id)
+        .where(BookList.user_id == user.id)
         .options(
             selectinload(BookList.user),
             selectinload(BookList.books)
@@ -94,18 +94,18 @@ def get_user_lists(user_id: int, db: Session = Depends(get_db)):
     return [serialize_list(lst) for lst in lists]
 
 
-@router.get("/{user_id}/activity")
+@router.get("/{username}/activity")
 def get_user_activity(
-    user_id: int,
+    username: str,
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    user = _get_user_or_404(db, user_id)
+    user = _get_user_or_404(db, username)
 
     # Collect recent rating events.
     ratings = db.scalars(
         select(BookRating)
-        .where(BookRating.user_id == user_id)
+        .where(BookRating.user_id == user.id)
         .options(
             selectinload(BookRating.book)
             .selectinload(Book.authors)
@@ -121,7 +121,7 @@ def get_user_activity(
     items = []
     for r in ratings:
         items.append({
-            "id": f"rating-{user_id}-{r.book_id}",
+            "id": f"rating-{user.id}-{r.book_id}",
             "user": serialize_user(user),
             "type": "rating",
             "book": serialize_book(r.book),
@@ -131,7 +131,7 @@ def get_user_activity(
         })
 
     # Collect recent shell_add events.
-    shell = db.scalar(select(Shell).where(Shell.user_id == user_id))
+    shell = db.scalar(select(Shell).where(Shell.user_id == user.id))
     if shell:
         shell_books = db.scalars(
             select(ShellBook)
@@ -149,7 +149,7 @@ def get_user_activity(
         ).all()
         for sb in shell_books:
             items.append({
-                "id": f"shell-{user_id}-{sb.book_id}",
+                "id": f"shell-{user.id}-{sb.book_id}",
                 "user": serialize_user(user),
                 "type": "shell_add",
                 "book": serialize_book(sb.book),

@@ -4,37 +4,37 @@ import { UserPage } from "@/components/user/UserPage";
 import * as api from "@/lib/api";
 import { useCurrentUser } from "@/lib/auth";
 
-export const Route = createFileRoute("/users/$userId")({
+export const Route = createFileRoute("/user/$username")({
   component: UserProfilePage,
 });
 
 function UserProfilePage() {
-  const { userId } = Route.useParams();
+  const { username } = Route.useParams();
   const { data: me } = useCurrentUser();
 
   const userQuery = useQuery({
-    queryKey: ["user", userId],
-    queryFn: () => api.getUser(userId),
+    queryKey: ["user", username],
+    queryFn: () => api.getUser(username),
   });
 
   const ratingsQuery = useQuery({
-    queryKey: ["userRatings", userId],
-    queryFn: () => api.getUserRatings(userId, 50),
+    queryKey: ["userRatings", username],
+    queryFn: () => api.getUserRatings(username, 50),
   });
 
   const listsQuery = useQuery({
-    queryKey: ["userLists", userId],
-    queryFn: () => api.getUserLists(userId),
+    queryKey: ["userLists", username],
+    queryFn: () => api.getUserLists(username),
   });
 
   const activityQuery = useQuery({
-    queryKey: ["userActivity", userId],
-    queryFn: () => api.getUserActivity(userId, 10),
+    queryKey: ["userActivity", username],
+    queryFn: () => api.getUserActivity(username, 10),
   });
 
   const favoritesQuery = useQuery({
-    queryKey: ["userFavorites", userId],
-    queryFn: () => api.getUserRatings(userId, 3, "rating"),
+    queryKey: ["userFavorites", username],
+    queryFn: () => api.getUserRatings(username, 3, "rating"),
   });
 
   if (userQuery.isLoading) {
@@ -46,7 +46,7 @@ function UserProfilePage() {
   }
 
   const user = userQuery.data;
-  const isOwnProfile = me?.id === userId;
+  const isOwnProfile = me?.handle === username;
   const favorites = (favoritesQuery.data ?? []).map((r) => r.book);
 
   return (

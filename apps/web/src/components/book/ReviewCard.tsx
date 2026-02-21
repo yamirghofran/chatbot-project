@@ -30,8 +30,8 @@ export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewC
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Link
-            to="/users/$userId"
-            params={{ userId: review.user.id }}
+            to="/user/$username"
+            params={{ username: review.user.handle }}
             className="text-sm font-medium text-foreground hover:underline"
           >
             {review.user.displayName}

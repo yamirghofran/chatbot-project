@@ -66,8 +66,8 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             </Avatar>
             <div className="flex-1 min-w-0 text-sm text-muted-foreground">
               <Link
-                to="/users/$userId"
-                params={{ userId: item.user.id }}
+                to="/user/$username"
+                params={{ username: item.user.handle }}
                 className="font-medium text-foreground hover:underline"
               >
                 {item.user.displayName}
