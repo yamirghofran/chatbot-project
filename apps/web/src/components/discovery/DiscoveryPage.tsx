@@ -38,8 +38,18 @@ export function DiscoveryPage({
   }, [userLists]);
 
   const toggleBookMutation = useMutation({
-    mutationFn: ({ listId, bookId, nextSelected }: { listId: string; bookId: string; nextSelected: boolean }) =>
-      nextSelected ? api.addBookToList(listId, bookId) : api.removeBookFromList(listId, bookId),
+    mutationFn: ({
+      listId,
+      bookId,
+      nextSelected,
+    }: {
+      listId: string;
+      bookId: string;
+      nextSelected: boolean;
+    }) =>
+      nextSelected
+        ? api.addBookToList(listId, bookId)
+        : api.removeBookFromList(listId, bookId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["myLists"] }),
   });
 
@@ -87,7 +97,12 @@ export function DiscoveryPage({
     // Optimistic update with temp ID
     const tempId = `l-local-${nextListIdRef.current++}`;
     setLists((prevLists) => [
-      { id: tempId, name: trimmedName, owner: { id: "me", handle: "me", displayName: "You" }, books: [book] },
+      {
+        id: tempId,
+        name: trimmedName,
+        owner: { id: "me", handle: "me", displayName: "You" },
+        books: [book],
+      },
       ...prevLists,
     ]);
     createListMutation.mutate({ name: trimmedName, book });
@@ -130,7 +145,9 @@ export function DiscoveryPage({
             />
             <div className="min-w-0">
               <h2 className="font-heading text-3xl font-semibold text-foreground">
-                Welcome back, {currentUser?.displayName?.split(" ")[0] ?? "there"}. What are you reading?
+                Welcome back,{" "}
+                {currentUser?.displayName?.split(" ")[0] ?? "there"}. What are
+                you reading?
               </h2>
               <p className="mt-2 text-lg text-muted-foreground">
                 Track a book to keep your library updated and get better picks.
@@ -138,7 +155,7 @@ export function DiscoveryPage({
             </div>
           </div>
           <h2 className="font-heading text-lg font-semibold mb-2">
-            Reccomended For You
+            Recommended For You
           </h2>
           <div>
             {books.map((book, i) => (
