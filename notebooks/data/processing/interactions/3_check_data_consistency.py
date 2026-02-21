@@ -31,7 +31,7 @@ def _(os, pl):
     data_dir = os.path.join(project_root, "data")
 
     books_df = pl.read_parquet(
-        os.path.join(data_dir, "3_goodreads_books_with_metrics.parquet"),
+        os.path.join(data_dir, "2_goodreads_books_standardized.parquet"),
         columns=["book_id"],
     )
     return books_df, data_dir

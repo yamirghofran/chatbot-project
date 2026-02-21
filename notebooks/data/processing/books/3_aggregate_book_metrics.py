@@ -18,13 +18,13 @@ def _():
 @app.cell
 def _(mo, os, pl):
     project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     )
-    books_path = os.path.join(project_root, "data", "goodreads_books_standardized.parquet") # replace this with cleaned remapped books dataset (standardized)
+    books_path = os.path.join(project_root, "data", "2_goodreads_books_standardized.parquet") # replace this with cleaned remapped books dataset (standardized)
     books_df = pl.read_parquet(books_path)
 
     interactions_path = os.path.join(
-        project_root, "data", "goodreads_interactions_merged.parquet"
+        project_root, "data", "3_goodreads_interactions_reduced.parquet"
     )
     interactions_df = pl.read_parquet(interactions_path)
 
@@ -50,6 +50,7 @@ def _(mo):
     - **num_read**: Count of interactions where `is_read = 1`
     - **num_ratings**: Count of interactions where `rating` is between 1 and 5 (inclusive)
     - **num_reviews**: Count of interactions where `is_reviewed = 1`
+    - **avg_rating**: Average of ratings where `rating` is between 1 and 5 (inclusive)
     """)
     return
 
@@ -63,7 +64,8 @@ def _(duckdb):
             COUNT(*) AS num_interactions,
             SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) AS num_read,
             SUM(CASE WHEN rating >= 1 AND rating <= 5 THEN 1 ELSE 0 END) AS num_ratings,
-            SUM(CASE WHEN is_reviewed = 1 THEN 1 ELSE 0 END) AS num_reviews
+            SUM(CASE WHEN is_reviewed = 1 THEN 1 ELSE 0 END) AS num_reviews,
+            AVG(CASE WHEN rating >= 1 AND rating <= 5 THEN rating ELSE NULL END) AS avg_rating
         FROM interactions_df
         GROUP BY book_id
     """
@@ -96,7 +98,7 @@ def _(book_metrics_df, books_df, pl):
     )
 
     books_with_metrics_df.select(
-        "book_id", "title", "num_interactions", "num_read", "num_ratings", "num_reviews"
+        "book_id", "title", "num_interactions", "num_read", "num_ratings", "num_reviews", "avg_rating"
     ).head(10)
     return (books_with_metrics_df,)
 
@@ -114,7 +116,7 @@ def _(mo):
 @app.cell
 def _(books_with_metrics_df):
     books_with_metrics_df.select(
-        "num_interactions", "num_read", "num_ratings", "num_reviews"
+        "num_interactions", "num_read", "num_ratings", "num_reviews", "avg_rating"
     ).describe()
     return
 
@@ -131,7 +133,7 @@ def _(mo):
 
 @app.cell
 def _(books_with_metrics_df, mo, os, project_root):
-    output_path = os.path.join(project_root, "data", "goodreads_books_with_metrics.parquet")
+    output_path = os.path.join(project_root, "data", "3_goodreads_books_with_metrics.parquet")
     books_with_metrics_df.write_parquet(output_path)
 
     mo.md(f"✅ Saved enriched books dataset to: `{output_path}`")
