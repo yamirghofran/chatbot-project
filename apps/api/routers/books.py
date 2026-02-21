@@ -8,7 +8,7 @@ from bookdb.db.crud import BookCRUD, ReviewCRUD
 from bookdb.db.models import Book, BookAuthor, BookRating, BookTag, ShellBook
 
 from ..core.deps import get_db, get_optional_user
-from ..core.embeddings import EmbeddingIndex
+from ..core.embeddings import most_similar
 from ..core.serialize import serialize_book, serialize_review
 
 router = APIRouter(prefix="/books", tags=["books"])
@@ -102,15 +102,11 @@ def get_related_books(
     db: Session = Depends(get_db),
 ):
     book = _load_book(db, book_id)
-    index: EmbeddingIndex | None = getattr(request.app.state, "embedding_index", None)
+    qdrant = getattr(request.app.state, "qdrant", None)
 
-    if index is not None:
-        embedding = index.get(book.goodreads_id)
-        if embedding is not None:
-            similar_goodreads_ids = index.most_similar(
-                embedding, top_k=limit + 1, exclude_ids={book.goodreads_id}
-            )
-            similar_goodreads_ids = [gid for gid in similar_goodreads_ids if gid != book.goodreads_id][:limit]
+    if qdrant is not None and book.goodreads_id is not None:
+        try:
+            similar_goodreads_ids = most_similar(qdrant, book.goodreads_id, top_k=limit)
             if similar_goodreads_ids:
                 related = db.scalars(
                     select(Book)
@@ -121,6 +117,8 @@ def get_related_books(
                     )
                 ).all()
                 return [serialize_book(b) for b in related]
+        except Exception as e:
+            print(f"Qdrant recommend failed for book {book_id}: {e}")
 
     # Fallback: popular books.
     fallback = db.scalars(

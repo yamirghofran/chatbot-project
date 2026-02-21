@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
-from .core.embeddings import load_embedding_index
+from .core.embeddings import get_qdrant_client
 from .routers import auth, books, discovery, lists, me, users
 
 app = FastAPI(title="BookDB API", version="0.1.0")
@@ -35,11 +35,12 @@ app.include_router(discovery.router)
 
 @app.on_event("startup")
 async def startup_event():
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    embeddings_path = os.path.join(project_root, "data", "books_finetuned_embeddings.parquet")
-    app.state.embedding_index = load_embedding_index(embeddings_path)
+    app.state.qdrant = get_qdrant_client(settings.QDRANT_URL, settings.QDRANT_API_KEY)
 
-    bpr_path = os.path.join(project_root, "data", "bpr_model_predictions", "bpr_recommendations.parquet")
+    bpr_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data", "bpr_model_predictions", "bpr_recommendations.parquet",
+    )
     if os.path.exists(bpr_path):
         app.state.bpr_parquet_path = bpr_path
         print(f"BPR recommendations loaded: {bpr_path}")

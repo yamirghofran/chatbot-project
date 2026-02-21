@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-in-production"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 1 week
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
 
 
 settings = Settings()
