@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
 from .core.embeddings import get_qdrant_client
-from .routers import auth, books, discovery, lists, me, users
+from .routers import auth, books, discovery, lists, me, reviews, users
 
 app = FastAPI(title="BookDB API", version="0.1.0")
 
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(books.router)
+app.include_router(reviews.router)
 app.include_router(users.router)
 app.include_router(lists.router)
 app.include_router(me.router)

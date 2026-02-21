@@ -36,11 +36,17 @@ export type BookPageProps = {
   stats?: BookStats;
   friendActivity?: ActivityItem[];
   reviews?: Review[];
+  totalReviews?: number;
+  hasMoreReviews?: boolean;
+  isLoadingMoreReviews?: boolean;
+  onLoadMoreReviews?: () => void;
   currentUser?: User;
   onPostReview?: (text: string) => void;
   onLikeReview?: (reviewId: string) => void;
   onLikeReply?: (reviewId: string, replyId: string) => void;
   onReply?: (reviewId: string, text: string) => void;
+  onDeleteReview?: (reviewId: string) => void;
+  onDeleteReply?: (reviewId: string, replyId: string) => void;
 };
 
 export function BookPage({
@@ -58,11 +64,17 @@ export function BookPage({
   stats,
   friendActivity,
   reviews,
+  totalReviews,
+  hasMoreReviews,
+  isLoadingMoreReviews,
+  onLoadMoreReviews,
   currentUser,
   onPostReview,
   onLikeReview,
   onLikeReply,
   onReply,
+  onDeleteReview,
+  onDeleteReply,
 }: BookPageProps) {
   const amazonHref = `https://www.amazon.com/s?k=${encodeURIComponent(`${book.title} ${book.author} book`)}`;
 
@@ -186,11 +198,17 @@ export function BookPage({
             <Separator className="my-6" />
             <ReviewList
               reviews={reviews}
+              totalReviews={totalReviews}
+              hasMore={hasMoreReviews}
+              isLoadingMore={isLoadingMoreReviews}
+              onLoadMore={onLoadMoreReviews}
               currentUser={currentUser}
               onPostReview={onPostReview}
               onLikeReview={onLikeReview}
               onLikeReply={onLikeReply}
               onReply={onReply}
+              onDeleteReview={onDeleteReview}
+              onDeleteReply={onDeleteReply}
             />
           </>
         )}

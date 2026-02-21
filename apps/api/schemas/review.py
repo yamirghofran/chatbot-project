@@ -2,6 +2,14 @@ from pydantic import BaseModel
 from .user import UserOut
 
 
+class CreateReviewRequest(BaseModel):
+    text: str
+
+
+class CreateCommentRequest(BaseModel):
+    text: str
+
+
 class ReplyOut(BaseModel):
     id: str
     user: UserOut

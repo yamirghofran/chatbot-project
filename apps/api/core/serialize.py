@@ -91,14 +91,16 @@ def serialize_list(book_list: BookList) -> dict:
     }
 
 
-def serialize_review(review: Review) -> dict:
+def serialize_review(review: Review, current_user_id: int | None = None) -> dict:
     likes_count = len(review.likes)
+    is_liked = any(like.user_id == current_user_id for like in review.likes) if current_user_id else False
     comments = [
         {
             "id": str(c.id),
             "user": serialize_user(c.user),
             "text": c.comment_text,
             "likes": 0,
+            "isLikedByMe": False,
             "timestamp": relative_time(c.created_at),
         }
         for c in review.comments
@@ -108,7 +110,7 @@ def serialize_review(review: Review) -> dict:
         "user": serialize_user(review.user),
         "text": review.review_text,
         "likes": likes_count,
-        "isLikedByMe": False,
+        "isLikedByMe": is_liked,
         "timestamp": relative_time(review.created_at),
         "replies": comments,
     }

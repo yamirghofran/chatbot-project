@@ -112,8 +112,43 @@ export async function getBook(id: string | number): Promise<BookDetail> {
   return apiFetch<BookDetail>(`/books/${id}`);
 }
 
-export async function getBookReviews(id: string | number, limit = 20): Promise<Review[]> {
-  return apiFetch<Review[]>(`/books/${id}/reviews?limit=${limit}`);
+export interface ReviewsPage {
+  items: Review[];
+  total: number;
+}
+
+export async function getBookReviews(id: string | number, limit = 20, offset = 0): Promise<ReviewsPage> {
+  return apiFetch<ReviewsPage>(`/books/${id}/reviews?limit=${limit}&offset=${offset}`);
+}
+
+export async function postReview(bookId: string | number, text: string): Promise<Review> {
+  return apiFetch<Review>(`/books/${bookId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function deleteReview(reviewId: string | number): Promise<void> {
+  return apiFetch<void>(`/reviews/${reviewId}`, { method: "DELETE" });
+}
+
+export async function likeReview(reviewId: string | number): Promise<void> {
+  return apiFetch<void>(`/reviews/${reviewId}/likes`, { method: "POST" });
+}
+
+export async function unlikeReview(reviewId: string | number): Promise<void> {
+  return apiFetch<void>(`/reviews/${reviewId}/likes`, { method: "DELETE" });
+}
+
+export async function postReviewComment(reviewId: string | number, text: string): Promise<Review["replies"][number]> {
+  return apiFetch(`/reviews/${reviewId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function deleteReviewComment(reviewId: string | number, commentId: string | number): Promise<void> {
+  return apiFetch<void>(`/reviews/${reviewId}/comments/${commentId}`, { method: "DELETE" });
 }
 
 export async function getRelatedBooks(id: string | number, limit = 6): Promise<Book[]> {

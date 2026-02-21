@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Trash2 } from "lucide-react";
 import { ThumbsUpIcon } from "@/components/icons/ThumbsUpIcon";
 import type { Review, Reply } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,8 @@ export type ReviewCardProps = {
   isReply?: boolean;
   onLike?: () => void;
   onReply?: () => void;
+  onDelete?: () => void;
+  isOwnReview?: boolean;
 };
 
 const MAX_REVIEW_LENGTH = 420;
@@ -24,7 +27,7 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewCardProps) {
+export function ReviewCard({ review, isReply = false, onLike, onReply, onDelete, isOwnReview }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isLongReview = review.text.length > MAX_REVIEW_LENGTH;
   const visibleText =
@@ -47,6 +50,16 @@ export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewC
             {review.user.displayName}
           </Link>
           <span className="text-xs text-muted-foreground">{review.timestamp}</span>
+          {isOwnReview && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="ml-auto text-muted-foreground hover:text-destructive transition-colors"
+              aria-label="Delete"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
         </div>
         <div className="relative mt-1">
           <p className="text-sm text-foreground leading-relaxed">{visibleText}</p>
