@@ -3,7 +3,7 @@ import { Star } from "lucide-react";
 
 export type RatingPickerProps = {
   value?: number;
-  onChange?: (value: number) => void;
+  onChange?: (value: number | undefined) => void;
   size?: "default" | "large";
 };
 
@@ -30,7 +30,7 @@ export function RatingPicker({
             type="button"
             className={`relative ${starSizeClass} cursor-pointer`}
             onMouseEnter={() => setHovered(star)}
-            onClick={() => onChange?.(star)}
+            onClick={() => onChange?.(value === star ? undefined : star)}
             aria-label={`Rate ${star} out of 5`}
           >
             {/* Empty star (always rendered as base layer) */}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ThumbsUpIcon } from "@/components/icons/ThumbsUpIcon";
 import type { Review, Reply } from "@/lib/types";
@@ -12,6 +13,8 @@ export type ReviewCardProps = {
   onReply?: () => void;
 };
 
+const MAX_REVIEW_LENGTH = 420;
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -22,6 +25,13 @@ function getInitials(name: string) {
 }
 
 export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const isLongReview = review.text.length > MAX_REVIEW_LENGTH;
+  const visibleText =
+    isLongReview && !expanded
+      ? `${review.text.slice(0, MAX_REVIEW_LENGTH).trimEnd()}...`
+      : review.text;
+
   return (
     <div className={cn("flex gap-3", isReply && "ml-10")}>
       <Avatar size={isReply ? "sm" : "default"}>
@@ -38,7 +48,24 @@ export function ReviewCard({ review, isReply = false, onLike, onReply }: ReviewC
           </Link>
           <span className="text-xs text-muted-foreground">{review.timestamp}</span>
         </div>
-        <p className="text-sm text-foreground mt-1 leading-relaxed">{review.text}</p>
+        <div className="relative mt-1">
+          <p className="text-sm text-foreground leading-relaxed">{visibleText}</p>
+          {isLongReview && !expanded && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent"
+            />
+          )}
+        </div>
+        {isLongReview && !expanded && (
+          <button
+            type="button"
+            className="mt-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            onClick={() => setExpanded(true)}
+          >
+            Continue reading
+          </button>
+        )}
         <div className="flex items-center gap-2 mt-1.5">
           <Button
             variant="ghost"

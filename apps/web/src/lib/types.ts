@@ -5,6 +5,10 @@ export type Book = {
   coverUrl: string | null | undefined;
   description?: string;
   tags?: string[];
+  averageRating?: number | null;
+  ratingCount?: number;
+  commentCount?: number;
+  shellCount?: number;
 };
 
 export type User = {

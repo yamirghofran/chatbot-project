@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPage } from "@/components/user/UserPage";
 import * as api from "@/lib/api";
-import { useCurrentUser } from "@/lib/auth";
+import { useCurrentUser, clearToken } from "@/lib/auth";
 
 export const Route = createFileRoute("/user/$username")({
   component: UserProfilePage,
@@ -11,6 +11,14 @@ export const Route = createFileRoute("/user/$username")({
 function UserProfilePage() {
   const { username } = Route.useParams();
   const { data: me } = useCurrentUser();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    clearToken();
+    queryClient.setQueryData(["me"], null);
+    navigate({ to: "/" });
+  }
 
   const userQuery = useQuery({
     queryKey: ["user", username],
@@ -34,8 +42,24 @@ function UserProfilePage() {
 
   const favoritesQuery = useQuery({
     queryKey: ["userFavorites", username],
-    queryFn: () => api.getUserRatings(username, 3, "rating"),
+    queryFn: () => api.getUserFavorites(username, 3),
   });
+
+  const createListMutation = useMutation({
+    mutationFn: (name: string) => api.createList(name),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["myLists"] });
+      await queryClient.invalidateQueries({ queryKey: ["userLists", username] });
+      navigate({ to: "/lists/$listId", params: { listId: created.id } });
+    },
+  });
+
+  function handleCreateList() {
+    const name = window.prompt("List name");
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    createListMutation.mutate(trimmed);
+  }
 
   if (userQuery.isLoading) {
     return <div className="py-8 text-muted-foreground text-sm">Loading…</div>;
@@ -47,7 +71,7 @@ function UserProfilePage() {
 
   const user = userQuery.data;
   const isOwnProfile = me?.handle === username;
-  const favorites = (favoritesQuery.data ?? []).map((r) => r.book);
+  const favorites = favoritesQuery.data ?? [];
 
   return (
     <UserPage
@@ -59,6 +83,8 @@ function UserProfilePage() {
       lists={listsQuery.data ?? []}
       followingCount={0}
       followersCount={0}
+      onCreateList={isOwnProfile ? handleCreateList : undefined}
+      onLogout={isOwnProfile ? handleLogout : undefined}
     />
   );
 }

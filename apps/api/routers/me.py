@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from bookdb.db.crud import BookListCRUD, BookRatingCRUD, ShellCRUD
@@ -16,6 +16,7 @@ from bookdb.db.models import (
 )
 
 from ..core.deps import get_current_user, get_db
+from ..core.favorites import get_or_create_favorites_list, is_favorites_list
 from ..core.serialize import serialize_book, serialize_list
 from ..schemas.list import CreateListRequest
 
@@ -122,7 +123,7 @@ def get_my_lists(
             .selectinload(BookTag.tag),
         )
     ).all()
-    return [serialize_list(lst) for lst in lists]
+    return [serialize_list(lst) for lst in lists if not is_favorites_list(lst)]
 
 
 @router.post("/lists", status_code=status.HTTP_201_CREATED)
@@ -137,3 +138,63 @@ def create_list(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     return {"id": str(lst.id), "name": lst.title}
+
+
+@router.get("/favorites")
+def get_my_favorites(
+    limit: int = 3,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    favorites, created = get_or_create_favorites_list(db, current_user.id)
+    if created:
+        db.commit()
+    rows = db.scalars(
+        select(ListBook)
+        .where(ListBook.list_id == favorites.id)
+        .options(
+            selectinload(ListBook.book)
+            .selectinload(Book.authors)
+            .selectinload(BookAuthor.author),
+            selectinload(ListBook.book)
+            .selectinload(Book.tags)
+            .selectinload(BookTag.tag),
+        )
+        .order_by(ListBook.added_at.desc())
+        .limit(max(1, min(limit, 20)))
+    ).all()
+    return [serialize_book(row.book) for row in rows if row.book is not None]
+
+
+@router.post("/favorites/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+def add_to_favorites(
+    book_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    favorites, _ = get_or_create_favorites_list(db, current_user.id)
+    existing = db.scalar(
+        select(ListBook).where(ListBook.list_id == favorites.id, ListBook.book_id == book_id)
+    )
+    if existing is not None:
+        return
+    count = db.scalar(
+        select(func.count()).where(ListBook.list_id == favorites.id)
+    ) or 0
+    if count >= 3:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Favorites can contain at most 3 books")
+    ok = BookListCRUD.add_book(db, favorites.id, book_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    db.commit()
+
+
+@router.delete("/favorites/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_from_favorites(
+    book_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    favorites, _ = get_or_create_favorites_list(db, current_user.id)
+    BookListCRUD.remove_book(db, favorites.id, book_id)
+    db.commit()

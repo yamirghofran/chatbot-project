@@ -8,10 +8,14 @@ function getToken(): string | null {
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const method = (init.method ?? "GET").toUpperCase();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
+  // Avoid CORS preflight on simple GET/HEAD requests.
+  if (method !== "GET" && method !== "HEAD" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -160,6 +164,10 @@ export async function getUserLists(id: string | number): Promise<List[]> {
   return apiFetch<List[]>(`/user/${id}/lists`);
 }
 
+export async function getUserFavorites(id: string | number, limit = 3): Promise<Book[]> {
+  return apiFetch<Book[]>(`/user/${id}/favorites?limit=${limit}`);
+}
+
 export async function getUserActivity(id: string | number, limit = 10): Promise<ActivityItem[]> {
   return apiFetch<ActivityItem[]>(`/user/${id}/activity?limit=${limit}`);
 }
@@ -218,6 +226,18 @@ export async function getMyLists(): Promise<List[]> {
 
 export async function getMyShell(): Promise<Book[]> {
   return apiFetch<Book[]>("/me/shell");
+}
+
+export async function getMyFavorites(limit = 3): Promise<Book[]> {
+  return apiFetch<Book[]>(`/me/favorites?limit=${limit}`);
+}
+
+export async function addToMyFavorites(bookId: string | number): Promise<void> {
+  return apiFetch<void>(`/me/favorites/${bookId}`, { method: "POST" });
+}
+
+export async function removeFromMyFavorites(bookId: string | number): Promise<void> {
+  return apiFetch<void>(`/me/favorites/${bookId}`, { method: "DELETE" });
 }
 
 export async function upsertRating(bookId: string | number, rating: number): Promise<void> {

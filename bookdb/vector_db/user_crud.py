@@ -1,10 +1,9 @@
-"""User-specific CRUD operations for ChromaDB."""
+"""User-specific CRUD operations for Qdrant."""
 
-from typing import List, Optional, Dict, Any
-from chromadb import Collection
+from typing import Any, Dict, List, Optional
 
 from .crud import BaseVectorCRUD
-from .schemas import UserMetadata, validate_user_metadata
+from .schemas import CollectionNames, UserMetadata
 
 
 class UserVectorCRUD(BaseVectorCRUD):
@@ -24,11 +23,11 @@ class UserVectorCRUD(BaseVectorCRUD):
         ... )
     """
     
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: Any = CollectionNames.USERS.value):
         """Initialize user CRUD operations.
-        
+
         Args:
-            collection: ChromaDB collection for users
+            collection: Collection reference. Prefer collection name for Qdrant.
         """
         super().__init__(collection)
     
@@ -43,7 +42,7 @@ class UserVectorCRUD(BaseVectorCRUD):
         """Add a user with validated metadata.
         
         Args:
-            user_id: Unique identifier for the user in ChromaDB (e.g. "user_1")
+            user_id: Unique identifier for the user (e.g. "user_1")
             name: User display name
             pg_user_id: User ID from PostgreSQL
             description: Optional text describing user preferences (used as document)

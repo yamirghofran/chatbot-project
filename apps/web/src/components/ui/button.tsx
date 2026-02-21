@@ -16,7 +16,7 @@ const buttonVariants = cva(
         outline:
           "border bg-background hover:bg-accent hover:text-accent-foreground shadow-[inset_0_-1px_2px_0_rgba(0,0,0,0.08),inset_0_1px_0_0_rgba(255,255,255,0.22)] hover:shadow-[inset_0_-1px_2px_0_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
         secondary:
-          "bg-secondary text-foreground hover:bg-secondary/80 shadow-[inset_0_-1px_1px_0_rgba(0,0,0,0.01),inset_0_-2px_3px_0_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.04)] hover:shadow-[inset_0_-1px_2px_0_rgba(0,0,0,0.02),inset_0_-3px_4px_0_rgba(0,0,0,0.08),inset_0_1px_0_0_rgba(255,255,255,0.28)] border",
+          "bg-secondary text-foreground hover:bg-secondary/80 shadow-[inset_0_-1px_1px_0_rgba(0,0,0,0.01),inset_0_-2px_3px_0_rgba(0,0,0,0.04),inset_0_1px_0_0_rgba(255,255,255,0.04)] hover:shadow-[inset_0_-1px_1px_0_rgba(0,0,0,0.02),inset_0_-2px_2px_0_rgba(0,0,0,0.08),inset_0_1px_0_0_rgba(255,255,255,0.18)] border",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",

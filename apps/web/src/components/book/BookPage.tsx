@@ -68,7 +68,7 @@ export function BookPage({
 
   return (
     <div className="grid grid-cols-[1fr_4fr] gap-8">
-      <div className="sticky top-6 self-start">
+      <div className="sticky top-28 lg:top-24 self-start">
         <img
           src={book.coverUrl ?? "/brand/book-placeholder.png"}
           alt={`Cover of ${book.title}`}

@@ -7,6 +7,7 @@ from bookdb.db.models import User
 
 from ..core.auth import create_token
 from ..core.deps import get_current_user, get_db
+from ..core.favorites import get_or_create_favorites_list
 from ..core.serialize import serialize_user
 from ..schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 
@@ -32,6 +33,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
             username=body.username,
             password_hash=password_hash,
         )
+        _favorites, _created = get_or_create_favorites_list(db, user.id)
         db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))

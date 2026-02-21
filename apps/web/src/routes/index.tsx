@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MarketingAuthGate } from "@/components/auth/MarketingAuthGate";
 import { DiscoveryPage } from "@/components/discovery/DiscoveryPage";
 import * as api from "@/lib/api";
 import { getToken, setToken, useCurrentUser } from "@/lib/auth";
+import { homeStaffPicks, homeTrendingLists } from "@/lib/homePageMocks";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -23,12 +24,6 @@ function Home() {
     enabled: !!token,
   });
 
-  const staffPicksQuery = useQuery({
-    queryKey: ["staffPicks"],
-    queryFn: () => api.getStaffPicks(6),
-    enabled: !!token,
-  });
-
   const activityQuery = useQuery({
     queryKey: ["activityFeed"],
     queryFn: () => api.getActivityFeed(10),
@@ -40,6 +35,20 @@ function Home() {
     queryFn: () => api.getMyLists(),
     enabled: !!token,
   });
+  const teamListsQuery = useQuery({
+    queryKey: ["userLists", "bookdb"],
+    queryFn: () => api.getUserLists("bookdb"),
+    enabled: !!token,
+  });
+
+  const resolvedTrendingLists = teamListsQuery.data ?? homeTrendingLists;
+  const resolvedStaffPicks = useMemo(() => {
+    if (!teamListsQuery.data || teamListsQuery.data.length === 0) {
+      return homeStaffPicks;
+    }
+    const picks = teamListsQuery.data.flatMap((list) => list.books).slice(0, 3);
+    return picks.length > 0 ? picks : homeStaffPicks;
+  }, [teamListsQuery.data]);
 
   async function handleAuthenticated({
     email,
@@ -88,9 +97,9 @@ function Home() {
       books={recommendationsQuery.data ?? []}
       currentUser={currentUser ?? undefined}
       userLists={myListsQuery.data ?? []}
-      staffPicks={staffPicksQuery.data ?? []}
+      staffPicks={resolvedStaffPicks}
       activity={activityQuery.data ?? []}
-      trendingLists={myListsQuery.data ?? []}
+      trendingLists={resolvedTrendingLists}
     />
   );
 }

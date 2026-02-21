@@ -20,7 +20,7 @@ make import-data
 
 - [Database setup and migration workflow](database-setup.md)
 - [Current schema and dataset mapping](context.md)
-- [ChromaDB integration](chromadb.md)
+- [Qdrant integration](qdrant.md)
 
 ## Current Data Pipeline
 

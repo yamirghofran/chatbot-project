@@ -36,7 +36,7 @@ export function SearchBar({
         placeholder={placeholder}
         className={cn(
           "w-full rounded-[12px] supports-[corner-shape:squircle]:rounded-[70px] supports-[corner-shape:squircle]:[corner-shape:squircle] border border-input bg-background py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          showIcon ? "px-9" : "px-3",
+          showIcon ? "pl-9 pr-3" : "px-3",
           inputClassName,
         )}
       />

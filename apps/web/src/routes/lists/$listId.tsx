@@ -13,6 +13,7 @@ function ListDetailPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: me } = useCurrentUser();
+  const userListsQueryKey = me?.handle ? ["userLists", me.handle] : null;
 
   const listQuery = useQuery({
     queryKey: ["list", listId],
@@ -22,24 +23,49 @@ function ListDetailPage() {
   const updateMutation = useMutation({
     mutationFn: (body: { name?: string; description?: string }) =>
       api.updateList(listId, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["list", listId] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["list", listId] });
+      await queryClient.invalidateQueries({ queryKey: ["myLists"] });
+      if (userListsQueryKey) {
+        await queryClient.invalidateQueries({ queryKey: userListsQueryKey });
+      }
+    },
   });
 
   const removeBookMutation = useMutation({
     mutationFn: (bookId: string) => api.removeBookFromList(listId, bookId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["list", listId] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["list", listId] });
+      await queryClient.invalidateQueries({ queryKey: ["myLists"] });
+      if (userListsQueryKey) {
+        await queryClient.invalidateQueries({ queryKey: userListsQueryKey });
+      }
+    },
   });
 
   const reorderMutation = useMutation({
     mutationFn: (bookIds: string[]) => api.reorderList(listId, bookIds),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["list", listId] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["list", listId] });
+      await queryClient.invalidateQueries({ queryKey: ["myLists"] });
+      if (userListsQueryKey) {
+        await queryClient.invalidateQueries({ queryKey: userListsQueryKey });
+      }
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteList(listId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["myLists"] });
-      navigate({ to: "/" });
+      if (userListsQueryKey) {
+        await queryClient.invalidateQueries({ queryKey: userListsQueryKey });
+      }
+      if (me?.handle) {
+        navigate({ to: "/user/$username", params: { username: me.handle } });
+      } else {
+        navigate({ to: "/" });
+      }
     },
   });
 

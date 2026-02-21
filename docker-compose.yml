@@ -17,18 +17,18 @@ services:
       timeout: 5s
       retries: 10
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: local-chromadb
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: local-qdrant
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - chroma_data:/chroma/chroma
+      - qdrant_data:/qdrant/storage
     environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-TRUE}
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
 
 volumes:
   pg_data:
-  chroma_data:
+  qdrant_data:

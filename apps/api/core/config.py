@@ -1,15 +1,18 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
 
-    DATABASE_URL: str = "postgresql+psycopg://app_user:app_pw@localhost:5433/app_db"
-    JWT_SECRET: str = "change-me-in-production"
-    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 1 week
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
-    QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_API_KEY: str = ""
+    DATABASE_URL: str
+    JWT_SECRET: str
+    JWT_EXPIRE_MINUTES: int
+    CORS_ORIGINS: list[str]
+    QDRANT_URL: str
+    QDRANT_API_KEY: str
 
 
 settings = Settings()

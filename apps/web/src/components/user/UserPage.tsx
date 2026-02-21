@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Pencil } from "lucide-react";
 import type { Book, User, List, RatedBook, ActivityItem } from "@/lib/types";
 import { Separator } from "@/components/ui/separator";
@@ -20,8 +21,9 @@ export type UserPageProps = {
   followersCount?: number;
   onFollow?: () => void;
   onEditProfile?: () => void;
-  onEditFavorites?: () => void;
   onViewAllBooks?: () => void;
+  onCreateList?: () => void;
+  onLogout?: () => void;
 };
 
 export function UserPage({
@@ -35,9 +37,12 @@ export function UserPage({
   followersCount,
   onFollow,
   onEditProfile,
-  onEditFavorites,
   onViewAllBooks,
+  onCreateList,
+  onLogout,
 }: UserPageProps) {
+  const [isEditingFavorites, setIsEditingFavorites] = useState(false);
+
   return (
     <div>
       <ProfileHeader
@@ -47,6 +52,7 @@ export function UserPage({
         followersCount={followersCount}
         onFollow={onFollow}
         onEditProfile={onEditProfile}
+        onLogout={onLogout}
       />
 
       <Separator className="my-6" />
@@ -56,12 +62,22 @@ export function UserPage({
           <div className="flex items-center gap-2 mb-2">
             <h2 className="font-heading text-lg font-semibold">Top 3 Favorites</h2>
             {isOwnProfile && (
-              <Button variant="ghost" size="icon-sm" onClick={onEditFavorites} aria-label="Edit favorites">
+              <Button
+                variant={isEditingFavorites ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={() => setIsEditingFavorites((prev) => !prev)}
+                aria-label="Edit favorites"
+              >
                 <Pencil className="size-3.5" />
               </Button>
             )}
           </div>
-          <FavoriteBooks books={favorites} />
+          <FavoriteBooks
+            books={favorites}
+            username={user.handle}
+            isOwnProfile={isOwnProfile}
+            isEditing={isEditingFavorites}
+          />
         </section>
         <section>
           <h2 className="font-heading text-lg font-semibold mb-2">Ratings</h2>
@@ -90,7 +106,14 @@ export function UserPage({
       <Separator className="my-6" />
 
       <section>
-        <h2 className="font-heading text-lg font-semibold mb-2">Lists</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-heading text-lg font-semibold">Lists</h2>
+          {isOwnProfile && (
+            <Button variant="outline" size="sm" onClick={onCreateList}>
+              New list
+            </Button>
+          )}
+        </div>
         {lists.length > 0 ? (
           <div>
             {lists.map((list, i) => (

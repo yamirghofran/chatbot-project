@@ -11,7 +11,7 @@ import math
 import re
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -294,7 +294,8 @@ class UserCRUD:
 
     @staticmethod
     def get_by_email(session: Session, email: str) -> User | None:
-        stmt = select(User).where(User.email == email)
+        normalized_email = _validate_email(email).lower()
+        stmt = select(User).where(func.lower(User.email) == normalized_email)
         return session.scalar(stmt)
 
     @staticmethod
@@ -317,11 +318,12 @@ class UserCRUD:
         password_hash: str,
         **kwargs,
     ) -> User:
-        email = _validate_email(email)
+        email = _validate_email(email).lower()
         name = _require_non_empty(name, "name")
         username = _require_non_empty(username, "username")
         password_hash = _require_non_empty(password_hash, "password_hash")
-        _check_unique(session, User, User.email, email, "email")
+        if UserCRUD.get_by_email(session, email) is not None:
+            raise ValueError(f"email {email!r} is already taken")
         _check_unique(session, User, User.username, username, "username")
         if "goodreads_id" in kwargs:
             gid = _parse_optional_bigint(kwargs["goodreads_id"])
@@ -345,8 +347,11 @@ class UserCRUD:
         if not user:
             raise ValueError(f"User with id {user_id} not found")
         if "email" in kwargs:
-            kwargs["email"] = _validate_email(kwargs["email"])
-            _check_unique(session, User, User.email, kwargs["email"], "email", exclude_id=user_id)
+            normalized_email = _validate_email(kwargs["email"]).lower()
+            existing = UserCRUD.get_by_email(session, normalized_email)
+            if existing is not None and existing.id != user_id:
+                raise ValueError(f"email {normalized_email!r} is already taken")
+            kwargs["email"] = normalized_email
         if "name" in kwargs:
             kwargs["name"] = _require_non_empty(kwargs["name"], "name")
         if "username" in kwargs:
@@ -809,4 +814,3 @@ class TagCRUD:
 # Compatibility alias for older callsites using RatingCRUD.
 class RatingCRUD(BookRatingCRUD):
     pass
-

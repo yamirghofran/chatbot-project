@@ -7,6 +7,27 @@ from datetime import datetime, timezone
 from bookdb.db.models import Book, BookList, Review, User
 
 
+def _is_goodreads_nophoto_url(url: str | None) -> bool:
+    if not url:
+        return False
+    return "gr-assets.com/assets/nophoto" in url.lower()
+
+
+def _openlibrary_cover_from_isbn(isbn13: str | None) -> str | None:
+    if not isbn13:
+        return None
+    normalized = "".join(ch for ch in isbn13 if ch.isdigit() or ch.upper() == "X")
+    if not normalized:
+        return None
+    return f"https://covers.openlibrary.org/b/isbn/{normalized}-L.jpg"
+
+
+def resolve_cover_url(image_url: str | None, isbn13: str | None) -> str | None:
+    if image_url and not _is_goodreads_nophoto_url(image_url):
+        return image_url
+    return _openlibrary_cover_from_isbn(isbn13) or image_url
+
+
 def relative_time(dt: datetime) -> str:
     now = datetime.now(timezone.utc)
     if dt.tzinfo is None:
@@ -37,19 +58,27 @@ def serialize_user(user: User) -> dict:
     }
 
 
-def serialize_book(book: Book) -> dict:
+def serialize_book(book: Book, engagement: dict | None = None) -> dict:
     author_names = [ba.author.name for ba in book.authors if ba.author]
     tag_names = [bt.tag.name for bt in book.tags if bt.tag]
-    return {
+    data = {
         "id": str(book.id),
         "title": book.title,
         "author": ", ".join(author_names),
-        "coverUrl": book.image_url,
+        "coverUrl": resolve_cover_url(book.image_url, book.isbn13),
         "description": book.description,
         "tags": tag_names,
         "publicationYear": book.publication_year,
         "isbn13": book.isbn13,
     }
+    if engagement is not None:
+        data.update({
+            "averageRating": engagement.get("averageRating"),
+            "ratingCount": int(engagement.get("ratingCount", 0) or 0),
+            "commentCount": int(engagement.get("commentCount", 0) or 0),
+            "shellCount": int(engagement.get("shellCount", 0) or 0),
+        })
+    return data
 
 
 def serialize_list(book_list: BookList) -> dict:

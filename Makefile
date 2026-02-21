@@ -1,4 +1,4 @@
-.PHONY: help install dev db-up db-down db-reset migrate make-migration import-data seed setup chroma-up chroma-down chroma-reset chroma-logs
+.PHONY: help install dev db-up db-down db-reset migrate make-migration import-data seed setup qdrant-up qdrant-down qdrant-reset qdrant-logs
 
 help:
 	@echo "Available commands:"
@@ -10,10 +10,10 @@ help:
 	@echo "  make import-data       - Import parquet datasets into Postgres"
 	@echo "  make seed              - Seed the database"
 	@echo "  make setup             - Bring up DB and migrate"
-	@echo "  make chroma-up         - Start ChromaDB with Docker"
-	@echo "  make chroma-down       - Stop ChromaDB"
-	@echo "  make chroma-reset      - Reset ChromaDB volume"
-	@echo "  make chroma-logs       - View ChromaDB logs"
+	@echo "  make qdrant-up         - Start Qdrant with Docker"
+	@echo "  make qdrant-down       - Stop Qdrant"
+	@echo "  make qdrant-reset      - Reset Qdrant volume"
+	@echo "  make qdrant-logs       - View Qdrant logs"
 
 install:
 	uv sync
@@ -51,16 +51,17 @@ setup:
 	@sleep 3
 	make migrate
 
-chroma-up:
-	docker compose up -d chromadb
+qdrant-up:
+	docker compose up -d qdrant
 
-chroma-down:
-	docker compose stop chromadb
+qdrant-down:
+	docker compose stop qdrant
 
-chroma-reset:
-	docker compose down chromadb
-	docker volume rm bookdb_chroma_data || true
-	docker compose up -d chromadb
+qdrant-reset:
+	docker compose stop qdrant || true
+	docker compose rm -f qdrant || true
+	docker volume rm bookdb_qdrant_data || true
+	docker compose up -d qdrant
 
-chroma-logs:
-	docker compose logs -f chromadb
+qdrant-logs:
+	docker compose logs -f qdrant

@@ -17,7 +17,9 @@ from bookdb.db.models import (
     User,
 )
 
+from ..core.book_engagement import build_book_engagement_map
 from ..core.deps import get_db
+from ..core.favorites import get_or_create_favorites_list, is_favorites_list
 from ..core.serialize import relative_time, serialize_book, serialize_list, serialize_user
 
 router = APIRouter(prefix="/user", tags=["users"])
@@ -63,9 +65,10 @@ def get_user_ratings(
         stmt = stmt.order_by(BookRating.updated_at.desc())
 
     ratings = db.scalars(stmt).all()
+    engagement_by_id = build_book_engagement_map(db, [r.book.id for r in ratings if r.book is not None])
     return [
         {
-            "book": serialize_book(r.book),
+            "book": serialize_book(r.book, engagement=engagement_by_id.get(r.book.id)),
             "rating": r.rating,
             "ratedAt": r.updated_at.date().isoformat() if r.updated_at else None,
         }
@@ -91,7 +94,34 @@ def get_user_lists(username: str, db: Session = Depends(get_db)):
             .selectinload(BookTag.tag),
         )
     ).all()
-    return [serialize_list(lst) for lst in lists]
+    return [serialize_list(lst) for lst in lists if not is_favorites_list(lst)]
+
+
+@router.get("/{username}/favorites")
+def get_user_favorites(
+    username: str,
+    limit: int = Query(3, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_or_404(db, username)
+    favorites, created = get_or_create_favorites_list(db, user.id)
+    if created:
+        db.commit()
+    rows = db.scalars(
+        select(ListBook)
+        .where(ListBook.list_id == favorites.id)
+        .options(
+            selectinload(ListBook.book)
+            .selectinload(Book.authors)
+            .selectinload(BookAuthor.author),
+            selectinload(ListBook.book)
+            .selectinload(Book.tags)
+            .selectinload(BookTag.tag),
+        )
+        .order_by(ListBook.added_at.desc())
+        .limit(limit)
+    ).all()
+    return [serialize_book(row.book) for row in rows if row.book is not None]
 
 
 @router.get("/{username}/activity")

@@ -15,10 +15,16 @@ from bookdb.db.models import (
     User,
 )
 
+from ..core.book_engagement import build_book_engagement_map
 from ..core.deps import get_db, get_optional_user
 from ..core.serialize import relative_time, serialize_book, serialize_user
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
+
+
+def _serialize_books_with_engagement(db: Session, books: list[Book]) -> list[dict]:
+    engagement_by_id = build_book_engagement_map(db, [b.id for b in books])
+    return [serialize_book(b, engagement=engagement_by_id.get(b.id)) for b in books]
 
 
 def _load_books_by_ids(db: Session, book_ids: list[int]) -> list[Book]:
@@ -102,10 +108,10 @@ def get_recommendations(
         if goodreads_ids:
             books = _load_books_by_goodreads_ids(db, goodreads_ids)
             if books:
-                return [serialize_book(b) for b in books]
+                return _serialize_books_with_engagement(db, books)
 
     # Cold start fallback.
-    return [serialize_book(b) for b in _cold_start(db, limit)]
+    return _serialize_books_with_engagement(db, _cold_start(db, limit))
 
 
 @router.get("/staff-picks")
@@ -131,16 +137,22 @@ def get_staff_picks(
             )
             .limit(limit)
         ).all()
-        return [serialize_book(b) for b in books]
-    return [serialize_book(b) for b in _load_books_by_ids(db, book_ids)]
+        return _serialize_books_with_engagement(db, books)
+    return _serialize_books_with_engagement(db, _load_books_by_ids(db, book_ids))
 
 
 @router.get("/activity")
 def get_activity_feed(
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
 ):
-    """Return a global activity feed across all users."""
+    """Return activity from followed users. Returns empty until follow system is implemented."""
+    # No follow system yet — return empty rather than showing strangers' activity.
+    if current_user is None:
+        return []
+    return []
+    # TODO: filter by current_user's follows once follow table exists.
     items = []
 
     # Recent ratings.
