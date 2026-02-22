@@ -73,22 +73,39 @@ export function ReviewList({
       </h2>
 
       {currentUser && !userAlreadyReviewed && (
-        <div className="flex gap-3 mb-6">
-          <Avatar>
-            <AvatarFallback>{getInitials(currentUser.displayName)}</AvatarFallback>
-          </Avatar>
+        <div className="mb-6 flex flex-col gap-5 rounded-xl bg-card p-5 sm:flex-row sm:items-center">
+          <img
+            src="/brand/cartoon-sitting.jpg"
+            alt="Person meditating"
+            className="h-28 w-auto max-w-full rounded-lg object-contain"
+          />
           <div className="flex-1 min-w-0">
-            <textarea
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-              placeholder="Write a review..."
-              rows={3}
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-            />
-            <div className="flex justify-end mt-2">
-              <Button size="sm" onClick={handlePostReview} disabled={!reviewText.trim()}>
-                Post
-              </Button>
+            <h3 className="font-heading text-lg font-semibold text-foreground mb-1">
+              Share your thoughts,{" "}
+              {currentUser.displayName?.split(" ")[0] ?? "reader"}.
+            </h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              Your review helps others find their next great read.
+            </p>
+            <div className="flex gap-3">
+              <div className="flex-1 min-w-0">
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  placeholder="Write a review..."
+                  rows={3}
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    size="sm"
+                    onClick={handlePostReview}
+                    disabled={!reviewText.trim()}
+                  >
+                    Post
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -96,7 +113,8 @@ export function ReviewList({
 
       {currentUser && userAlreadyReviewed && (
         <p className="text-xs text-muted-foreground mb-6">
-          You've already reviewed this book. Delete your review to write a new one.
+          You've already reviewed this book. Delete your review to write a new
+          one.
         </p>
       )}
 
