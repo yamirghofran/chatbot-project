@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import duckdb
+import threading
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,19 +17,22 @@ from ..core.deps import get_db, get_optional_user
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
+_bpr_lock = threading.Lock()
+
 
 def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) -> list[int]:
     """Query BPR parquet for top-N recommended goodreads book IDs for a user."""
-    rows = duckdb.execute(
-        """
-        SELECT item_id
-        FROM parquet_scan(?)
-        WHERE user_id = ?
-        ORDER BY prediction DESC
-        LIMIT ?
-        """,
-        [parquet_path, goodreads_user_id, limit],
-    ).fetchall()
+    with _bpr_lock:
+        rows = duckdb.execute(
+            """
+            SELECT item_id
+            FROM parquet_scan(?)
+            WHERE user_id = ?
+            ORDER BY prediction DESC
+            LIMIT ?
+            """,
+            [parquet_path, goodreads_user_id, limit],
+        ).fetchall()
     return [row[0] for row in rows]
 
 

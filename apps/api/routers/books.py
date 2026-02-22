@@ -134,6 +134,7 @@ def _run_chatbot_search_pipeline(
     try:
         groq_client = create_groq_client()
         rewritten_description, rewritten_review = asyncio.run(rewrite_query(groq_client, query))
+        await groq_client.close()
     except Exception as e:
         print(f"Query rewrite failed: {e}")
         return None, []
@@ -220,8 +221,10 @@ def _run_chatbot_search_pipeline(
 
     try:
         llm_response = asyncio.run(generate_response(groq_client, query, llm_books, reviews))
+        await groq_client.close()
     except Exception as e:
         print(f"Chatbot response generation failed: {e}")
+        await groq_client.close()
         llm_response = {
             "response": "",
             "referenced_book_ids": [],
@@ -555,7 +558,10 @@ def get_related_books(
     # Fallback: popular books.
     fallback = db.scalars(
         select(Book)
+        .outerjoin(BookRating, Book.id == BookRating.book_id)
         .where(Book.id != book_id)
+        .group_by(Book.id)
+        .order_by(func.count(BookRating.user_id).desc(), Book.id.asc())
         .options(*BOOK_LOAD_OPTIONS)
         .limit(limit)
     ).all()
