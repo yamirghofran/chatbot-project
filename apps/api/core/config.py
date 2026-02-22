@@ -1,6 +1,7 @@
 import json
+from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,4 +67,14 @@ class Settings(BaseSettings):
         return value
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+class _LazySettings:
+    def __getattr__(self, item: str) -> Any:
+        return getattr(get_settings(), item)
+
+
+settings = cast(Settings, _LazySettings())
