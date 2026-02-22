@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.9, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -807,7 +807,7 @@ dependencies = [
     { name = "dotenv" },
     { name = "duckdb" },
     { name = "fastapi", version = "0.128.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "fastapi", version = "0.129.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "fastapi", version = "0.130.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "fsspec", version = "2025.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "fsspec", version = "2025.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "groq" },
@@ -1988,7 +1988,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.129.2"
+version = "0.130.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -2003,9 +2003,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version >= '3.10'" },
     { name = "typing-inspection", marker = "python_full_version >= '3.10'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/cc/1b0d90ed759ff8c9dbc4800de7475d4e9256a81b97b45bd05a1affcb350a/fastapi-0.129.2.tar.gz", hash = "sha256:e2b3637a2b47856e704dbd9a3a09393f6df48e8b9cb6c7a3e26ba44d2053f9ab", size = 368211, upload-time = "2026-02-21T17:25:49.198Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/4f/13e4607b0444109ab333b1d3e691f21950ee0f08fef5f08b41f6e4911f1a/fastapi-0.130.0.tar.gz", hash = "sha256:367142b4ae02d26091b5a0ec7f2d3e1e57e5583bb50c34066dab939cd697176d", size = 368898, upload-time = "2026-02-22T16:20:00.16Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/d0/a89a640308016c7fff8d2a47b86cc03ee7cca780b5079d0b69f466f9e1a9/fastapi-0.129.2-py3-none-any.whl", hash = "sha256:e21d9f6e8db376655187905ad0145edd6f6a4e5f2bff241c4efb8a0bffd6a540", size = 103227, upload-time = "2026-02-21T17:25:47.745Z" },
+    { url = "https://files.pythonhosted.org/packages/95/5a/cc128be583ab3b899a5e863e86713d93155e0914a979c4a770de0ba06a4f/fastapi-0.130.0-py3-none-any.whl", hash = "sha256:e953151592638d18270d435c5ac9e90735531db2e3abf4b42e95a1c3624df511", size = 103579, upload-time = "2026-02-22T16:20:01.834Z" },
 ]
 
 [[package]]
@@ -4355,7 +4355,7 @@ dependencies = [
     { name = "click", version = "8.3.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "cloudpickle", marker = "python_full_version >= '3.10'" },
     { name = "databricks-sdk", marker = "python_full_version >= '3.10'" },
-    { name = "fastapi", version = "0.129.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "fastapi", version = "0.130.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "gitpython", marker = "python_full_version >= '3.10'" },
     { name = "importlib-metadata", marker = "python_full_version >= '3.10'" },
     { name = "opentelemetry-api", marker = "python_full_version >= '3.10'" },
