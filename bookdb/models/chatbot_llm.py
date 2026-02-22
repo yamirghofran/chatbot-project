@@ -1,7 +1,8 @@
-from groq import AsyncGroq
+from groq import AsyncGroq, Groq
 import os
 import asyncio
 import json
+import time
 from typing import Any, Optional
 
 # QUERY REWRITING TO BOOK DESCRIPTIONS AND REVIEWS
@@ -134,6 +135,36 @@ def create_groq_client(api_key: Optional[str] = None) -> AsyncGroq:
     return AsyncGroq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
 
 
+def create_groq_client_sync(api_key: Optional[str] = None) -> Groq:
+    return Groq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
+
+
+def _create_structured_completion_with_retries_sync(
+    client: Groq,
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_completion_tokens: int,
+    response_format: dict[str, Any],
+):
+    retries = max(0, _STRUCTURED_OUTPUT_RETRIES)
+    for attempt in range(retries + 1):
+        try:
+            return client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_completion_tokens=max_completion_tokens,
+                stream=False,
+                response_format=response_format,
+            )
+        except Exception:
+            if attempt == retries:
+                raise
+            time.sleep(0.2 * (attempt + 1))
+
+
 async def _rewrite_description(client: AsyncGroq, query: str) -> str:
     response_format = _json_schema_with_strict_mode(
         name="book_description",
@@ -196,6 +227,69 @@ async def rewrite_query(client: AsyncGroq, query: str) -> tuple[str, str]:
         _rewrite_description(client, query),
         _rewrite_review(client, query),
     )
+    return description, review
+
+
+def _rewrite_description_sync(client: Groq, query: str) -> str:
+    response_format = _json_schema_with_strict_mode(
+        name="book_description",
+        model=DEFAULT_QUERY_REWRITER_MODEL,
+        schema=_BOOK_DESCRIPTION_SCHEMA["json_schema"]["schema"],
+    )
+    response = _create_structured_completion_with_retries_sync(
+        client,
+        model=DEFAULT_QUERY_REWRITER_MODEL,
+        messages=[
+            {"role": "system", "content": BOOK_DESCRIPTION_PROMPT},
+            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+        ],
+        temperature=1,
+        max_completion_tokens=int(os.environ.get("MAX_DESCRIPTION_TOKENS", 1024)),
+        response_format=response_format,
+    )
+    data = _parse_structured_content(response, label="description")
+    if data is None:
+        return ""
+    title = data.get("title")
+    author = data.get("author")
+    shelves = data.get("shelves")
+    description = data.get("description")
+    if not all(isinstance(value, str) for value in [title, author, shelves, description]):
+        print("Invalid field types in description response")
+        return ""
+    return f"TITLE: {title}\nAUTHOR: {author}\nSHELVES: {shelves}\nDESCRIPTION: {description}\n"
+
+
+def _rewrite_review_sync(client: Groq, query: str) -> str:
+    response_format = _json_schema_with_strict_mode(
+        name="book_review",
+        model=DEFAULT_QUERY_REWRITER_MODEL,
+        schema=_BOOK_REVIEW_SCHEMA["json_schema"]["schema"],
+    )
+    response = _create_structured_completion_with_retries_sync(
+        client,
+        model=DEFAULT_QUERY_REWRITER_MODEL,
+        messages=[
+            {"role": "system", "content": BOOK_REVIEW_PROMPT},
+            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+        ],
+        temperature=1,
+        max_completion_tokens=int(os.environ.get("MAX_REVIEW_TOKENS", 150)),
+        response_format=response_format,
+    )
+    data = _parse_structured_content(response, label="review")
+    if data is None:
+        return ""
+    review = data.get("review")
+    if not isinstance(review, str):
+        print("Invalid field types in review response")
+        return ""
+    return review
+
+
+def rewrite_query_sync(client: Groq, query: str) -> tuple[str, str]:
+    description = _rewrite_description_sync(client, query)
+    review = _rewrite_review_sync(client, query)
     return description, review
 
 # ANSWERING USER QUERIES WITH A CHATBOT LLM
@@ -268,6 +362,87 @@ async def generate_response(
         schema=_CHATBOT_RESPONSE_SCHEMA["json_schema"]["schema"],
     )
     response = await _create_structured_completion_with_retries(
+        client,
+        model=DEFAULT_CHATBOT_MODEL,
+        messages=[
+            {"role": "system", "content": _CHATBOT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=float(os.environ.get("CHATBOT_TEMPERATURE", 0.7)),
+        max_completion_tokens=int(os.environ.get("MAX_CHATBOT_TOKENS", 1024)),
+        response_format=response_format,
+    )
+    data = _parse_structured_content(response, label="chatbot")
+    if data is None:
+        return {
+            "response": "An error occurred while generating the response.",
+            "referenced_book_ids": [],
+            "referenced_review_ids": [],
+        }
+
+    response_text = data.get("response")
+    referenced_book_ids = data.get("referenced_book_ids")
+    referenced_review_ids = data.get("referenced_review_ids")
+    if (
+        not isinstance(response_text, str)
+        or not isinstance(referenced_book_ids, list)
+        or not isinstance(referenced_review_ids, list)
+    ):
+        print("Invalid field types in chatbot response")
+        return {
+            "response": "An error occurred while generating the response.",
+            "referenced_book_ids": [],
+            "referenced_review_ids": [],
+        }
+
+    normalized_book_ids: list[int] = []
+    for value in referenced_book_ids:
+        try:
+            normalized_book_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    normalized_review_ids: list[int] = []
+    for value in referenced_review_ids:
+        try:
+            normalized_review_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    return {
+        "response": response_text,
+        "referenced_book_ids": normalized_book_ids,
+        "referenced_review_ids": normalized_review_ids,
+    }
+
+
+def generate_response_sync(
+    client: Groq,
+    query: str,
+    books: list[dict],    # each: {"book_id": int, "description": str}
+    reviews: list[dict],  # each: {"review_id": int, "book_title": str, "review": str}
+) -> dict[str, Any]:
+    """
+    Generate a user-friendly response grounded in the retrieved books and reviews.
+    """
+    books_text = "\n\n".join(
+        f"[book_id: {b['book_id']}]\n{b['description']}" for b in books
+    )
+    reviews_text = "\n\n".join(
+        f"[review_id: {r['review_id']}] (book: \"{r['book_title']}\")\n{r['review']}"
+        for r in reviews
+    )
+    user_message = (
+        f"### USER QUERY ###\n{query}\n### END USER QUERY ###\n\n"
+        f"### RELEVANT BOOKS ###\n{books_text}\n### END RELEVANT BOOKS ###\n\n"
+        f"### RELEVANT REVIEWS ###\n{reviews_text}\n### END RELEVANT REVIEWS ###"
+    )
+
+    response_format = _json_schema_with_strict_mode(
+        name="chatbot_response",
+        model=DEFAULT_CHATBOT_MODEL,
+        schema=_CHATBOT_RESPONSE_SCHEMA["json_schema"]["schema"],
+    )
+    response = _create_structured_completion_with_retries_sync(
         client,
         model=DEFAULT_CHATBOT_MODEL,
         messages=[

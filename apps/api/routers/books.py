@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import math
 import threading
 from typing import Any
@@ -13,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from bookdb.db.crud import ReviewCRUD
 from bookdb.db.models import Author, Book, BookAuthor, BookRating, Review, ReviewComment, ReviewLike, User
-from bookdb.models.chatbot_llm import create_groq_client, generate_response, rewrite_query
+from bookdb.models.chatbot_llm import create_groq_client_sync, generate_response_sync, rewrite_query_sync
 
 from ..core.book_engagement import build_book_engagement_map
 from ..core.book_metrics import get_metrics_for_goodreads_ids
@@ -132,9 +131,8 @@ def _run_chatbot_search_pipeline(
         return None, []
 
     try:
-        groq_client = create_groq_client()
-        rewritten_description, rewritten_review = asyncio.run(rewrite_query(groq_client, query))
-        await groq_client.close()
+        groq_client = create_groq_client_sync()
+        rewritten_description, rewritten_review = rewrite_query_sync(groq_client, query)
     except Exception as e:
         print(f"Query rewrite failed: {e}")
         return None, []
@@ -220,11 +218,9 @@ def _run_chatbot_search_pipeline(
         ]
 
     try:
-        llm_response = asyncio.run(generate_response(groq_client, query, llm_books, reviews))
-        await groq_client.close()
+        llm_response = generate_response_sync(groq_client, query, llm_books, reviews)
     except Exception as e:
         print(f"Chatbot response generation failed: {e}")
-        await groq_client.close()
         llm_response = {
             "response": "",
             "referenced_book_ids": [],
