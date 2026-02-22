@@ -61,7 +61,6 @@ dependencies = [
 [project.optional-dependencies]
 unsloth = [
     "unsloth>=2026.1.1; platform_system == 'Linux' and python_version >= '3.9' and python_version < '3.14'",
-    "chromadb>=0.4.0",
     "httpx>=0.24.0",
 ]
 
