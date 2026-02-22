@@ -97,7 +97,9 @@ def health_check():
 def _get_cli_arg(argv: list[str], flag: str) -> str | None:
     for i, arg in enumerate(argv):
         if arg == flag and i + 1 < len(argv):
-            return argv[i + 1]
+            next_arg = argv[i + 1]
+            if not next_arg.startswith("-"):
+                return next_arg
         if arg.startswith(f"{flag}="):
             return arg.split("=", 1)[1]
     return None
