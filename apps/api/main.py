@@ -2,11 +2,15 @@
 
 Run with:
     uvicorn apps.api.main:app --reload
+
+Production-friendly entrypoint (uses PORT env fallback):
+    python -m apps.api.main
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +45,7 @@ async def startup_event():
     try:
         qdrant = get_qdrant_client(
             settings.QDRANT_URL,
+            settings.QDRANT_PORT,
             settings.QDRANT_API_KEY,
             timeout_seconds=settings.QDRANT_TIMEOUT_SECONDS,
         )
@@ -87,3 +92,43 @@ async def startup_event():
 @app.get("/")
 def health_check():
     return {"status": "ok", "service": "BookDB API"}
+
+
+def _get_cli_arg(argv: list[str], flag: str) -> str | None:
+    for i, arg in enumerate(argv):
+        if arg == flag and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith(f"{flag}="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def _resolve_port(argv: list[str]) -> int:
+    cli_port = _get_cli_arg(argv, "--port")
+    if cli_port is not None:
+        return int(cli_port)
+
+    env_port = os.getenv("PORT")
+    if env_port:
+        return int(env_port)
+
+    return 8000
+
+
+def _resolve_host(argv: list[str]) -> str:
+    cli_host = _get_cli_arg(argv, "--host")
+    if cli_host is not None:
+        return cli_host
+    return os.getenv("HOST", "0.0.0.0")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    args = sys.argv[1:]
+    uvicorn.run(
+        "apps.api.main:app",
+        host=_resolve_host(args),
+        port=_resolve_port(args),
+        reload="--reload" in args,
+    )

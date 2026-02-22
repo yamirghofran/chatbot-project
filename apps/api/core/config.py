@@ -54,7 +54,8 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     JWT_EXPIRE_MINUTES: int
     CORS_ORIGINS: list[str]
-    QDRANT_URL: str
+    QDRANT_URL: str | None = None
+    QDRANT_PORT: int | None = None
     QDRANT_API_KEY: str | None = None
     QDRANT_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
     EMBEDDING_SERVICE_URL: str | None = None
