@@ -36,6 +36,8 @@ app.include_router(discovery.router)
 
 @app.on_event("startup")
 async def startup_event():
+    print(f"CORS origins: {settings.CORS_ORIGINS}")
+
     try:
         qdrant = get_qdrant_client(
             settings.QDRANT_URL,
