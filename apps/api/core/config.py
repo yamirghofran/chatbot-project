@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+from typing import Any
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +27,36 @@ class Settings(BaseSettings):
     CHATBOT_MAX_BOOKS: int = Field(default=6, ge=1, le=20)
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
     BOOK_METRICS_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                raise ValueError("CORS_ORIGINS cannot be empty.")
+            try:
+                parsed = json.loads(raw) if raw.startswith("[") else raw.split(",")
+            except json.JSONDecodeError:
+                parsed = raw.split(",")
+            value = parsed
+
+        if not isinstance(value, list):
+            raise ValueError("CORS_ORIGINS must be a list or comma-separated string.")
+
+        normalized: list[str] = []
+        for origin in value:
+            if not isinstance(origin, str):
+                raise ValueError("CORS_ORIGINS entries must be strings.")
+            cleaned = origin.strip().strip('"').strip("'").rstrip("/")
+            if cleaned:
+                normalized.append(cleaned)
+
+        if not normalized:
+            raise ValueError("CORS_ORIGINS must include at least one origin.")
+
+        # Keep order while removing duplicates.
+        return list(dict.fromkeys(normalized))
 
     @field_validator("JWT_SECRET")
     @classmethod
