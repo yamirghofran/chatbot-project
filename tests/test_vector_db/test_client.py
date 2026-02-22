@@ -54,6 +54,7 @@ class TestQdrantConfig:
         assert config.mode == "server"
         assert config.host == "localhost"
         assert config.port == 6333
+        assert config.url is None
         assert config.path == "./qdrant_data"
         assert config.timeout == 10.0
         assert config.vector_size == 768
@@ -97,6 +98,49 @@ class TestQdrantConfig:
             assert config.books_hnsw_on_disk is False
             assert config.books_hnsw_m == 24
 
+    def test_config_from_env_profile_connection_override(self):
+        with patch.dict(
+            os.environ,
+            {
+                "QDRANT_ENV": "prod",
+                "QDRANT_MODE": "server",
+                "QDRANT_URL": "",
+                "QDRANT_API_KEY": "fallback-key",
+                "QDRANT_PROD_URL": "https://qdrant-production.example.up.railway.app",
+                "QDRANT_PROD_API_KEY": "prod-key",
+            },
+        ):
+            config = QdrantConfig.from_env()
+            assert config.environment == "prod"
+            assert config.mode == "server"
+            assert config.url == "https://qdrant-production.example.up.railway.app"
+            assert config.api_key == "prod-key"
+
+    def test_config_from_env_profile_url_without_scheme(self):
+        with patch.dict(
+            os.environ,
+            {
+                "QDRANT_ENV": "prod",
+                "QDRANT_PROD_MODE": "server",
+                "QDRANT_PROD_URL": "qdrant-production.example.up.railway.app",
+                "QDRANT_PROD_API_KEY": "prod-key",
+            },
+        ):
+            config = QdrantConfig.from_env()
+            assert config.url == "https://qdrant-production.example.up.railway.app"
+
+    def test_config_from_env_local_url_without_scheme(self):
+        with patch.dict(
+            os.environ,
+            {
+                "QDRANT_ENV": "dev",
+                "QDRANT_DEV_MODE": "server",
+                "QDRANT_DEV_URL": "localhost:6333",
+            },
+        ):
+            config = QdrantConfig.from_env()
+            assert config.url == "http://localhost:6333"
+
     def test_config_from_env_invalid_mode(self):
         with patch.dict(os.environ, {"QDRANT_MODE": "invalid"}):
             with pytest.raises(ValueError, match="Invalid QDRANT_MODE"):
@@ -115,6 +159,10 @@ class TestQdrantConfig:
         config = QdrantConfig(mode="server", host="localhost", port=70000)
         with pytest.raises(ValueError, match="Invalid port"):
             config.validate()
+
+    def test_config_validate_server_mode_with_url(self):
+        config = QdrantConfig(mode="server", url="https://qdrant.example", host="", port=0)
+        config.validate()
 
     def test_config_validate_local_mode(self):
         config = QdrantConfig(mode="local", path="./data")
@@ -308,5 +356,21 @@ class TestCreateClientHelpers:
             port=6333,
             api_key="k",
             https=True,
+            timeout=3.0,
+        )
+
+    @patch("bookdb.vector_db.client.QdrantClient")
+    def test_create_server_client_with_url(self, mock_qdrant_client):
+        config = QdrantConfig(
+            mode="server",
+            url="https://qdrant.example.up.railway.app",
+            api_key="k",
+            timeout=3.0,
+        )
+        _create_server_client(config)
+        mock_qdrant_client.assert_called_once_with(
+            url="https://qdrant.example.up.railway.app",
+            port=None,
+            api_key="k",
             timeout=3.0,
         )

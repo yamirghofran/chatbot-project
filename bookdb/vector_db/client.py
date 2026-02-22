@@ -64,6 +64,16 @@ def _create_local_client(config: QdrantConfig) -> QdrantClient:
 
 def _create_server_client(config: QdrantConfig) -> QdrantClient:
     """Create server-mode Qdrant client."""
+    if config.url:
+        return QdrantClient(
+            url=config.url,
+            # Important: qdrant-client defaults to port=6333 even with URL set.
+            # For hosted endpoints (e.g., Railway) we must let the URL decide.
+            port=None,
+            api_key=config.api_key,
+            timeout=config.timeout,
+        )
+
     return QdrantClient(
         host=config.host,
         port=config.port,
