@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { ListPlus, MessageCircle, Star } from "lucide-react";
 import type { Book, List } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -38,21 +39,6 @@ const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
-function deriveEngagement(book: Book) {
-  const base = Number.parseInt(book.id, 10) || book.title.length;
-  const averageRating = 3.6 + (base % 14) / 10;
-  const ratingCount = 140 + base * 37;
-  const commentCount = 42 + base * 11;
-  const shellCount = 24 + base * 5;
-
-  return {
-    averageRating,
-    ratingCount,
-    commentCount,
-    shellCount,
-  };
-}
-
 export function BookRow({
   book,
   variant = "default",
@@ -69,16 +55,26 @@ export function BookRow({
   onCreateList,
   isShelled = false,
 }: BookRowProps) {
+  const navigate = useNavigate();
   const isCompact = variant === "compact";
   const isDiscoveryTagVariant = tagVariant === "discovery";
   const amazonHref = `https://www.amazon.com/s?k=${encodeURIComponent(`${book.title} ${book.author} book`)}`;
-  const engagement = deriveEngagement(book);
+  const averageRatingText =
+    typeof book.averageRating === "number"
+      ? book.averageRating.toFixed(1)
+      : "—";
+  const ratingCount = book.ratingCount ?? 0;
+  const commentCount = book.commentCount ?? 0;
+  const shellCount = book.shellCount ?? 0;
   const shouldShowDescriptionPreview =
     !isCompact &&
     !!book.description &&
     (descriptionMode === "preview" || showDescriptionPreview);
   const contentRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const goToBook = () => {
+    navigate({ to: "/books/$bookId", params: { bookId: book.id } });
+  };
 
   useLayoutEffect(() => {
     if (isCompact) return;
@@ -118,10 +114,19 @@ export function BookRow({
         "flex cursor-pointer gap-4 py-3",
         isCompact ? "items-center gap-3 py-2" : "items-start",
       )}
+      role="link"
+      tabIndex={0}
+      onClick={goToBook}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          goToBook();
+        }
+      }}
     >
       <img
         ref={imageRef}
-        src={book.coverUrl}
+        src={book.coverUrl ?? "/brand/book-placeholder.png"}
         alt={`Cover of ${book.title}`}
         className={cn(
           "rounded-[12px] supports-[corner-shape:squircle]:rounded-[15px] supports-[corner-shape:squircle]:[corner-shape:squircle] object-cover shrink-0",
@@ -133,7 +138,7 @@ export function BookRow({
         <div className="flex items-start justify-between gap-2">
           <p
             className={cn(
-              "min-w-0 flex-1 font-medium text-foreground truncate",
+              "min-w-0 flex-1 font-medium text-foreground truncate ",
               isCompact ? "text-sm" : "text-base",
             )}
           >
@@ -142,7 +147,11 @@ export function BookRow({
 
           {showActions && (
             <TooltipProvider>
-              <div className="flex shrink-0 items-center gap-2">
+              <div
+                className="flex shrink-0 items-center gap-2"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
                 {primaryAction === "shell" ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -252,16 +261,15 @@ export function BookRow({
           <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground/85">
             <span className="inline-flex items-center gap-1">
               <Star className="size-3" />
-              {engagement.averageRating.toFixed(1)} (
-              {compactNumber.format(engagement.ratingCount)})
+              {averageRatingText} ({compactNumber.format(ratingCount)})
             </span>
             <span className="inline-flex items-center gap-1">
               <MessageCircle className="size-3" />
-              {compactNumber.format(engagement.commentCount)}
+              {compactNumber.format(commentCount)}
             </span>
             <span className="inline-flex items-center gap-1">
               <TurtleShellIcon className="size-4" />
-              {compactNumber.format(engagement.shellCount)}
+              {compactNumber.format(shellCount)}
             </span>
           </div>
         )}

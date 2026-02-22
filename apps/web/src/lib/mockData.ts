@@ -1,4 +1,12 @@
-import type { Book, User, List, ActivityItem, RatedBook, BookStats, Review } from "./types";
+import type {
+  Book,
+  User,
+  List,
+  ActivityItem,
+  RatedBook,
+  BookStats,
+  Review,
+} from "./types";
 
 export const mockBooks: Book[] = [
   {
@@ -100,15 +108,6 @@ export const mockBooks: Book[] = [
       "A neurosurgeon diagnosed with terminal lung cancer at thirty-six confronts the question of what makes life meaningful. Written in the final months of his life, it is a meditation on mortality, medicine, and literature.",
     tags: ["Nonfiction", "Memoir"],
   },
-  {
-    id: "12",
-    title: "The Vegetarian",
-    author: "Han Kang",
-    coverUrl: "https://covers.openlibrary.org/b/isbn/9781101906101-L.jpg",
-    description:
-      "After a disturbing dream, a quiet South Korean woman refuses to eat meat. Her seemingly minor act of rebellion spirals outward, exposing the violence that underpins her family and society. Told in three interconnected novellas.",
-    tags: ["Fiction", "Literary"],
-  },
 ];
 
 export const mockUser: User = {
@@ -143,7 +142,8 @@ export const mockLists: List[] = [
   {
     id: "l1",
     name: "Shelled in 2025",
-    description: "The books that completely took over my year. Each one left a mark.",
+    description:
+      "The books that completely took over my year. Each one left a mark.",
     owner: mockUser,
     books: mockBooks.slice(0, 5),
   },
@@ -158,7 +158,13 @@ export const mockLists: List[] = [
     id: "l3",
     name: "Best Nonfiction",
     owner: mockUser,
-    books: [mockBooks[1], mockBooks[4], mockBooks[6], mockBooks[8], mockBooks[10]],
+    books: [
+      mockBooks[1],
+      mockBooks[4],
+      mockBooks[6],
+      mockBooks[8],
+      mockBooks[10],
+    ],
   },
 ];
 
@@ -192,7 +198,7 @@ export const mockManyLists: List[] = [
     id: "l8",
     name: "Read Again Someday",
     owner: mockUser,
-    books: [mockBooks[2], mockBooks[3], mockBooks[11]],
+    books: [mockBooks[2], mockBooks[3], mockBooks[8]],
   },
   {
     id: "l9",
@@ -233,7 +239,7 @@ export const mockActivity: ActivityItem[] = [
     id: "a2",
     user: mockFriends[1],
     type: "shell_add",
-    book: mockBooks[11],
+    book: mockBooks[6],
     timestamp: "5h ago",
   },
   {
@@ -273,14 +279,10 @@ export const mockRatedBooks: RatedBook[] = [
   { book: mockBooks[8], rating: 3, ratedAt: "2025-10-08" },
   { book: mockBooks[9], rating: 4, ratedAt: "2025-09-25" },
   { book: mockBooks[10], rating: 2, ratedAt: "2025-09-18" },
-  { book: mockBooks[11], rating: 4, ratedAt: "2025-09-10" },
+  { book: mockBooks[10], rating: 4, ratedAt: "2025-09-10" },
 ];
 
-export const mockFavorites: Book[] = [
-  mockBooks[0],
-  mockBooks[2],
-  mockBooks[5],
-];
+export const mockFavorites: Book[] = [mockBooks[0], mockBooks[2], mockBooks[5]];
 
 export const mockUserActivity: ActivityItem[] = [
   {
@@ -329,12 +331,13 @@ export const mockStaffPicks: Book[] = [
   mockBooks[5],
   mockBooks[7],
   mockBooks[9],
-  mockBooks[11],
+  mockBooks[10],
 ];
 
 export const mockBookStats: BookStats = {
   averageRating: 4.3,
   ratingCount: 128,
+  commentCount: 21,
   shellCount: 47,
 };
 

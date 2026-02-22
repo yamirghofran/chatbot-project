@@ -1,0 +1,93 @@
+import { useQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import { SearchPage } from "@/components/search/SearchPage";
+import { Spinner } from "@/components/ui/Spinner";
+import * as api from "@/lib/api";
+import type { Book } from "@/lib/types";
+
+type SearchParams = {
+  q?: string;
+};
+
+export const Route = createFileRoute("/search")({
+  validateSearch: (search: Record<string, unknown>): SearchParams => ({
+    q: typeof search.q === "string" ? search.q : "",
+  }),
+  component: SearchRoute,
+});
+
+function dedupeBooksById(books: Book[]): Book[] {
+  const seen = new Set<string>();
+  const deduped: Book[] = [];
+
+  for (const book of books) {
+    if (seen.has(book.id)) {
+      continue;
+    }
+    seen.add(book.id);
+    deduped.push(book);
+  }
+
+  return deduped;
+}
+
+function SearchRoute() {
+  const { q = "" } = Route.useSearch();
+  const query = q.trim();
+
+  const searchQuery = useQuery({
+    queryKey: ["bookSearch", query],
+    queryFn: () => api.searchBooks(query, 15),
+    enabled: query.length > 0,
+  });
+
+  if (!query) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Type a title or author in search.
+      </p>
+    );
+  }
+
+  if (searchQuery.isPending) {
+    return (
+      <div className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Spinner />
+          Searching...
+        </div>
+      </div>
+    );
+  }
+
+  if (searchQuery.isError) {
+    return (
+      <p className="text-sm text-destructive">Could not load search results.</p>
+    );
+  }
+
+  const result = searchQuery.data ?? {
+    directHit: null,
+    keywordResults: [],
+    aiNarrative: undefined,
+    aiBooks: [],
+  };
+
+  const aiBooks = result.aiBooks ?? [];
+  const aiTopBooks = aiBooks.slice(0, 4);
+  const aiOverflowBooks = aiBooks.slice(4);
+  const keywordResults = dedupeBooksById([
+    ...aiOverflowBooks,
+    ...(result.keywordResults ?? []),
+  ]);
+
+  return (
+    <SearchPage
+      query={query}
+      directHit={result.directHit ?? undefined}
+      keywordResults={keywordResults}
+      aiNarrative={result.aiNarrative ?? undefined}
+      aiBooks={aiTopBooks}
+    />
+  );
+}

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { List } from "@/lib/types";
 
 export type ListRowProps = {
@@ -9,20 +10,24 @@ export function ListRow({ list }: ListRowProps) {
 
   return (
     <div className="flex items-center gap-4 py-3">
-      <div className="flex -space-x-2 shrink-0">
+      <div className="flex -space-x-4 shrink-0">
         {previewBooks.map((book) => (
           <img
             key={book.id}
-            src={book.coverUrl}
+            src={book.coverUrl ?? "/brand/book-placeholder.png"}
             alt={`Cover of ${book.title}`}
             className="h-10 w-7 rounded-sm object-cover border-2 border-background"
           />
         ))}
       </div>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
+        <Link
+          to="/lists/$listId"
+          params={{ listId: list.id }}
+          className="text-sm font-medium text-foreground truncate hover:underline"
+        >
           {list.name}
-        </p>
+        </Link>
         <p className="text-xs text-muted-foreground truncate">
           {list.books.length} books &middot; {list.owner.displayName}
         </p>

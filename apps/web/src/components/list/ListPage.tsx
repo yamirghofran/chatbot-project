@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { GripVertical, X, Pencil, Check, List as ListIcon, LayoutGrid, Trash2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  GripVertical,
+  X,
+  Pencil,
+  Check,
+  List as ListIcon,
+  LayoutGrid,
+  Trash2,
+} from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -34,6 +43,7 @@ export type ListPageProps = {
   list: List;
   isOwner?: boolean;
   defaultViewMode?: ViewMode;
+  initialIsEditing?: boolean;
   onReorder?: (bookIds: string[]) => void;
   onRemoveBook?: (bookId: string) => void;
   onAddBook?: (book: Book) => void;
@@ -100,19 +110,25 @@ export function ListPage({
   list,
   isOwner = false,
   defaultViewMode = "list",
+  initialIsEditing = false,
   onReorder,
   onRemoveBook,
   onUpdateName,
   onUpdateDescription,
   onDeleteList,
 }: ListPageProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(initialIsEditing);
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const [editName, setEditName] = useState(list.name);
   const [editDescription, setEditDescription] = useState(
     list.description ?? "",
   );
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const navigate = useNavigate();
+
+  const goToBook = (bookId: string) => {
+    navigate({ to: "/books/$bookId", params: { bookId } });
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -293,9 +309,21 @@ export function ListPage({
       ) : viewMode === "grid" ? (
         <div className="grid grid-cols-3 gap-4">
           {list.books.map((book) => (
-            <div key={book.id} className="min-w-0">
+            <div
+              key={book.id}
+              className="min-w-0 cursor-pointer"
+              role="link"
+              tabIndex={0}
+              onClick={() => goToBook(book.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  goToBook(book.id);
+                }
+              }}
+            >
               <img
-                src={book.coverUrl}
+                src={book.coverUrl ?? "/brand/book-placeholder.png"}
                 alt={`Cover of ${book.title}`}
                 className="w-full aspect-[2/3] rounded-md object-cover"
               />
@@ -311,12 +339,12 @@ export function ListPage({
       ) : (
         <div>
           {list.books.map((book, i) => (
-              <div key={book.id}>
-                {i > 0 && <Separator />}
-                <ListBookRow book={book} />
-              </div>
-            ))}
-          </div>
+            <div key={book.id}>
+              {i > 0 && <Separator />}
+              <ListBookRow book={book} />
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Add book stub (edit mode only) */}
