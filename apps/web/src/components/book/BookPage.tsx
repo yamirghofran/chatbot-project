@@ -16,8 +16,8 @@ import { TurtleShellIcon } from "@/components/icons/TurtleShellIcon";
 import { AddToListMenu } from "@/components/list/AddToListMenu";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { BookCard } from "./BookCard";
 import { BookHero } from "./BookHero";
-import { BookRow } from "./BookRow";
 import { FriendActivity } from "./FriendActivity";
 import { ReviewList } from "./ReviewList";
 
@@ -79,7 +79,7 @@ export function BookPage({
   const amazonHref = `https://www.amazon.com/s?k=${encodeURIComponent(`${book.title} ${book.author} book`)}`;
 
   return (
-    <div className="grid grid-cols-[1fr_4fr] gap-8">
+    <div className="grid grid-cols-[1.1fr_4fr] gap-8">
       <div className="sticky top-28 lg:top-24 self-start">
         <img
           src={book.coverUrl ?? "/brand/book-placeholder.png"}
@@ -96,7 +96,7 @@ export function BookPage({
             />
           </div>
 
-          <div className="flex w-full gap-2">
+          <div className="flex w-full gap-2 px-2">
             <Button
               type="button"
               variant={isShelled ? "secondary" : "default"}
@@ -163,12 +163,9 @@ export function BookPage({
                   <h2 className="font-heading text-lg font-semibold mb-2">
                     Similar
                   </h2>
-                  <div>
-                    {relatedBooks.map((b, i) => (
-                      <div key={b.id}>
-                        {i > 0 && <Separator />}
-                        <BookRow book={b} variant="compact" />
-                      </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {relatedBooks.map((b) => (
+                      <BookCard key={b.id} book={b} />
                     ))}
                   </div>
                 </div>
@@ -180,12 +177,9 @@ export function BookPage({
                 <h2 className="font-heading text-lg font-semibold mb-2">
                   Similar
                 </h2>
-                <div>
-                  {relatedBooks.map((b, i) => (
-                    <div key={b.id}>
-                      {i > 0 && <Separator />}
-                      <BookRow book={b} variant="compact" />
-                    </div>
+                <div className="grid grid-cols-6 gap-3">
+                  {relatedBooks.map((b) => (
+                    <BookCard key={b.id} book={b} />
                   ))}
                 </div>
               </>
