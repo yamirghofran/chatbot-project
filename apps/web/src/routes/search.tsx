@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchPage } from "@/components/search/SearchPage";
+import { Spinner } from "@/components/ui/Spinner";
 import * as api from "@/lib/api";
 import type { Book } from "@/lib/types";
 
@@ -51,7 +52,10 @@ function SearchRoute() {
   if (searchQuery.isPending) {
     return (
       <div className="grid min-h-[50vh] place-items-center text-sm text-muted-foreground">
-        Searching...
+        <div className="flex items-center gap-2">
+          <Spinner />
+          Searching...
+        </div>
       </div>
     );
   }

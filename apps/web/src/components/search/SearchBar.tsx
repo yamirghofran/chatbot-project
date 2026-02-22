@@ -15,7 +15,7 @@ export type SearchBarProps = {
 export function SearchBar({
   value,
   onChange,
-  placeholder = "Search books, authors, lists...",
+  placeholder = "What are you looking for?",
   showIcon = true,
   onKeyDown,
   inputRef,

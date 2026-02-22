@@ -15,7 +15,7 @@ export function BookCard({ book }: BookCardProps) {
       <img
         src={book.coverUrl ?? "/brand/book-placeholder.png"}
         alt={`Cover of ${book.title}`}
-        className="w-full aspect-[2/3] rounded-sm object-cover transition-opacity group-hover:opacity-80"
+        className="w-full aspect-[2/3] rounded-sm object-cover"
       />
       <p className="mt-2 text-sm font-medium text-foreground line-clamp-2 group-hover:underline leading-snug">
         {book.title}

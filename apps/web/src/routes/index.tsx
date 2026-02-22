@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MarketingAuthGate } from "@/components/auth/MarketingAuthGate";
+import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import { DiscoveryPage } from "@/components/discovery/DiscoveryPage";
 import * as api from "@/lib/api";
 import { getToken, setToken, useCurrentUser } from "@/lib/auth";
@@ -86,7 +87,7 @@ function Home() {
     );
   }
 
-  if (meLoading) return null;
+  if (meLoading) return <CenteredLoading />;
 
   if (!currentUser) {
     return (
@@ -101,6 +102,7 @@ function Home() {
   return (
     <DiscoveryPage
       books={recommendationsQuery.data ?? []}
+      booksLoading={recommendationsQuery.isLoading}
       currentUser={currentUser}
       userLists={myListsQuery.data ?? []}
       staffPicks={resolvedStaffPicks}

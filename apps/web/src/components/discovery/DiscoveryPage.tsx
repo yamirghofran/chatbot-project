@@ -7,10 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { StaffPicks } from "./StaffPicks";
 import { ActivityFeed } from "./ActivityFeed";
 import { TrendingLists } from "./TrendingLists";
+import { Spinner } from "@/components/ui/Spinner";
 import * as api from "@/lib/api";
 
 export type DiscoveryPageProps = {
   books: Book[];
+  booksLoading?: boolean;
   currentUser?: User;
   userLists?: List[];
   staffPicks?: Book[];
@@ -20,6 +22,7 @@ export type DiscoveryPageProps = {
 
 export function DiscoveryPage({
   books,
+  booksLoading = false,
   currentUser,
   userLists = [],
   staffPicks = [],
@@ -139,7 +142,7 @@ export function DiscoveryPage({
         <section className="flex-1 min-w-0">
           <div className="mb-6 flex flex-col gap-5 rounded-xl bg-card p-5 sm:flex-row sm:items-center">
             <img
-              src="/brand/cartoon-dancing.jpg"
+              src="/brand/cartoon-reading.jpg"
               alt="Person reading with books"
               className="h-40 w-auto max-w-full rounded-lg object-contain"
             />
@@ -158,24 +161,31 @@ export function DiscoveryPage({
             Recommended For You
           </h2>
           <div>
-            {books.map((book, i) => (
-              <div key={book.id}>
-                {i > 0 && <Separator />}
-                <BookRow
-                  book={book}
-                  showActions
-                  tagVariant="discovery"
-                  descriptionMode="preview"
-                  primaryAction="amazon"
-                  listOptions={lists}
-                  selectedListIds={selectedListIdsForBook(book.id)}
-                  onToggleList={(listId, nextSelected) =>
-                    handleToggleBookInList(book, listId, nextSelected)
-                  }
-                  onCreateList={(name) => handleCreateListForBook(book, name)}
-                />
+            {booksLoading ? (
+              <div className="flex items-center justify-center gap-2 pt-16 text-sm text-muted-foreground">
+                <Spinner />
+                Loading...
               </div>
-            ))}
+            ) : (
+              books.map((book, i) => (
+                <div key={book.id}>
+                  {i > 0 && <Separator />}
+                  <BookRow
+                    book={book}
+                    showActions
+                    tagVariant="discovery"
+                    descriptionMode="preview"
+                    primaryAction="amazon"
+                    listOptions={lists}
+                    selectedListIds={selectedListIdsForBook(book.id)}
+                    onToggleList={(listId, nextSelected) =>
+                      handleToggleBookInList(book, listId, nextSelected)
+                    }
+                    onCreateList={(name) => handleCreateListForBook(book, name)}
+                  />
+                </div>
+              ))
+            )}
           </div>
         </section>
 

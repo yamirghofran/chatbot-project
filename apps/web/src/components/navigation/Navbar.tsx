@@ -32,13 +32,17 @@ export function Navbar({
       <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-2 lg:flex-row lg:items-center">
         <div className="flex items-center">
           <Link to="/">
-            <img src="/logo.svg" alt={`${brand} logo`} className="h-auto w-28" />
+            <img
+              src="/logo.svg"
+              alt={`${brand} logo`}
+              className="h-auto w-28"
+            />
           </Link>
         </div>
         {showRightSide && (
           <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
             {hasSearch && (
-              <div className="w-full sm:w-72">
+              <div className="w-full sm:w-90">
                 <SearchBar
                   value={searchValue}
                   onChange={onSearchChange}
@@ -52,7 +56,11 @@ export function Navbar({
             )}
             <div className="flex items-center gap-2">
               {user ? (
-                <Link to="/user/$username" params={{ username: user.handle }} aria-label="Profile">
+                <Link
+                  to="/user/$username"
+                  params={{ username: user.handle }}
+                  aria-label="Profile"
+                >
                   <Avatar size="lg">
                     {user.avatarUrl && (
                       <AvatarImage
