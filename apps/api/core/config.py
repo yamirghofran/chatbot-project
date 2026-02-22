@@ -1,12 +1,50 @@
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, EnvSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
+
+
+class _ExcludedCorsEnvSettingsSource(EnvSettingsSource):
+    def _extract_field_info(
+        self, field: Any, field_name: str
+    ) -> list[tuple[str, str, bool]]:
+        if field_name == "CORS_ORIGINS":
+            return []
+        return super()._extract_field_info(field, field_name)
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        if field_name == "CORS_ORIGINS":
+            return None, field_name, False
+        return super().get_field_value(field, field_name)
+
+    def _get_resolved_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        if field_name == "CORS_ORIGINS":
+            return None, field_name, False
+        return super()._get_resolved_field_value(field, field_name)
+
+
+class _CorsSettingsSource(PydanticBaseSettingsSource):
+    def __init__(self, settings_cls: type[BaseSettings]) -> None:
+        super().__init__(settings_cls)
+
+    def get_field_value(self, field_name: str, field: Field) -> Any:
+        if field_name == "CORS_ORIGINS":
+            cors_val = os.environ.get("CORS_ORIGINS")
+            if cors_val is not None:
+                return cors_val, True, False
+        return None, False, False
+
+    def __call__(self) -> dict[str, Any]:
+        cors_val = os.environ.get("CORS_ORIGINS")
+        if cors_val is not None:
+            return {"CORS_ORIGINS": cors_val}
+        return {}
 
 
 class Settings(BaseSettings):
@@ -29,6 +67,23 @@ class Settings(BaseSettings):
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
     BOOK_METRICS_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            _CorsSettingsSource(settings_cls),
+            _ExcludedCorsEnvSettingsSource(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: Any) -> list[str]:
@@ -49,7 +104,7 @@ class Settings(BaseSettings):
         for origin in value:
             if not isinstance(origin, str):
                 raise ValueError("CORS_ORIGINS entries must be strings.")
-            cleaned = origin.strip().strip('"').strip("'").rstrip("/")
+            cleaned = origin.strip().strip('[]"\'').rstrip("/")
             if cleaned:
                 normalized.append(cleaned)
 
