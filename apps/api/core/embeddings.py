@@ -11,10 +11,11 @@ COLLECTION_NAME = "books"
 
 def get_qdrant_client(
     url: str,
+    port: int | None = None,
     api_key: str | None = None,
     timeout_seconds: float = 8.0,
 ) -> QdrantClient:
-    return QdrantClient(url=url,port=None, api_key=api_key or None, timeout=timeout_seconds)
+    return QdrantClient(url=url, port=port, api_key=api_key or None, timeout=timeout_seconds)
 
 
 def most_similar(
