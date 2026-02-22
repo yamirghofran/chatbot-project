@@ -1,0 +1,115 @@
+---
+const title = "BookDB";
+const description = "Coming soon.";
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content={description} />
+        <meta name="generator" content={Astro.generator} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content="/og-image.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content="/og-image.png" />
+        <title>{title}</title>
+        <link rel="icon" href="/favicon/favicon.ico" sizes="any" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/favicon/favicon-32x32.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/favicon/favicon-16x16.png"
+        />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="192x192"
+            href="/favicon/android-chrome-192x192.png"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="512x512"
+            href="/favicon/android-chrome-512x512.png"
+        />
+        <link rel="manifest" href="/favicon/site.webmanifest" />
+        <style>
+            :root {
+                --bg: #fafafa;
+                --fg: #111111;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            html {
+                color-scheme: light;
+                background: var(--bg);
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--fg);
+            }
+            main {
+                min-height: 100%;
+                display: grid;
+                place-items: center;
+                text-align: center;
+                padding: 40px 20px;
+            }
+            .stack {
+                transform: translateY(-32px);
+            }
+            img {
+                width: 240px;
+                height: auto;
+                margin: 0 0 18px 0;
+            }
+            h1 {
+                margin: 0;
+                font-family: "Lora", serif;
+                font-weight: 400;
+                font-size: clamp(2.25rem, 5vw, 3.5rem);
+                letter-spacing: 0.02em;
+            }
+            p {
+                margin: 10px 0 0 0;
+                font-family: "Crimson Text", serif;
+                font-weight: 400;
+                font-size: clamp(1.15rem, 2.4vw, 1.4rem);
+            }
+        </style>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400&family=Lora:wght@400&display=swap"
+        />
+    </head>
+    <body>
+        <main>
+            <div class="stack">
+                <img src="/bookdb.avif" alt="BookDB mark" />
+                <h1>BookDB</h1>
+                <p>Coming soon</p>
+            </div>
+        </main>
+    </body>
+</html>

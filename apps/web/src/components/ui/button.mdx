@@ -1,0 +1,97 @@
+import { Meta, Canvas, Controls } from "@storybook/addon-docs/blocks";
+import * as ButtonStories from "./button.stories";
+
+<Meta of={ButtonStories} />
+
+# Button
+
+A clickable element that triggers an action. Buttons use a squircle border shape via progressive enhancement (`corner-shape: squircle` on supported browsers, `border-radius: 12px` fallback).
+
+## Playground
+
+Interactive demo — use the controls below to configure the button.
+
+<Canvas of={ButtonStories.Playground} />
+
+<Controls of={ButtonStories.Playground} />
+
+## Variants
+
+<Canvas of={ButtonStories.Variants} />
+
+<table>
+  <thead>
+    <tr>
+      <th>Variant</th>
+      <th>Usage</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Default</strong></td><td>Primary actions — uses brand green</td></tr>
+    <tr><td><strong>Secondary</strong></td><td>Supporting actions — light sage background</td></tr>
+    <tr><td><strong>Outline</strong></td><td>Lower emphasis — bordered with background fill on hover</td></tr>
+    <tr><td><strong>Ghost</strong></td><td>Minimal — no background until hovered</td></tr>
+    <tr><td><strong>Link</strong></td><td>Inline text actions — styled as an underlined link</td></tr>
+    <tr><td><strong>Destructive</strong></td><td>Dangerous actions — delete, remove, etc.</td></tr>
+  </tbody>
+</table>
+
+## Sizes
+
+<Canvas of={ButtonStories.Sizes} />
+
+<table>
+  <thead>
+    <tr>
+      <th>Size</th>
+      <th>Height</th>
+      <th>Use case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>xs</code></td><td>24px</td><td>Compact UI, tags, table actions</td></tr>
+    <tr><td><code>sm</code></td><td>32px</td><td>Secondary actions, toolbars</td></tr>
+    <tr><td><code>default</code></td><td>36px</td><td>Standard actions</td></tr>
+    <tr><td><code>lg</code></td><td>40px</td><td>Hero CTAs, prominent actions</td></tr>
+    <tr><td><code>icon</code></td><td>36x36</td><td>Icon-only (default size)</td></tr>
+    <tr><td><code>icon-xs</code></td><td>24x24</td><td>Icon-only compact</td></tr>
+    <tr><td><code>icon-sm</code></td><td>32x32</td><td>Icon-only small</td></tr>
+    <tr><td><code>icon-lg</code></td><td>40x40</td><td>Icon-only large</td></tr>
+  </tbody>
+</table>
+
+## Props
+
+<table>
+  <thead>
+    <tr>
+      <th>Prop</th>
+      <th>Type</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>variant</code></td><td><code>default</code> <code>secondary</code> <code>outline</code> <code>ghost</code> <code>link</code> <code>destructive</code></td><td><code>default</code></td><td>Visual style</td></tr>
+    <tr><td><code>size</code></td><td><code>default</code> <code>xs</code> <code>sm</code> <code>lg</code> <code>icon</code> <code>icon-xs</code> <code>icon-sm</code> <code>icon-lg</code></td><td><code>default</code></td><td>Size preset</td></tr>
+    <tr><td><code>asChild</code></td><td><code>boolean</code></td><td><code>false</code></td><td>Merge props onto child element instead of rendering a button</td></tr>
+    <tr><td><code>disabled</code></td><td><code>boolean</code></td><td><code>false</code></td><td>Disables interaction and reduces opacity</td></tr>
+  </tbody>
+</table>
+
+## Usage
+
+```tsx
+import { Button } from "@/components/ui/button";
+
+// Basic
+<Button>Save</Button>
+
+// Variant + size
+<Button variant="outline" size="sm">Cancel</Button>
+
+// As a link
+<Button asChild>
+  <a href="/settings">Settings</a>
+</Button>
+```
