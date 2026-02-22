@@ -1,5 +1,30 @@
+import React from "react";
 import type { Preview } from "@storybook/react-vite";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../src/styles/globals.css";
+
+function StoryProviders({ children }: { children: React.ReactNode }) {
+  const queryClient = React.useMemo(() => new QueryClient(), []);
+  const router = React.useMemo(() => {
+    const rootRoute = createRootRoute({ component: () => <>{children}</> });
+    return createRouter({
+      routeTree: rootRoute,
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
+}
 
 const preview: Preview = {
   decorators: [
@@ -7,15 +32,17 @@ const preview: Preview = {
       const withContainer = context.parameters?.withContainer !== false;
 
       return (
-        <div className="min-h-dvh bg-background text-foreground">
-          {withContainer ? (
-            <main className="mx-auto max-w-5xl px-4 py-8">
+        <StoryProviders>
+          <div className="min-h-dvh bg-background text-foreground">
+            {withContainer ? (
+              <main className="mx-auto max-w-5xl px-4 py-8">
+                <Story />
+              </main>
+            ) : (
               <Story />
-            </main>
-          ) : (
-            <Story />
-          )}
-        </div>
+            )}
+          </div>
+        </StoryProviders>
       );
     },
   ],
@@ -26,11 +53,7 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
-
     a11y: {
-      // 'todo' - show a11y violations in the test UI only
-      // 'error' - fail CI on a11y violations
-      // 'off' - skip a11y checks entirely
       test: "todo",
     },
   },

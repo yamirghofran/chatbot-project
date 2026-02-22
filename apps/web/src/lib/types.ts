@@ -2,9 +2,21 @@ export type Book = {
   id: string;
   title: string;
   author: string;
-  coverUrl: string;
+  coverUrl: string | null | undefined;
   description?: string;
   tags?: string[];
+  publicationYear?: number | null;
+  averageRating?: number | null;
+  ratingCount?: number;
+  commentCount?: number;
+  shellCount?: number;
+};
+
+export type SearchBooksResponse = {
+  directHit: Book | null;
+  keywordResults: Book[];
+  aiNarrative?: string | null;
+  aiBooks: Book[];
 };
 
 export type User = {
@@ -41,6 +53,7 @@ export type ActivityItem = {
 export type BookStats = {
   averageRating: number;
   ratingCount: number;
+  commentCount: number;
   shellCount: number;
 };
 

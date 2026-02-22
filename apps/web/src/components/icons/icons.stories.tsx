@@ -18,7 +18,7 @@ function InteractiveShellButton() {
 }
 
 function InteractiveRatingPicker() {
-  const [rating, setRating] = useState(3);
+  const [rating, setRating] = useState<number | undefined>(3);
 
   return <RatingPicker value={rating} onChange={setRating} />;
 }

@@ -30,14 +30,21 @@ export function BookHero({ book, stats }: BookHeroProps) {
         </h1>
         {stats && <AggregateStats stats={stats} />}
       </div>
-      <p className="text-muted-foreground mt-1">{book.author}</p>
+      <p className="text-muted-foreground mt-1">
+        {book.author}
+        {book.publicationYear && (
+          <span className="text-muted-foreground/60 before:content-['·'] before:mx-1.5">
+            {book.publicationYear}
+          </span>
+        )}
+      </p>
       {book.description && (
         <div className="mt-3">
           <p
             ref={descRef}
             className={cn(
               "text-sm text-foreground leading-relaxed",
-              !expanded && "line-clamp-3",
+              !expanded && "line-clamp-5",
             )}
           >
             {book.description}
@@ -74,7 +81,6 @@ export function BookHero({ book, stats }: BookHeroProps) {
           )}
         </div>
       )}
-
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { User } from "@/lib/types";
 import { SearchBar } from "@/components/search/SearchBar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -5,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 export type NavbarProps = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  onSearchSubmit?: (value: string) => void;
   brand?: string;
   user?: User;
 };
@@ -12,6 +14,7 @@ export type NavbarProps = {
 export function Navbar({
   searchValue,
   onSearchChange,
+  onSearchSubmit,
   brand = "BookDB",
   user,
 }: NavbarProps) {
@@ -28,18 +31,36 @@ export function Navbar({
     <header className="sticky top-0 z-40 bg-background border-b ">
       <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-2 lg:flex-row lg:items-center">
         <div className="flex items-center">
-          <img src="/logo.svg" alt={`${brand} logo`} className="h-auto w-28" />
+          <Link to="/">
+            <img
+              src="/logo.svg"
+              alt={`${brand} logo`}
+              className="h-auto w-28"
+            />
+          </Link>
         </div>
         {showRightSide && (
           <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
             {hasSearch && (
-              <div className="w-full sm:w-72">
-                <SearchBar value={searchValue} onChange={onSearchChange} />
+              <div className="w-full sm:w-90">
+                <SearchBar
+                  value={searchValue}
+                  onChange={onSearchChange}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      onSearchSubmit?.(searchValue ?? "");
+                    }
+                  }}
+                />
               </div>
             )}
             <div className="flex items-center gap-2">
               {user ? (
-                <button type="button" aria-label="Profile">
+                <Link
+                  to="/user/$username"
+                  params={{ username: user.handle }}
+                  aria-label="Profile"
+                >
                   <Avatar size="lg">
                     {user.avatarUrl && (
                       <AvatarImage
@@ -49,7 +70,7 @@ export function Navbar({
                     )}
                     <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
-                </button>
+                </Link>
               ) : null}
             </div>
           </div>

@@ -10,6 +10,7 @@ export type ProfileHeaderProps = {
   followersCount?: number;
   onFollow?: () => void;
   onEditProfile?: () => void;
+  onLogout?: () => void;
 };
 
 function getInitials(name: string) {
@@ -21,7 +22,15 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
-export function ProfileHeader({ user, isOwnProfile, followingCount = 0, followersCount = 0, onFollow, onEditProfile }: ProfileHeaderProps) {
+export function ProfileHeader({
+  user,
+  isOwnProfile,
+  followingCount = 0,
+  followersCount = 0,
+  onFollow,
+  onEditProfile,
+  onLogout,
+}: ProfileHeaderProps) {
   return (
     <div className="flex items-center gap-4">
       <Avatar size="xl">
@@ -37,20 +46,29 @@ export function ProfileHeader({ user, isOwnProfile, followingCount = 0, follower
         <p className="text-sm text-muted-foreground truncate">@{user.handle}</p>
         <div className="flex gap-3 mt-1 text-sm">
           <span>
-            <span className="font-semibold text-foreground">{followingCount}</span>{" "}
+            <span className="font-semibold text-foreground">
+              {followingCount}
+            </span>{" "}
             <span className="text-muted-foreground">following</span>
           </span>
           <span>
-            <span className="font-semibold text-foreground">{followersCount}</span>{" "}
+            <span className="font-semibold text-foreground">
+              {followersCount}
+            </span>{" "}
             <span className="text-muted-foreground">followers</span>
           </span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isOwnProfile ? (
-          <Button variant="outline" size="sm" onClick={onEditProfile}>
-            Edit Profile
-          </Button>
+          <>
+            <Button variant="ghost" onClick={onLogout} aria-label="Log out">
+              Log Out
+            </Button>
+            <Button variant="outline" size="sm" onClick={onEditProfile}>
+              Edit Profile
+            </Button>
+          </>
         ) : (
           <>
             <Button variant="outline" size="sm" onClick={onFollow}>

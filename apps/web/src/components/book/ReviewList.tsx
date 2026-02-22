@@ -7,11 +7,17 @@ import { ReviewCard } from "./ReviewCard";
 
 export type ReviewListProps = {
   reviews: Review[];
+  totalReviews?: number;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   currentUser?: User;
   onPostReview?: (text: string) => void;
   onLikeReview?: (reviewId: string) => void;
   onLikeReply?: (reviewId: string, replyId: string) => void;
   onReply?: (reviewId: string, text: string) => void;
+  onDeleteReview?: (reviewId: string) => void;
+  onDeleteReply?: (reviewId: string, replyId: string) => void;
 };
 
 function getInitials(name: string) {
@@ -25,15 +31,25 @@ function getInitials(name: string) {
 
 export function ReviewList({
   reviews,
+  totalReviews,
+  hasMore,
+  isLoadingMore,
+  onLoadMore,
   currentUser,
   onPostReview,
   onLikeReview,
   onLikeReply,
   onReply,
+  onDeleteReview,
+  onDeleteReply,
 }: ReviewListProps) {
   const [reviewText, setReviewText] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+
+  const userAlreadyReviewed =
+    !!currentUser && reviews.some((r) => r.user.id === currentUser.id);
+  const displayCount = totalReviews ?? reviews.length;
 
   function handlePostReview() {
     if (reviewText.trim() && onPostReview) {
@@ -53,10 +69,10 @@ export function ReviewList({
   return (
     <div>
       <h2 className="font-heading text-lg font-semibold mb-4">
-        Reviews{reviews.length > 0 && ` (${reviews.length})`}
+        Reviews{displayCount > 0 && ` (${displayCount})`}
       </h2>
 
-      {currentUser && (
+      {currentUser && !userAlreadyReviewed && (
         <div className="flex gap-3 mb-6">
           <Avatar>
             <AvatarFallback>{getInitials(currentUser.displayName)}</AvatarFallback>
@@ -78,6 +94,12 @@ export function ReviewList({
         </div>
       )}
 
+      {currentUser && userAlreadyReviewed && (
+        <p className="text-xs text-muted-foreground mb-6">
+          You've already reviewed this book. Delete your review to write a new one.
+        </p>
+      )}
+
       <div className="space-y-0">
         {reviews.map((review, i) => (
           <div key={review.id}>
@@ -89,6 +111,8 @@ export function ReviewList({
                 onReply={() =>
                   setReplyingTo(replyingTo === review.id ? null : review.id)
                 }
+                isOwnReview={!!currentUser && currentUser.id === review.user.id}
+                onDelete={() => onDeleteReview?.(review.id)}
               />
 
               {review.replies?.map((reply) => (
@@ -97,6 +121,10 @@ export function ReviewList({
                   review={reply}
                   isReply
                   onLike={() => onLikeReply?.(review.id, reply.id)}
+                  isOwnReview={
+                    !!currentUser && currentUser.id === reply.user.id
+                  }
+                  onDelete={() => onDeleteReply?.(review.id, reply.id)}
                 />
               ))}
 
@@ -144,6 +172,19 @@ export function ReviewList({
           </div>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center mt-6">
+          <Button
+            variant="link"
+            size="sm"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? "Loading…" : "Load more reviews"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

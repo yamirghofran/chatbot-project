@@ -1,4 +1,5 @@
 import { ListPlus, Star } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import type { ActivityItem } from "@/lib/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -64,7 +65,13 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
               <AvatarFallback>{getInitials(item.user.displayName)}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{item.user.displayName}</span>{" "}
+              <Link
+                to="/user/$username"
+                params={{ username: item.user.handle }}
+                className="font-medium text-foreground hover:underline"
+              >
+                {item.user.displayName}
+              </Link>{" "}
               <ActivityDescription item={item} />
             </div>
             <div className="flex items-center gap-1.5 shrink-0">

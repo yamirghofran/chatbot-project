@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import type { Book, List, ActivityItem } from "@/lib/types";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
+import type { Book, List, ActivityItem, User } from "@/lib/types";
 import { BookRow } from "@/components/book/BookRow";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { StaffPicks } from "./StaffPicks";
 import { ActivityFeed } from "./ActivityFeed";
 import { TrendingLists } from "./TrendingLists";
+import { Spinner } from "@/components/ui/Spinner";
+import * as api from "@/lib/api";
 
 export type DiscoveryPageProps = {
   books: Book[];
+  booksLoading?: boolean;
+  currentUser?: User;
   userLists?: List[];
   staffPicks?: Book[];
   activity?: ActivityItem[];
@@ -17,15 +22,48 @@ export type DiscoveryPageProps = {
 
 export function DiscoveryPage({
   books,
+  booksLoading = false,
+  currentUser,
   userLists = [],
   staffPicks = [],
   activity = [],
   trendingLists = [],
 }: DiscoveryPageProps) {
+  const queryClient = useQueryClient();
   const [lists, setLists] = useState<List[]>(userLists);
   const [isProfileLinkCopied, setIsProfileLinkCopied] = useState(false);
   const nextListIdRef = useRef(userLists.length + 1);
   const copyResetTimerRef = useRef<number | null>(null);
+
+  // Sync server state into local lists when react-query delivers it
+  useEffect(() => {
+    setLists(userLists);
+  }, [userLists]);
+
+  const toggleBookMutation = useMutation({
+    mutationFn: ({
+      listId,
+      bookId,
+      nextSelected,
+    }: {
+      listId: string;
+      bookId: string;
+      nextSelected: boolean;
+    }) =>
+      nextSelected
+        ? api.addBookToList(listId, bookId)
+        : api.removeBookFromList(listId, bookId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["myLists"] }),
+  });
+
+  const createListMutation = useMutation({
+    mutationFn: async ({ name, book }: { name: string; book: Book }) => {
+      const result = await api.createList(name);
+      await api.addBookToList(result.id, book.id);
+      return result;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["myLists"] }),
+  });
 
   function selectedListIdsForBook(bookId: string) {
     return lists
@@ -38,6 +76,7 @@ export function DiscoveryPage({
     listId: string,
     nextSelected: boolean,
   ) {
+    // Optimistic update
     setLists((prevLists) =>
       prevLists.map((list) => {
         if (list.id !== listId) return list;
@@ -51,28 +90,29 @@ export function DiscoveryPage({
         return list;
       }),
     );
+    toggleBookMutation.mutate({ listId, bookId: book.id, nextSelected });
   }
 
   function handleCreateListForBook(book: Book, name: string) {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const newList: List = {
-      id: `l-local-${nextListIdRef.current++}`,
-      name: trimmedName,
-      owner: {
-        id: "me",
-        handle: "me",
-        displayName: "You",
+    // Optimistic update with temp ID
+    const tempId = `l-local-${nextListIdRef.current++}`;
+    setLists((prevLists) => [
+      {
+        id: tempId,
+        name: trimmedName,
+        owner: { id: "me", handle: "me", displayName: "You" },
+        books: [book],
       },
-      books: [book],
-    };
-
-    setLists((prevLists) => [newList, ...prevLists]);
+      ...prevLists,
+    ]);
+    createListMutation.mutate({ name: trimmedName, book });
   }
 
   async function handleShareProfile() {
-    const profileUrl = `${window.location.origin}/profile/me`;
+    const profileUrl = `${window.location.origin}/user/${currentUser?.handle}`;
     try {
       await navigator.clipboard.writeText(profileUrl);
       setIsProfileLinkCopied(true);
@@ -102,13 +142,15 @@ export function DiscoveryPage({
         <section className="flex-1 min-w-0">
           <div className="mb-6 flex flex-col gap-5 rounded-xl bg-card p-5 sm:flex-row sm:items-center">
             <img
-              src="/brand/cartoon-dancing.jpg"
+              src="/brand/cartoon-reading.jpg"
               alt="Person reading with books"
               className="h-40 w-auto max-w-full rounded-lg object-contain"
             />
             <div className="min-w-0">
               <h2 className="font-heading text-3xl font-semibold text-foreground">
-                Welcome back, Matt. What are you reading?
+                Welcome back,{" "}
+                {currentUser?.displayName?.split(" ")[0] ?? "there"}. What are
+                you reading?
               </h2>
               <p className="mt-2 text-lg text-muted-foreground">
                 Track a book to keep your library updated and get better picks.
@@ -116,27 +158,34 @@ export function DiscoveryPage({
             </div>
           </div>
           <h2 className="font-heading text-lg font-semibold mb-2">
-            Reccomended For You
+            Recommended For You
           </h2>
           <div>
-            {books.map((book, i) => (
-              <div key={book.id}>
-                {i > 0 && <Separator />}
-                <BookRow
-                  book={book}
-                  showActions
-                  tagVariant="discovery"
-                  descriptionMode="preview"
-                  primaryAction="amazon"
-                  listOptions={lists}
-                  selectedListIds={selectedListIdsForBook(book.id)}
-                  onToggleList={(listId, nextSelected) =>
-                    handleToggleBookInList(book, listId, nextSelected)
-                  }
-                  onCreateList={(name) => handleCreateListForBook(book, name)}
-                />
+            {booksLoading ? (
+              <div className="flex items-center justify-center gap-2 pt-16 text-sm text-muted-foreground">
+                <Spinner />
+                Loading...
               </div>
-            ))}
+            ) : (
+              books.map((book, i) => (
+                <div key={book.id}>
+                  {i > 0 && <Separator />}
+                  <BookRow
+                    book={book}
+                    showActions
+                    tagVariant="discovery"
+                    descriptionMode="preview"
+                    primaryAction="amazon"
+                    listOptions={lists}
+                    selectedListIds={selectedListIdsForBook(book.id)}
+                    onToggleList={(listId, nextSelected) =>
+                      handleToggleBookInList(book, listId, nextSelected)
+                    }
+                    onCreateList={(name) => handleCreateListForBook(book, name)}
+                  />
+                </div>
+              ))
+            )}
           </div>
         </section>
 
