@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str | None = None
     QDRANT_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
+    EMBEDDING_SERVICE_URL: str | None = None
+    EMBEDDING_SERVICE_MODEL: str = "finetuned"
+    EMBEDDING_SERVICE_TIMEOUT_SECONDS: float = Field(default=8.0, gt=0)
+    EMBEDDING_SERVICE_API_KEY: str | None = None
+    CHATBOT_TOP_K: int = Field(default=20, ge=1, le=100)
+    CHATBOT_MAX_REVIEWS: int = Field(default=30, ge=0, le=200)
+    CHATBOT_MAX_BOOKS: int = Field(default=6, ge=1, le=20)
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
     BOOK_METRICS_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
 

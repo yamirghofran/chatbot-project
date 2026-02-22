@@ -337,6 +337,7 @@ export const mockStaffPicks: Book[] = [
 export const mockBookStats: BookStats = {
   averageRating: 4.3,
   ratingCount: 128,
+  commentCount: 21,
   shellCount: 47,
 };
 

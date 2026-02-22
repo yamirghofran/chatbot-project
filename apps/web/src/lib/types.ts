@@ -12,6 +12,13 @@ export type Book = {
   shellCount?: number;
 };
 
+export type SearchBooksResponse = {
+  directHit: Book | null;
+  keywordResults: Book[];
+  aiNarrative?: string | null;
+  aiBooks: Book[];
+};
+
 export type User = {
   id: string;
   handle: string;

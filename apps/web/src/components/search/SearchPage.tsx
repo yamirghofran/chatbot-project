@@ -1,5 +1,7 @@
-import { Sparkles, ArrowUp, Star, MessageCircle } from "lucide-react";
+import { Sparkles, Star, MessageCircle } from "lucide-react";
+//import { ArrowUp } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import type { Book } from "@/lib/types";
 import { BookGrid } from "@/components/book/BookGrid";
 import { SearchResultList } from "./SearchResultRow";
@@ -102,6 +104,146 @@ function AiSkeleton() {
   );
 }
 
+// ─── AI markdown rendering ───────────────────────────────────────────────────
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function applyInlineMarkdown(value: string): string {
+  let html = escapeHtml(value);
+
+  // Inline code first so markers inside code are left untouched.
+  html = html.replaceAll(/`([^`]+?)`/g, "<code>$1</code>");
+  html = html.replaceAll(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+  );
+  html = html.replaceAll(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replaceAll(/__(.+?)__/g, "<strong>$1</strong>");
+  html = html.replaceAll(/\*(.+?)\*/g, "<em>$1</em>");
+  html = html.replaceAll(/_(.+?)_/g, "<em>$1</em>");
+
+  return html;
+}
+
+function lineStartsBlock(line: string): boolean {
+  return (
+    /^```/.test(line) ||
+    /^\s*#{1,6}\s+/.test(line) ||
+    /^\s*[-*]\s+/.test(line) ||
+    /^\s*\d+\.\s+/.test(line) ||
+    /^\s*>\s?/.test(line)
+  );
+}
+
+function markdownToHtml(markdown: string): string {
+  const lines = markdown.replaceAll("\r\n", "\n").split("\n");
+  const blocks: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) {
+      i += 1;
+      continue;
+    }
+
+    if (/^```/.test(line)) {
+      const codeLines: string[] = [];
+      i += 1;
+      while (i < lines.length && !/^```/.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length && /^```/.test(lines[i])) i += 1;
+      blocks.push(
+        `<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`,
+      );
+      continue;
+    }
+
+    const heading = line.match(/^\s*(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      blocks.push(
+        `<h${level}>${applyInlineMarkdown(heading[2].trim())}</h${level}>`,
+      );
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(
+          `<li>${applyInlineMarkdown(lines[i].replace(/^\s*[-*]\s+/, "").trim())}</li>`,
+        );
+        i += 1;
+      }
+      blocks.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(
+          `<li>${applyInlineMarkdown(
+            lines[i].replace(/^\s*\d+\.\s+/, "").trim(),
+          )}</li>`,
+        );
+        i += 1;
+      }
+      blocks.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push(
+        `<blockquote><p>${applyInlineMarkdown(
+          quoteLines.join(" ").trim(),
+        )}</p></blockquote>`,
+      );
+      continue;
+    }
+
+    const paragraphLines: string[] = [line];
+    i += 1;
+    while (i < lines.length && lines[i].trim() && !lineStartsBlock(lines[i])) {
+      paragraphLines.push(lines[i]);
+      i += 1;
+    }
+    blocks.push(
+      `<p>${applyInlineMarkdown(paragraphLines.join(" ").trim())}</p>`,
+    );
+  }
+
+  return blocks.join("\n");
+}
+
+function AiNarrativeMarkdown({ markdown }: { markdown: string }) {
+  const html = useMemo(() => markdownToHtml(markdown), [markdown]);
+
+  return (
+    <div
+      className="text-sm text-foreground leading-relaxed [&_a]:underline [&_a]:underline-offset-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_code]:rounded [&_code]:bg-input [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_li]:mb-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-background [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:pl-5"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SearchPage({
@@ -111,7 +253,7 @@ export function SearchPage({
   aiNarrative,
   aiBooks = [],
   isAiLoading = false,
-  followUpValue = "",
+  //followUpValue = "",
   onFollowUpChange,
   onFollowUpSubmit,
   followUpSuggestions,
@@ -120,11 +262,11 @@ export function SearchPage({
   const hasMoreResults = keywordResults.length > 0;
   const hasAnything = directHit || hasAiContent || hasMoreResults;
 
-  function handleFollowUpKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && followUpValue.trim()) {
-      onFollowUpSubmit?.(followUpValue.trim());
-    }
-  }
+  // function handleFollowUpKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  //   if (e.key === "Enter" && followUpValue.trim()) {
+  //     onFollowUpSubmit?.(followUpValue.trim());
+  //   }
+  // }
 
   return (
     <div className="space-y-6">
@@ -154,11 +296,7 @@ export function SearchPage({
             <div className="flex gap-3">
               <Sparkles className="size-4 text-primary shrink-0 mt-0.5" />
               <div className="space-y-5 min-w-0">
-                {aiNarrative && (
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {aiNarrative}
-                  </p>
-                )}
+                {aiNarrative && <AiNarrativeMarkdown markdown={aiNarrative} />}
                 {aiBooks.length > 0 && <BookGrid books={aiBooks} />}
               </div>
             </div>
@@ -184,7 +322,7 @@ export function SearchPage({
               </div>
             )}
 
-            <div className="relative">
+            {/*<div className="relative">
               <input
                 type="text"
                 value={followUpValue}
@@ -205,7 +343,7 @@ export function SearchPage({
               >
                 <ArrowUp className="size-3.5" />
               </button>
-            </div>
+            </div>*/}
           </div>
         </section>
       )}

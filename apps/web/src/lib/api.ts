@@ -6,6 +6,7 @@ import type {
   RatedBook,
   BookStats,
   Review,
+  SearchBooksResponse,
 } from "./types";
 
 const BASE =
@@ -116,10 +117,35 @@ export async function getActivityFeed(limit = 10): Promise<ActivityItem[]> {
 // Books
 // ---------------------------------------------------------------------------
 
-export async function searchBooks(q: string, limit = 10): Promise<Book[]> {
-  return apiFetch<Book[]>(
-    `/books/search?q=${encodeURIComponent(q)}&limit=${limit}`,
-  );
+type LegacySearchBooksResponse = Book[];
+
+function normalizeSearchBooksResponse(
+  payload: SearchBooksResponse | LegacySearchBooksResponse,
+): SearchBooksResponse {
+  if (Array.isArray(payload)) {
+    return {
+      directHit: payload[0] ?? null,
+      keywordResults: payload.slice(1),
+      aiNarrative: undefined,
+      aiBooks: [],
+    };
+  }
+  return {
+    directHit: payload.directHit ?? null,
+    keywordResults: payload.keywordResults ?? [],
+    aiNarrative: payload.aiNarrative,
+    aiBooks: payload.aiBooks ?? [],
+  };
+}
+
+export async function searchBooks(
+  q: string,
+  limit = 10,
+): Promise<SearchBooksResponse> {
+  const payload = await apiFetch<
+    SearchBooksResponse | LegacySearchBooksResponse
+  >(`/books/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+  return normalizeSearchBooksResponse(payload);
 }
 
 export interface BookDetail extends Book {
@@ -172,7 +198,7 @@ export async function unlikeReview(reviewId: string | number): Promise<void> {
 export async function postReviewComment(
   reviewId: string | number,
   text: string,
-): Promise<Review["replies"][number]> {
+): Promise<NonNullable<Review["replies"]>[number]> {
   return apiFetch(`/reviews/${reviewId}/comments`, {
     method: "POST",
     body: JSON.stringify({ text }),
