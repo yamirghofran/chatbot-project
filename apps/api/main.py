@@ -41,6 +41,7 @@ async def startup_event():
     try:
         qdrant = get_qdrant_client(
             settings.QDRANT_URL,
+            settings.QDRANT_PORT,
             settings.QDRANT_API_KEY,
             timeout_seconds=settings.QDRANT_TIMEOUT_SECONDS,
         )
