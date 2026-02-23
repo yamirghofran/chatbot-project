@@ -88,6 +88,7 @@ def _collect_interaction_seed_scores(db: Session, user_id: int) -> dict[int, flo
 
     rating_rows = db.execute(
         select(Book.goodreads_id, BookRating.rating)
+        .select_from(BookRating)
         .join(Book, Book.id == BookRating.book_id)
         .where(
             BookRating.user_id == user_id,
@@ -107,6 +108,7 @@ def _collect_interaction_seed_scores(db: Session, user_id: int) -> dict[int, flo
 
     shell_rows = db.execute(
         select(Book.goodreads_id)
+        .select_from(ShellBook)
         .join(Book, Book.id == ShellBook.book_id)
         .join(Shell, Shell.id == ShellBook.shell_id)
         .where(
@@ -122,6 +124,7 @@ def _collect_interaction_seed_scores(db: Session, user_id: int) -> dict[int, flo
 
     list_rows = db.execute(
         select(Book.goodreads_id)
+        .select_from(ListBook)
         .join(Book, Book.id == ListBook.book_id)
         .join(BookList, BookList.id == ListBook.list_id)
         .where(
