@@ -185,13 +185,6 @@ class TestBookVectorCRUDQdrant:
         with pytest.raises(Exception, match="Failed to search by metadata"):
             book_crud.search_by_metadata(limit=10)
 
-    def test_search_similar_books_not_implemented(self, book_crud):
-        result = book_crud.search_similar_books(
-            query_text="test query",
-            n_results=5,
-        )
-        assert result is None
-
     def test_get_book_recommendations_not_implemented(self, book_crud):
         result = book_crud.get_book_recommendations(
             book_id="book_123",

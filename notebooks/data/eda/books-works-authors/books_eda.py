@@ -27,9 +27,7 @@ def _(mo):
 
 @app.cell
 def _(mo, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
     df = pl.read_parquet(data_path)
 
@@ -116,9 +114,7 @@ def _(df, json, mo, os, pl, plt):
     # Apply the same filtering and dropping logic as clean_books.py
 
     # Load best_book_id_map.json
-    _project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    _project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     best_book_map_path = os.path.join(_project_root, "data", "best_book_id_map.json")
 
     with open(best_book_map_path, "r") as f:
