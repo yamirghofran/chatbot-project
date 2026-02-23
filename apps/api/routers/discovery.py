@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import duckdb
 import threading
+from collections import defaultdict
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from bookdb.db.models import (
     Book,
+    BookList,
     BookRating,
+    ListBook,
+    Shell,
+    ShellBook,
 )
 
 from ..core.book_queries import load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
 from ..core.book_metrics import get_top_popular_goodreads_ids, get_top_staff_pick_goodreads_ids
+from ..core.embeddings import most_similar
 from ..core.deps import get_db, get_optional_user
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -63,16 +69,122 @@ def _cold_start(db: Session, limit: int, metrics_parquet_path: str | None = None
     return load_books_by_ids(db, book_ids)
 
 
-# TODO: improve recommendations
-#   Current approach is fully pre-computed static BPR parquet (generated offline, never updates):
-#   - Users registered after parquet was built always hit cold start
-#   - Books added after parquet was built never appear in personalised results
-#   - Requires goodreads_id — users who didn't import from Goodreads always hit cold start
-#   - Cold start is just most-rated-overall, identical for every unauthenticated/new user
-#   Better approach: real-time personalisation using the ratings already in Postgres —
-#   e.g. item-based CF (find books similar to what the user rated highly) or
-#   re-run BPR periodically and hot-swap the parquet, or use Qdrant to blend
-#   user taste profile (average embedding of liked books) with popularity signal
+def _append_unique_books(target: list[Book], books: list[Book], *, limit: int) -> None:
+    if len(target) >= limit:
+        return
+    seen_ids = {book.id for book in target}
+    for book in books:
+        if len(target) >= limit:
+            break
+        if book.id in seen_ids:
+            continue
+        target.append(book)
+        seen_ids.add(book.id)
+
+
+def _collect_interaction_seed_scores(db: Session, user_id: int) -> dict[int, float]:
+    """Build weighted seed goodreads IDs from user interactions."""
+    seed_scores: dict[int, float] = defaultdict(float)
+
+    rating_rows = db.execute(
+        select(Book.goodreads_id, BookRating.rating)
+        .select_from(BookRating)
+        .join(Book, Book.id == BookRating.book_id)
+        .where(
+            BookRating.user_id == user_id,
+            BookRating.rating >= 4,
+            Book.goodreads_id.is_not(None),
+        )
+        .order_by(BookRating.rating.desc(), BookRating.updated_at.desc())
+        .limit(60)
+    ).all()
+    for row in rating_rows:
+        goodreads_id = row.goodreads_id
+        rating = int(row.rating)
+        if goodreads_id is None:
+            continue
+        # Strong positive ratings should dominate seed selection.
+        seed_scores[int(goodreads_id)] += 2.5 if rating >= 5 else 2.0
+
+    shell_rows = db.execute(
+        select(Book.goodreads_id)
+        .select_from(ShellBook)
+        .join(Book, Book.id == ShellBook.book_id)
+        .join(Shell, Shell.id == ShellBook.shell_id)
+        .where(
+            Shell.user_id == user_id,
+            Book.goodreads_id.is_not(None),
+        )
+        .order_by(ShellBook.added_at.desc())
+        .limit(60)
+    ).all()
+    for row in shell_rows:
+        if row.goodreads_id is not None:
+            seed_scores[int(row.goodreads_id)] += 1.6
+
+    list_rows = db.execute(
+        select(Book.goodreads_id)
+        .select_from(ListBook)
+        .join(Book, Book.id == ListBook.book_id)
+        .join(BookList, BookList.id == ListBook.list_id)
+        .where(
+            BookList.user_id == user_id,
+            Book.goodreads_id.is_not(None),
+        )
+        .order_by(ListBook.added_at.desc())
+        .limit(80)
+    ).all()
+    for row in list_rows:
+        if row.goodreads_id is not None:
+            seed_scores[int(row.goodreads_id)] += 1.2
+
+    return dict(seed_scores)
+
+
+def _interaction_vector_recommendations(
+    db: Session,
+    user_id: int,
+    qdrant_client,
+    limit: int,
+    exclude_ids: set[int] | None = None,
+) -> list[int]:
+    if limit <= 0:
+        return []
+
+    seed_scores = _collect_interaction_seed_scores(db, user_id)
+    if not seed_scores:
+        return []
+
+    excluded = set(exclude_ids or set())
+    excluded.update(seed_scores.keys())
+    per_seed_top_k = max(limit * 3, 30)
+    max_seed_books = 14
+
+    candidate_scores: dict[int, float] = defaultdict(float)
+    ranked_seeds = sorted(seed_scores.items(), key=lambda item: (-item[1], item[0]))[:max_seed_books]
+    for seed_goodreads_id, seed_weight in ranked_seeds:
+        try:
+            similar_goodreads_ids = most_similar(
+                qdrant_client,
+                seed_goodreads_id,
+                top_k=per_seed_top_k,
+                exclude_ids=excluded,
+            )
+        except Exception:
+            continue
+
+        for rank, candidate_id in enumerate(similar_goodreads_ids, start=1):
+            if candidate_id in excluded:
+                continue
+            candidate_scores[candidate_id] += seed_weight / rank
+
+    if not candidate_scores:
+        return []
+
+    ranked_candidates = sorted(candidate_scores.items(), key=lambda item: (-item[1], item[0]))
+    return [goodreads_id for goodreads_id, _ in ranked_candidates[:limit]]
+
+
 @router.get("/recommendations")
 def get_recommendations(
     limit: int = Query(20, ge=1, le=100),
@@ -82,17 +194,54 @@ def get_recommendations(
 ):
     bpr_path: str | None = None
     metrics_parquet_path: str | None = None
+    qdrant = None
     if request is not None:
         bpr_path = getattr(request.app.state, "bpr_parquet_path", None)
         metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
+        qdrant = getattr(request.app.state, "qdrant", None)
 
-    # BPR recommendations: user must exist and have a goodreads_id in the parquet.
+    bpr_books: list[Book] = []
+    bpr_goodreads_ids: list[int] = []
     if current_user is not None and bpr_path is not None and current_user.goodreads_id is not None:
-        goodreads_ids = _bpr_recommendations(bpr_path, current_user.goodreads_id, limit)
-        if goodreads_ids:
-            books = load_books_by_goodreads_ids(db, goodreads_ids)
-            if books:
-                return serialize_books_with_engagement(db, books)
+        bpr_goodreads_ids = _bpr_recommendations(
+            bpr_path,
+            current_user.goodreads_id,
+            limit=max(limit * 5, 100),
+        )
+        if bpr_goodreads_ids:
+            bpr_books = load_books_by_goodreads_ids(db, bpr_goodreads_ids)
+
+    interaction_books: list[Book] = []
+    if current_user is not None and qdrant is not None:
+        interaction_goodreads_ids = _interaction_vector_recommendations(
+            db,
+            current_user.id,
+            qdrant_client=qdrant,
+            limit=max(limit * 4, 80),
+            exclude_ids=set(bpr_goodreads_ids),
+        )
+        if interaction_goodreads_ids:
+            interaction_books = load_books_by_goodreads_ids(db, interaction_goodreads_ids)
+
+    recommendations: list[Book] = []
+    if bpr_books and interaction_books:
+        # Keep BPR dominant, but reserve some room for real-time taste-based vector picks.
+        interaction_quota = max(1, min(limit // 3, 8)) if limit >= 3 else 0
+        interaction_reserved = min(interaction_quota, len(interaction_books))
+        bpr_target = max(limit - interaction_reserved, 0)
+
+        _append_unique_books(recommendations, bpr_books, limit=bpr_target)
+        _append_unique_books(recommendations, interaction_books, limit=limit)
+        _append_unique_books(recommendations, bpr_books, limit=limit)
+    else:
+        _append_unique_books(recommendations, bpr_books, limit=limit)
+        _append_unique_books(recommendations, interaction_books, limit=limit)
+
+    if len(recommendations) < limit:
+        cold_start_books = _cold_start(db, limit, metrics_parquet_path)
+        _append_unique_books(recommendations, cold_start_books, limit=limit)
+    if recommendations:
+        return serialize_books_with_engagement(db, recommendations)
 
     # Cold start fallback.
     return serialize_books_with_engagement(db, _cold_start(db, limit, metrics_parquet_path))
