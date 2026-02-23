@@ -46,7 +46,22 @@ This page documents the current relational schema and exactly how parquet datase
 - `updated_at TIMESTAMPTZ NOT NULL`
 - `PRIMARY KEY (book_id, author_id)`
 
-### 5. `lists`
+### 5. `tags`
+
+- `id BIGSERIAL PRIMARY KEY`
+- `name TEXT UNIQUE NOT NULL`
+- `created_at TIMESTAMPTZ NOT NULL`
+- `updated_at TIMESTAMPTZ NOT NULL`
+
+### 6. `book_tags`
+
+- `book_id BIGINT REFERENCES books(id) ON DELETE CASCADE`
+- `tag_id BIGINT REFERENCES tags(id) ON DELETE CASCADE`
+- `created_at TIMESTAMPTZ NOT NULL`
+- `updated_at TIMESTAMPTZ NOT NULL`
+- `PRIMARY KEY (book_id, tag_id)`
+
+### 7. `lists`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `user_id BIGINT REFERENCES users(id) ON DELETE CASCADE`
@@ -56,7 +71,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `updated_at TIMESTAMPTZ NOT NULL`
 - `UNIQUE (user_id, title)`
 
-### 6. `list_books`
+### 8. `list_books`
 
 - `list_id BIGINT REFERENCES lists(id) ON DELETE CASCADE`
 - `book_id BIGINT REFERENCES books(id) ON DELETE CASCADE`
@@ -65,7 +80,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `updated_at TIMESTAMPTZ NOT NULL`
 - `PRIMARY KEY (list_id, book_id)`
 
-### 7. `shells`
+### 9. `shells`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE`
@@ -73,7 +88,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `created_at TIMESTAMPTZ NOT NULL`
 - `updated_at TIMESTAMPTZ NOT NULL`
 
-### 8. `shell_books`
+### 10. `shell_books`
 
 - `shell_id BIGINT REFERENCES shells(id) ON DELETE CASCADE`
 - `book_id BIGINT REFERENCES books(id) ON DELETE CASCADE`
@@ -82,7 +97,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `updated_at TIMESTAMPTZ NOT NULL`
 - `PRIMARY KEY (shell_id, book_id)`
 
-### 9. `book_ratings`
+### 11. `book_ratings`
 
 - `user_id BIGINT REFERENCES users(id) ON DELETE CASCADE`
 - `book_id BIGINT REFERENCES books(id) ON DELETE CASCADE`
@@ -91,7 +106,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `updated_at TIMESTAMPTZ NOT NULL`
 - `PRIMARY KEY (user_id, book_id)`
 
-### 10. `reviews`
+### 12. `reviews`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `goodreads_id TEXT UNIQUE NULL`
@@ -101,7 +116,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `created_at TIMESTAMPTZ NOT NULL`
 - `updated_at TIMESTAMPTZ NOT NULL`
 
-### 11. `review_comments`
+### 13. `review_comments`
 
 - `id BIGSERIAL PRIMARY KEY`
 - `review_id BIGINT REFERENCES reviews(id) ON DELETE CASCADE`
@@ -110,7 +125,7 @@ This page documents the current relational schema and exactly how parquet datase
 - `created_at TIMESTAMPTZ NOT NULL`
 - `updated_at TIMESTAMPTZ NOT NULL`
 
-### 12. `review_likes`
+### 14. `review_likes`
 
 - `review_id BIGINT REFERENCES reviews(id) ON DELETE CASCADE`
 - `user_id BIGINT REFERENCES users(id) ON DELETE CASCADE`
@@ -154,6 +169,19 @@ Mapping:
 - `books.authors[*].author_id` matches `authors.goodreads_id`
 - relation stored with internal PKs: `book_authors.book_id` + `book_authors.author_id`
 
+### Tags dataset
+
+Source:
+
+- Extracted from `popular_shelves` in books dataset
+
+Importer script: `scripts/import_tags_from_shelves.py`
+
+Mapping:
+
+- Popular shelf names -> `tags.name`
+- Book-shelf associations -> `book_tags`
+
 ### Reviews dataset
 
 Source:
@@ -188,6 +216,33 @@ ID resolution:
 - dataset `user_id` resolves through `users.goodreads_id`
 - dataset `book_id` resolves through `books.goodreads_id`
 
+## Entity Relationships
+
+```
+users
+  ├── lists (1:N) ─── list_books (N:M) ─── books
+  ├── shell (1:1) ── shell_books (N:M) ── books
+  ├── book_ratings (N:M) ───────────────── books
+  ├── reviews (1:N) ────────────────────── books
+  │     ├── review_comments (1:N)
+  │     └── review_likes (N:M)
+  └── goodreads_id (optional, from datasets)
+
+books
+  ├── authors (N:M) via book_authors
+  ├── tags (N:M) via book_tags
+  ├── goodreads_id (required, from datasets)
+  └── Embedded in Qdrant for vector search
+```
+
 ## Important Operational Rule
 
 `reviews` and `interactions` rows are skipped when referenced `book_id` does not exist in imported `books` (by Goodreads ID).
+
+## Performance Indexes
+
+The following indexes are created via migrations for query optimization:
+
+- Book title/author search indexes
+- Rating count aggregations
+- Review lookups by book/user
