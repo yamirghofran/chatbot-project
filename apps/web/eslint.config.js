@@ -8,7 +8,11 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
-export default defineConfig([globalIgnores(['dist']), {
+export default defineConfig([globalIgnores([
+  'dist',
+  'storybook-static',
+  'src/routeTree.gen.ts',
+]), {
   files: ['**/*.{ts,tsx}'],
   extends: [
     js.configs.recommended,
@@ -22,5 +26,16 @@ export default defineConfig([globalIgnores(['dist']), {
   languageOptions: {
     ecmaVersion: 2020,
     globals: globals.browser,
+  },
+}, {
+  files: [
+    '.storybook/preview.tsx',
+    'src/components/ui/badge.tsx',
+    'src/components/ui/button.tsx',
+    'src/components/ui/tabs.tsx',
+    'src/components/ui/toggle.tsx',
+  ],
+  rules: {
+    'react-refresh/only-export-components': 'off',
   },
 }, ...storybook.configs["flat/recommended"]])

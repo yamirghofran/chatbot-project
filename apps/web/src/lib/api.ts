@@ -13,6 +13,16 @@ const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
   "http://localhost:8001";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function getToken(): string | null {
   return localStorage.getItem("bookdb_token");
 }
@@ -41,7 +51,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // use raw text
     }
-    throw new Error(message);
+    throw new ApiError(res.status, message || res.statusText);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

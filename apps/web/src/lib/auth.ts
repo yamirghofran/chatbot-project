@@ -25,12 +25,26 @@ export function useCurrentUser() {
       if (!getToken()) return null;
       try {
         return await api.getMe();
-      } catch {
-        clearToken();
-        return null;
+      } catch (error) {
+        if (
+          error instanceof api.ApiError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          clearToken();
+          return null;
+        }
+        throw error;
       }
     },
     staleTime: 5 * 60 * 1000,
-    retry: false,
+    retry: (failureCount, error) => {
+      if (
+        error instanceof api.ApiError &&
+        (error.status === 401 || error.status === 403)
+      ) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 }

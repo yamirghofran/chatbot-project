@@ -32,6 +32,8 @@ export function SearchResultRow({ book }: SearchResultRowProps) {
       <img
         src={book.coverUrl ?? "/brand/book-placeholder.png"}
         alt={`Cover of ${book.title}`}
+        loading="lazy"
+        decoding="async"
         className="h-14 w-auto aspect-[2/3] rounded-sm object-cover shrink-0"
       />
 

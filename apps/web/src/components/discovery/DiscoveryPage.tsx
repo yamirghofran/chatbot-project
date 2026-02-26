@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import type { Book, List, ActivityItem, User } from "@/lib/types";
 import { BookRow } from "@/components/book/BookRow";
@@ -65,11 +65,20 @@ export function DiscoveryPage({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["myLists"] }),
   });
 
-  function selectedListIdsForBook(bookId: string) {
-    return lists
-      .filter((list) => list.books.some((listBook) => listBook.id === bookId))
-      .map((list) => list.id);
-  }
+  const selectedListIdsByBook = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const list of lists) {
+      for (const listBook of list.books) {
+        const selectedListIds = map.get(listBook.id);
+        if (selectedListIds) {
+          selectedListIds.push(list.id);
+        } else {
+          map.set(listBook.id, [list.id]);
+        }
+      }
+    }
+    return map;
+  }, [lists]);
 
   function handleToggleBookInList(
     book: Book,
@@ -177,7 +186,7 @@ export function DiscoveryPage({
                     descriptionMode="preview"
                     primaryAction="amazon"
                     listOptions={lists}
-                    selectedListIds={selectedListIdsForBook(book.id)}
+                    selectedListIds={selectedListIdsByBook.get(book.id) ?? []}
                     onToggleList={(listId, nextSelected) =>
                       handleToggleBookInList(book, listId, nextSelected)
                     }

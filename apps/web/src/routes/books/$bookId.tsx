@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import { BookPage } from "@/components/book/BookPage";
 import { CenteredLoading } from "@/components/ui/CenteredLoading";
 import * as api from "@/lib/api";
@@ -19,46 +24,42 @@ function BookDetailPage() {
   const queryClient = useQueryClient();
   const { data: me } = useCurrentUser();
   const myRatingQueryKey = ["myRating", bookId];
+  const bookReviewsQueryKey = ["bookReviews", bookId] as const;
 
-  // ---------------------------------------------------------------------------
-  // Reviews — accumulated in local state so "load more" can append pages
-  // without fighting the query cache.
-  // ---------------------------------------------------------------------------
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [totalReviews, setTotalReviews] = useState(0);
-  const [reviewsLoaded, setReviewsLoaded] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const reviewsQuery = useQuery({
-    queryKey: ["bookReviews", bookId],
-    queryFn: () => api.getBookReviews(bookId, REVIEWS_LIMIT, 0),
+  const reviewsQuery = useInfiniteQuery({
+    queryKey: bookReviewsQueryKey,
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      api.getBookReviews(bookId, REVIEWS_LIMIT, pageParam),
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce(
+        (count, page) => count + page.items.length,
+        0,
+      );
+      return loadedCount < lastPage.total ? loadedCount : undefined;
+    },
   });
 
-  // Sync page-0 query data → local state (also resets after any invalidation).
-  useEffect(() => {
-    if (reviewsQuery.data) {
-      setReviews(reviewsQuery.data.items);
-      setTotalReviews(reviewsQuery.data.total);
-      setReviewsLoaded(reviewsQuery.data.items.length);
-    }
-  }, [reviewsQuery.data]);
-
-  const hasMore = reviewsLoaded < totalReviews;
+  const reviews = reviewsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const totalReviews = reviewsQuery.data?.pages[0]?.total ?? 0;
+  const hasMore = reviews.length < totalReviews;
+  const loadingMore = reviewsQuery.isFetchingNextPage;
 
   async function handleLoadMore() {
-    setLoadingMore(true);
-    try {
-      const data = await api.getBookReviews(
-        bookId,
-        REVIEWS_LIMIT,
-        reviewsLoaded,
-      );
-      setReviews((prev) => [...prev, ...data.items]);
-      setTotalReviews(data.total);
-      setReviewsLoaded((prev) => prev + data.items.length);
-    } finally {
-      setLoadingMore(false);
-    }
+    if (!hasMore || reviewsQuery.isFetchingNextPage) return;
+    await reviewsQuery.fetchNextPage();
+  }
+
+  function updateReviewPages(
+    updater: (pages: api.ReviewsPage[]) => api.ReviewsPage[],
+  ) {
+    queryClient.setQueryData<InfiniteData<api.ReviewsPage, number>>(
+      bookReviewsQueryKey,
+      (current) => {
+        if (!current) return current;
+        return { ...current, pages: updater(current.pages) };
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -163,8 +164,8 @@ function BookDetailPage() {
   });
 
   // ---------------------------------------------------------------------------
-  // Review mutations — optimistic updates go directly to local `reviews` state.
-  // On settle we invalidate page-0 so the useEffect resets with fresh server data.
+  // Review mutations — optimistic updates are applied to the paginated query
+  // cache so loaded pages remain intact while background revalidation runs.
   // ---------------------------------------------------------------------------
 
   const postReviewMutation = useMutation({
@@ -180,28 +181,56 @@ function BookDetailPage() {
         timestamp: "just now",
         replies: [],
       };
-      setReviews((prev) => [optimistic, ...prev]);
-      setTotalReviews((t) => t + 1);
+      updateReviewPages((pages) => {
+        if (pages.length === 0) {
+          return [{ items: [optimistic], total: 1 }];
+        }
+        const [firstPage, ...otherPages] = pages;
+        return [
+          {
+            ...firstPage,
+            items: [optimistic, ...firstPage.items],
+            total: firstPage.total + 1,
+          },
+          ...otherPages,
+        ];
+      });
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
   });
 
   const deleteReviewMutation = useMutation({
     mutationFn: (reviewId: string) => api.deleteReview(reviewId),
     onMutate: (reviewId) => {
-      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
-      setTotalReviews((t) => Math.max(0, t - 1));
+      updateReviewPages((pages) => {
+        let removed = false;
+        const nextPages = pages.map((page) => {
+          const nextItems = page.items.filter((review) => {
+            const shouldRemove = review.id === reviewId;
+            if (shouldRemove) removed = true;
+            return !shouldRemove;
+          });
+          if (nextItems.length === page.items.length) return page;
+          return { ...page, items: nextItems };
+        });
+        if (!removed) return pages;
+        return nextPages.map((page, index) =>
+          index === 0
+            ? { ...page, total: Math.max(0, page.total - 1) }
+            : page,
+        );
+      });
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
   });
 
@@ -209,22 +238,36 @@ function BookDetailPage() {
     mutationFn: ({ reviewId, liked }: { reviewId: string; liked: boolean }) =>
       liked ? api.likeReview(reviewId) : api.unlikeReview(reviewId),
     onMutate: ({ reviewId, liked }) => {
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === reviewId
-            ? { ...r, isLikedByMe: liked, likes: r.likes + (liked ? 1 : -1) }
-            : r,
-        ),
+      updateReviewPages((pages) =>
+        pages.map((page) => ({
+          ...page,
+          items: page.items.map((review) =>
+            review.id === reviewId
+              ? {
+                  ...review,
+                  isLikedByMe: liked,
+                  likes: review.likes + (liked ? 1 : -1),
+                }
+              : review,
+          ),
+        })),
       );
     },
     onError: (_err, { reviewId, liked }) => {
       // Roll back the toggle
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === reviewId
-            ? { ...r, isLikedByMe: !liked, likes: r.likes + (!liked ? 1 : -1) }
-            : r,
-        ),
+      updateReviewPages((pages) =>
+        pages.map((page) => ({
+          ...page,
+          items: page.items.map((review) =>
+            review.id === reviewId
+              ? {
+                  ...review,
+                  isLikedByMe: !liked,
+                  likes: review.likes + (!liked ? 1 : -1),
+                }
+              : review,
+          ),
+        })),
       );
     },
   });
@@ -242,19 +285,25 @@ function BookDetailPage() {
         isLikedByMe: false as const,
         timestamp: "just now",
       };
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === reviewId
-            ? { ...r, replies: [...(r.replies ?? []), optimisticReply] }
-            : r,
-        ),
+      updateReviewPages((pages) =>
+        pages.map((page) => ({
+          ...page,
+          items: page.items.map((review) =>
+            review.id === reviewId
+              ? {
+                  ...review,
+                  replies: [...(review.replies ?? []), optimisticReply],
+                }
+              : review,
+          ),
+        })),
       );
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
   });
 
@@ -267,24 +316,27 @@ function BookDetailPage() {
       commentId: string;
     }) => api.deleteReviewComment(reviewId, commentId),
     onMutate: ({ reviewId, commentId }) => {
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === reviewId
-            ? {
-                ...r,
-                replies: (r.replies ?? []).filter(
-                  (reply) => reply.id !== commentId,
-                ),
-              }
-            : r,
-        ),
+      updateReviewPages((pages) =>
+        pages.map((page) => ({
+          ...page,
+          items: page.items.map((review) =>
+            review.id === reviewId
+              ? {
+                  ...review,
+                  replies: (review.replies ?? []).filter(
+                    (reply) => reply.id !== commentId,
+                  ),
+                }
+              : review,
+          ),
+        })),
       );
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["bookReviews", bookId] });
+      queryClient.invalidateQueries({ queryKey: bookReviewsQueryKey });
     },
   });
 

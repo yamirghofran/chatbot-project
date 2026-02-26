@@ -3,6 +3,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MarketingAuthGate } from "@/components/auth/MarketingAuthGate";
 import { CenteredLoading } from "@/components/ui/CenteredLoading";
+import { Button } from "@/components/ui/button";
 import { DiscoveryPage } from "@/components/discovery/DiscoveryPage";
 import * as api from "@/lib/api";
 import { getToken, setToken, useCurrentUser } from "@/lib/auth";
@@ -16,7 +17,13 @@ function Home() {
   const queryClient = useQueryClient();
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const { data: currentUser, isLoading: meLoading } = useCurrentUser();
+  const {
+    data: currentUser,
+    isLoading: meLoading,
+    isError: meError,
+    error: meErrorValue,
+    refetch: refetchCurrentUser,
+  } = useCurrentUser();
 
   const hasToken = !!getToken();
 
@@ -88,6 +95,27 @@ function Home() {
   }
 
   if (meLoading) return <CenteredLoading />;
+
+  if (hasToken && meError) {
+    return (
+      <div className="py-8">
+        <p className="text-sm text-destructive">
+          {meErrorValue instanceof Error
+            ? meErrorValue.message
+            : "Could not validate your session. Please try again."}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          onClick={() => refetchCurrentUser()}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
