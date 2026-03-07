@@ -1,0 +1,29 @@
+graph LR
+    subgraph Client["Frontend — React 19 SPA"]
+        direction TB
+        Router["TanStack Router"]
+        Query["TanStack Query"]
+        Routes["Discovery · Search<br/>Book · Profile · List"]
+    end
+
+    subgraph Railway["Railway"]
+        direction TB
+        subgraph API["FastAPI"]
+            Auth["auth"]
+            Books["books"]
+            Discovery["discovery"]
+            Social["reviews · users · lists · me"]
+        end
+        Embed["Embedding Service<br/>Finetuned model"]
+        PG[("PostgreSQL")]
+        Qdrant[("Qdrant<br/>Vector store")]
+    end
+
+    Groq["Groq LLM"]
+
+    Client -->|"REST / JWT"| API
+    API --> PG
+    Books -->|"Similarity search"| Qdrant
+    Books --> Groq
+    Books --> Embed
+    Embed -->|"Query vector"| Qdrant

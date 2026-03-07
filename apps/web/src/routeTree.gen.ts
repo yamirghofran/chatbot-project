@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUsernameRouteImport } from './routes/user/$username'
 import { Route as ListsListIdRouteImport } from './routes/lists/$listId'
 import { Route as BooksBookIdRouteImport } from './routes/books/$bookId'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -44,6 +50,7 @@ const BooksBookIdRoute = BooksBookIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/signup': typeof SignupRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
   '/user/$username': typeof UserUsernameRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/signup': typeof SignupRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
   '/user/$username': typeof UserUsernameRoute
@@ -59,6 +67,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/search': typeof SearchRoute
+  '/signup': typeof SignupRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
   '/user/$username': typeof UserUsernameRoute
@@ -68,15 +77,23 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/search'
+    | '/signup'
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/search' | '/books/$bookId' | '/lists/$listId' | '/user/$username'
+  to:
+    | '/'
+    | '/search'
+    | '/signup'
+    | '/books/$bookId'
+    | '/lists/$listId'
+    | '/user/$username'
   id:
     | '__root__'
     | '/'
     | '/search'
+    | '/signup'
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
@@ -85,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SearchRoute: typeof SearchRoute
+  SignupRoute: typeof SignupRoute
   BooksBookIdRoute: typeof BooksBookIdRoute
   ListsListIdRoute: typeof ListsListIdRoute
   UserUsernameRoute: typeof UserUsernameRoute
@@ -92,6 +110,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -133,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SearchRoute: SearchRoute,
+  SignupRoute: SignupRoute,
   BooksBookIdRoute: BooksBookIdRoute,
   ListsListIdRoute: ListsListIdRoute,
   UserUsernameRoute: UserUsernameRoute,

@@ -1,0 +1,10 @@
+flowchart LR
+    A(["User Query"]) --> B["Keyword Ranking<br/>Title · Author match<br/>weighted by popularity"]
+
+    B -->|"Results found"| Z(["Return Results"])
+
+    B -->|"No results"| C["LLM Query Rewrite<br/>Groq"]
+    C --> D["Embedding Service<br/>Vectorise rewritten query"]
+    D --> E["Qdrant<br/>Semantic nearest-neighbour search"]
+    E --> F["LLM Narrative Generation<br/>Groq"]
+    F --> G(["Return AI Books<br/>+ Narrative Response"])

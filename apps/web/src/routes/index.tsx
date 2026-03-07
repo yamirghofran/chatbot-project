@@ -15,6 +15,8 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const {
@@ -53,28 +55,11 @@ function Home() {
   const resolvedTrendingLists = teamListsQuery.data ?? homeTrendingLists;
   const resolvedStaffPicks = homeStaffPicks;
 
-  async function handleAuthenticated({
-    email,
-    password,
-    mode,
-    name,
-    username,
-  }: {
-    email: string;
-    password: string;
-    mode: "signin" | "signup";
-    name?: string;
-    username?: string;
-  }) {
+  async function handleAuthenticated({ email: e, password: p }: { email: string; password: string }) {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      let result: api.TokenResponse;
-      if (mode === "signup" && name && username) {
-        result = await api.register(email, password, name, username);
-      } else {
-        result = await api.login(email, password);
-      }
+      const result = await api.login(e, p);
       setToken(result.access_token);
       await queryClient.invalidateQueries();
     } catch (err) {
@@ -90,6 +75,10 @@ function Home() {
         onAuthenticated={handleAuthenticated}
         error={authError}
         isLoading={authLoading}
+        email={email}
+        onEmailChange={setEmail}
+        password={password}
+        onPasswordChange={setPassword}
       />
     );
   }
@@ -123,6 +112,10 @@ function Home() {
         onAuthenticated={handleAuthenticated}
         error={authError}
         isLoading={authLoading}
+        email={email}
+        onEmailChange={setEmail}
+        password={password}
+        onPasswordChange={setPassword}
       />
     );
   }

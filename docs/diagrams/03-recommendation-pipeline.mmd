@@ -1,0 +1,14 @@
+flowchart TD
+    A(["Authenticated User"]) --> B{"Has Goodreads ID<br/>in BPR model?"}
+
+    B -->|"Yes"| C["BPR Model<br/>Bayesian Personalised Ranking<br/>precomputed parquet lookup"]
+    B -->|"No"| D["Cold-start Fallback<br/>Popularity-ranked books<br/>from Goodreads metrics parquet"]
+
+    C --> E(["Personalised Recommendations"])
+    D --> F(["Popular Books<br/>non-personalised"])
+
+    G(["Book Detail Page"]) --> H{"Qdrant<br/>Available?"}
+    H -->|"Yes — 30min TTL cache"| I["Qdrant<br/>Embedding similarity search<br/>point ID = goodreads_id"]
+    H -->|"No"| J["PostgreSQL Fallback<br/>Most-rated books"]
+    I --> K(["Semantically Related Books"])
+    J --> L(["Popular Books<br/>non-related fallback"])
