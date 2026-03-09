@@ -223,7 +223,7 @@ export function DiscoveryPage({
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   className="mt-2"
                   onClick={handleShareProfile}
                 >

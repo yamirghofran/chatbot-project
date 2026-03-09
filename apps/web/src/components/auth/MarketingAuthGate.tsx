@@ -30,21 +30,31 @@ export function MarketingAuthGate({
   }
 
   return (
-    <div className="flex min-h-[80vh] flex-col items-center justify-center">
-      <div className="w-full max-w-sm">
+    <div className="fixed inset-0 flex items-center justify-center overflow-hidden md:justify-end md:pr-[25.67%]">
+      {/* Background — desktop only */}
+      <div
+        className="pointer-events-none absolute inset-0 hidden bg-cover bg-center bg-no-repeat xl:block"
+        style={{ backgroundImage: "url('/composition-4.svg')" }}
+      />
+
+      <div className="relative w-full max-w-sm px-6 md:px-0">
+        <div className="mb-4 flex justify-center md:mb-6">
+          <img src="/logo.svg" alt="BookDB" className="h-6 w-auto md:h-8" />
+        </div>
+
         {/* Marketing copy */}
-        <div className="mb-8 text-center">
-          <h1 className="font-serif text-2xl font-medium tracking-tight">
+        <div className="mb-6 text-center md:mb-8">
+          <h1 className="font-serif text-xl font-medium tracking-tight md:text-2xl">
             Go slow. Only fools rush.
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground md:mt-2 md:text-sm">
             Discover books aligned with your interests. Record what you read.
             Develop your taste over time.
           </p>
         </div>
 
         {/* Sign in form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-2.5 md:space-y-3">
           <div>
             <label
               htmlFor="auth-email"
@@ -92,7 +102,7 @@ export function MarketingAuthGate({
           </Button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-muted-foreground">
+        <p className="mt-3 text-center text-xs text-muted-foreground md:mt-4">
           Don't have an account?{" "}
           <Link
             to="/signup"
