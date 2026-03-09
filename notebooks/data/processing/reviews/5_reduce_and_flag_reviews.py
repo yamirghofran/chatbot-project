@@ -246,18 +246,6 @@ def _(df_dedup_clean, df_spoiler, is_non_informative, pl):
     return
 
 
-@app.cell
-def _(df_dedup_clean, is_non_informative, mo, pl):
-    # Show non-informative reviews from dedup
-    _non_info_dedup = df_dedup_clean.filter(
-        pl.col("review_text").map_elements(is_non_informative, return_dtype=pl.Boolean)
-    ).select(["review_id", "review_text", "rating"])
-
-    mo.md(f"""
-    ### Non-informative reviews in DEDUP dataset ({_non_info_dedup.shape[0]:,} total)
-    """)
-    return
-
 
 @app.cell
 def _(df_dedup_clean, is_non_informative, pl):
@@ -267,18 +255,6 @@ def _(df_dedup_clean, is_non_informative, pl):
     ).select(["review_id", "review_text", "rating"]).head(50)
     return
 
-
-@app.cell
-def _(df_spoiler, is_non_informative, mo, pl):
-    # Show non-informative reviews from spoiler
-    _non_info_spoiler = df_spoiler.filter(
-        pl.col("review_text").map_elements(is_non_informative, return_dtype=pl.Boolean)
-    ).select(["review_id", "review_text", "rating"])
-
-    mo.md(f"""
-    ### Non-informative reviews in SPOILER dataset ({_non_info_spoiler.shape[0]:,} total)
-    """)
-    return
 
 
 @app.cell
