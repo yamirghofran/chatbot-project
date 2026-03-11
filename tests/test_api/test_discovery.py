@@ -23,6 +23,7 @@ def _request_with_state(
 
 def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
     monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_args, **_kwargs: list(range(1, 12)))
+    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         discovery,
         "_interaction_vector_recommendations",
@@ -50,6 +51,7 @@ def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
 
 def test_recommendations_use_interactions_when_no_bpr_user(monkeypatch):
     monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         discovery,
         "_interaction_vector_recommendations",
