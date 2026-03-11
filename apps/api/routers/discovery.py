@@ -18,6 +18,7 @@ from bookdb.db.models import (
 )
 
 from bookdb.vector_db.clustering import cluster_seeds_by_embedding
+from bookdb.vector_db.reranking import reciprocal_rank_fusion
 
 from ..core.book_queries import load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
 from ..core.book_metrics import get_top_popular_goodreads_ids, get_top_staff_pick_goodreads_ids
@@ -280,7 +281,6 @@ def get_recommendations(
         metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
         qdrant = getattr(request.app.state, "qdrant", None)
 
-    bpr_books: list[Book] = []
     bpr_goodreads_ids: list[int] = []
     if current_user is not None and bpr_path is not None and current_user.goodreads_id is not None:
         bpr_goodreads_ids = _bpr_recommendations(
@@ -288,43 +288,29 @@ def get_recommendations(
             current_user.goodreads_id,
             limit=max(limit * 5, 100),
         )
-        if bpr_goodreads_ids:
-            bpr_books = load_books_by_goodreads_ids(db, bpr_goodreads_ids)
 
-    interaction_books: list[Book] = []
+    interaction_goodreads_ids: list[int] = []
     if current_user is not None and qdrant is not None:
         interaction_goodreads_ids = _cluster_vector_recommendations(
             db,
             current_user.id,
             qdrant_client=qdrant,
             limit=max(limit * 4, 80),
-            exclude_ids=set(bpr_goodreads_ids),
         )
         if not interaction_goodreads_ids:
-            # Fall back
             interaction_goodreads_ids = _interaction_vector_recommendations(
                 db,
                 current_user.id,
                 qdrant_client=qdrant,
                 limit=max(limit * 4, 80),
-                exclude_ids=set(bpr_goodreads_ids),
             )
-        if interaction_goodreads_ids:
-            interaction_books = load_books_by_goodreads_ids(db, interaction_goodreads_ids)
 
     recommendations: list[Book] = []
-    if bpr_books and interaction_books:
-        # Keep BPR dominant, but reserve some room for real-time taste-based vector picks.
-        interaction_quota = max(1, min(limit // 3, 8)) if limit >= 3 else 0
-        interaction_reserved = min(interaction_quota, len(interaction_books))
-        bpr_target = max(limit - interaction_reserved, 0)
-
-        _append_unique_books(recommendations, bpr_books, limit=bpr_target)
-        _append_unique_books(recommendations, interaction_books, limit=limit)
-        _append_unique_books(recommendations, bpr_books, limit=limit)
-    else:
-        _append_unique_books(recommendations, bpr_books, limit=limit)
-        _append_unique_books(recommendations, interaction_books, limit=limit)
+    if bpr_goodreads_ids or interaction_goodreads_ids:
+        ranked_lists = [l for l in [bpr_goodreads_ids, interaction_goodreads_ids] if l]
+        merged_ids = reciprocal_rank_fusion(ranked_lists)
+        merged_books = load_books_by_goodreads_ids(db, merged_ids[: limit * 2])
+        _append_unique_books(recommendations, merged_books, limit=limit)
 
     if len(recommendations) < limit:
         cold_start_books = _cold_start(db, limit, metrics_parquet_path)
