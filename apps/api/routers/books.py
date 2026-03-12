@@ -105,14 +105,7 @@ def _diversify_books_by_author(
         author_ids = {ba.author_id for ba in book.authors if ba.author_id is not None}
 
         # Check if we've already included too many books from these authors
-        too_many_from_authors = False
-        for author_id in author_ids:
-            if author_count.get(author_id, 0) >= max_per_author:
-                too_many_from_authors = True
-                break
-
-        # If any author is over the limit, skip this book
-        if too_many_from_authors:
+        if any(author_count[author_id] >= max_per_author for author_id in author_ids):
             continue
 
         # Include this book
@@ -684,7 +677,7 @@ def get_related_books(
         .options(*BOOK_LOAD_OPTIONS)
         .limit(limit * _CANDIDATE_MULTIPLIER)  # Fetch more candidates
     ).all()
-    fallback_list = list(fallback) if fallback else []
+    fallback_list = fallback
     diversified_fallback = _diversify_books_by_author(
         fallback_list, limit, max_per_author=_MAX_BOOKS_PER_AUTHOR
     )
