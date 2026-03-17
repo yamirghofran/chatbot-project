@@ -233,25 +233,26 @@ def _run_chatbot_search_pipeline(
     if not ranked_books:
         return None, []
 
-    # Get semantically relevant reviews for LLM 
+    # Get semantically relevant reviews for LLM
     # Group by book to ensure coverage across recommended books (top 2 per book)
+    # Note: review_id from Qdrant is goodreads_id (UUID string), not Review.id
     reviews: list[dict[str, Any]] = []
     if settings.CHATBOT_MAX_REVIEWS > 0 and review_hits:
         ranked_book_ids = {book.id for book in ranked_books}
-        reviews_per_book: dict[int, list[int]] = {}
+        reviews_per_book: dict[int, list[str]] = {}
         max_reviews_per_book = 2
 
         for hit in review_hits:
-            goodreads_id = hit.get("book_id")
-            book = books_by_goodreads_id.get(goodreads_id)
+            book_goodreads_id = hit.get("book_id")
+            book = books_by_goodreads_id.get(book_goodreads_id)
             if book and book.id in ranked_book_ids:
                 if book.id not in reviews_per_book:
                     reviews_per_book[book.id] = []
                 if len(reviews_per_book[book.id]) < max_reviews_per_book:
-                    reviews_per_book[book.id].append(hit["review_id"])
+                    reviews_per_book[book.id].append(str(hit["review_id"]))
 
         # Flatten: prioritize books in ranked order, take their reviews
-        relevant_review_ids: list[int] = []
+        relevant_review_ids: list[str] = []
         for book in ranked_books:
             if book.id in reviews_per_book:
                 for rid in reviews_per_book[book.id]:
@@ -264,16 +265,16 @@ def _run_chatbot_search_pipeline(
         if relevant_review_ids:
             review_rows = db.execute(
                 select(
-                    Review.id,
+                    Review.goodreads_id,
                     Review.review_text,
                     Book.title.label("book_title"),
                 )
                 .join(Book, Book.id == Review.book_id)
-                .where(Review.id.in_(relevant_review_ids))
+                .where(Review.goodreads_id.in_(relevant_review_ids))
             ).all()
-            
+
             # Preserve semantic order from relevant_review_ids
-            rows_by_id = {int(row.id): row for row in review_rows}
+            rows_by_id = {str(row.goodreads_id): row for row in review_rows}
             reviews = [
                 {
                     "review_id": rid,
