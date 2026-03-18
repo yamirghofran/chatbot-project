@@ -6,7 +6,7 @@ import polars as pl
 
 project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
 
-reduced_reviews_path = os.path.join(project_root, "data", "4_goodreads_reviews_reduced.parquet")
+reduced_reviews_path = os.path.join(project_root, "data", "5_goodreads_reviews_final_clean.parquet")
 embeddings_path = os.path.join(project_root, "data", "reviews_base_embeddings.parquet")
 output_path = os.path.join(project_root, "data", "reviews_reduced_embeddings.parquet")
 
@@ -19,6 +19,7 @@ reduced_ids = (
     .select("review_id")
     .collect()
     .to_series()
+    .to_list()
 )
 print(f"Loaded {len(reduced_ids):,} reduced review IDs ({time.time()-t0:.1f}s)")
 
@@ -37,3 +38,13 @@ print("Saving...")
 df_embeddings.write_parquet(output_path)
 print(f"Saved to {output_path}")
 print(f"Total time: {time.time()-t0:.1f}s")
+
+# Validation
+print("\n Validation ")
+print(f"Reviews in 5_final_clean: {len(reduced_ids):,}")
+print(f"Embeddings in output:     {len(df_embeddings):,}")
+if len(reduced_ids) == len(df_embeddings):
+    print("Match: OK")
+else:
+    diff = len(reduced_ids) - len(df_embeddings)
+    print(f"MISMATCH: {diff:,} reviews have no embedding")

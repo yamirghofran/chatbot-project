@@ -42,7 +42,7 @@ def _(mo):
 @app.cell
 def _(pl):
     import os
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
     data_path = os.path.join(project_root, "data", "raw_goodreads_reviews_dedup.parquet")
     df = pl.read_parquet(data_path)
     df.head()
