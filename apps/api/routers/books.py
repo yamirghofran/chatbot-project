@@ -328,6 +328,9 @@ def _run_chatbot_search_pipeline(
             if len(relevant_review_ids) >= settings.CHATBOT_MAX_REVIEWS:
                 break
 
+        # Normalize UUIDs: Qdrant returns with dashes, PostgreSQL stores without
+        relevant_review_ids = [rid.replace('-', '') for rid in relevant_review_ids]
+
         if relevant_review_ids:
             review_rows = db.execute(
                 select(
@@ -351,28 +354,47 @@ def _run_chatbot_search_pipeline(
                 if rid in rows_by_id
             ]
 
-    # Fallback to recent reviews if no semantic matches
-    if not reviews and settings.CHATBOT_MAX_REVIEWS > 0:
-        ranked_book_ids = [book.id for book in ranked_books]
-        review_rows = db.execute(
-            select(
-                Review.id,
-                Review.review_text,
-                Book.title.label("book_title"),
-            )
-            .join(Book, Book.id == Review.book_id)
-            .where(Review.book_id.in_(ranked_book_ids))
-            .order_by(Review.created_at.desc())
-            .limit(settings.CHATBOT_MAX_REVIEWS)
-        ).all()
-        reviews = [
-            {
-                "review_id": int(row.id),
-                "book_title": str(row.book_title or ""),
-                "review": str(row.review_text or ""),
-            }
-            for row in review_rows
+    # Per-book fallback: for books without semantic reviews, get their latest reviews
+    if settings.CHATBOT_MAX_REVIEWS > 0 and len(reviews) < settings.CHATBOT_MAX_REVIEWS:
+        # Books that already have semantic reviews
+        books_with_semantic = set(reviews_per_book.keys()) if review_hits else set()
+        # Books that need fallback (no semantic reviews)
+        books_needing_fallback = [
+            book for book in ranked_books
+            if book.id not in books_with_semantic
         ]
+
+        if books_needing_fallback:
+            fallback_book_ids = [book.id for book in books_needing_fallback]
+
+            # Get latest reviews for each book without semantic matches
+            fallback_rows = db.execute(
+                select(
+                    Review.id,
+                    Review.book_id,
+                    Review.review_text,
+                    Book.title.label("book_title"),
+                )
+                .join(Book, Book.id == Review.book_id)
+                .where(Review.book_id.in_(fallback_book_ids))
+                .order_by(Review.book_id, Review.created_at.desc())
+            ).all()
+
+            # Group by book and take max 2 per book (same as semantic)
+            fallback_per_book: dict[int, int] = {}
+            max_fallback_per_book = 2
+            for row in fallback_rows:
+                if len(reviews) >= settings.CHATBOT_MAX_REVIEWS:
+                    break
+                book_id = int(row.book_id)
+                if fallback_per_book.get(book_id, 0) >= max_fallback_per_book:
+                    continue
+                fallback_per_book[book_id] = fallback_per_book.get(book_id, 0) + 1
+                reviews.append({
+                    "review_id": int(row.id),
+                    "book_title": str(row.book_title or ""),
+                    "review": str(row.review_text or ""),
+                })
 
     try:
         llm_response = generate_response_sync(groq_client, query, llm_books, reviews)

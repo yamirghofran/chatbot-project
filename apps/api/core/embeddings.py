@@ -82,7 +82,6 @@ def most_similar_by_vector(
     return hits
 
 
-<<<<<<< HEAD
 REVIEWS_COLLECTION_NAME = "reviews"
 
 
@@ -144,7 +143,7 @@ def get_book_scores_by_ids(
         scores[int(point_id)] = float(getattr(hit, "score", 0.0) or 0.0)
 
     return scores
-=======
+
 def get_vectors_by_ids(
     client: QdrantClient,
     ids: list[int],
@@ -170,4 +169,3 @@ def get_vectors_by_ids(
         if vector is not None:
             result[int(record.id)] = vector
     return result
->>>>>>> origin/dev
