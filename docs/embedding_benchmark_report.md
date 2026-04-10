@@ -85,7 +85,6 @@ Latency (ms)        485.00     475.30      -2.0%
 - `scripts/generate_benchmark_dataset.py` - Dataset generator
 - `data/benchmark_ground_truth.json` - 200 test queries
 - `data/benchmark_results.json` - Results (generated)
-- `notebooks/benchmark_analysis.py` - Interactive analysis
 
 ---
 
@@ -97,9 +96,6 @@ python scripts/generate_benchmark_dataset.py
 
 # 2. Run benchmark
 python scripts/benchmark_embeddings.py
-
-# 3. View interactive analysis
-marimo run notebooks/benchmark_analysis.py
 ```
 
 ---
@@ -109,5 +105,3 @@ marimo run notebooks/benchmark_analysis.py
 This benchmark proves the fine-tuned embedding model delivers **measurable, statistically significant improvements** in book retrieval quality compared to the base model.
 
 **Key Achievement:** 28.4% improvement in Recall@10 with p<0.001 significance.
-
-**Recommendation:** ✅ Deploy fine-tuned model for production RAG pipeline.
