@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import csv
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from bookdb.db.crud import BookListCRUD, BookRatingCRUD, ShellCRUD
+from bookdb.db.crud import BookCRUD, BookListCRUD, BookRatingCRUD, ReviewCRUD, ShellCRUD
 from bookdb.db.models import (
     Book,
     BookAuthor,
@@ -12,6 +15,7 @@ from bookdb.db.models import (
     BookRating,
     BookTag,
     ListBook,
+    Review,
     ShellBook,
     User,
 )
@@ -20,6 +24,14 @@ from ..core.deps import get_current_user, get_db
 from ..core.favorites import get_or_create_favorites_list, is_favorites_list
 from ..core.serialize import serialize_book, serialize_list
 from ..schemas.list import CreateListRequest
+
+
+def _strip_goodreads_isbn(raw: str) -> str | None:
+    """Strip Goodreads CSV ISBN formatting: '=\"9780593734223\"' → '9780593734223'."""
+    if not raw:
+        return None
+    cleaned = raw.strip().lstrip('=').strip('"')
+    return cleaned or None
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -207,3 +219,80 @@ def remove_from_favorites(
     favorites, _ = get_or_create_favorites_list(db, current_user.id)
     BookListCRUD.remove_book(db, favorites.id, book_id)
     db.commit()
+
+
+@router.post("/import/goodreads")
+async def import_goodreads(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import a Goodreads library CSV export for the authenticated user.
+
+    Matches rows to existing books via Goodreads Book Id then ISBN-13 fallback.
+    Imports ratings (1–5) and non-empty reviews; skips books not in the catalog.
+    """
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")  # strip BOM if present
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid CSV file")
+
+    matched = skipped = ratings_imported = reviews_imported = 0
+
+    for row in rows:
+        # --- locate book ---
+        book: Book | None = None
+
+        raw_gid = (row.get("Book Id") or "").strip()
+        if raw_gid:
+            try:
+                book = BookCRUD.get_by_goodreads_id(db, int(raw_gid))
+            except (ValueError, TypeError):
+                pass
+
+        if book is None:
+            isbn13 = _strip_goodreads_isbn(row.get("ISBN13") or "")
+            if isbn13:
+                book = db.scalar(select(Book).where(Book.isbn13 == isbn13))
+
+        if book is None:
+            skipped += 1
+            continue
+
+        matched += 1
+
+        # --- rating ---
+        try:
+            my_rating = int((row.get("My Rating") or "0").strip())
+        except (ValueError, TypeError):
+            my_rating = 0
+
+        if 1 <= my_rating <= 5:
+            try:
+                BookRatingCRUD.upsert(db, current_user.id, book.id, my_rating)
+                ratings_imported += 1
+            except ValueError:
+                pass
+
+        # --- review ---
+        review_text = (row.get("My Review") or "").strip()
+        if review_text:
+            existing = ReviewCRUD.get_by_user_and_book(db, current_user.id, book.id)
+            if not existing:
+                try:
+                    ReviewCRUD.create(db, current_user.id, book.id, review_text)
+                    reviews_imported += 1
+                except ValueError:
+                    pass
+
+    db.commit()
+
+    return {
+        "matched": matched,
+        "skipped": skipped,
+        "ratings_imported": ratings_imported,
+        "reviews_imported": reviews_imported,
+    }
