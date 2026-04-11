@@ -18,7 +18,7 @@ from bookdb.db.models import (
 )
 
 from bookdb.vector_db.clustering import cluster_seeds_by_embedding
-from bookdb.vector_db.reranking import reciprocal_rank_fusion
+from bookdb.vector_db.reranking import hybrid_fusion
 
 from ..core.book_queries import load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
 from ..core.book_metrics import get_top_popular_goodreads_ids, get_top_staff_pick_goodreads_ids
@@ -32,12 +32,12 @@ MIN_SEEDS_FOR_CLUSTERING = 6
 _bpr_lock = threading.Lock()
 
 
-def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) -> list[int]:
-    """Query BPR parquet for top-N recommended goodreads book IDs for a user."""
+def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) -> list[tuple[int, float]]:
+    """Query BPR parquet for top-N recommended goodreads book IDs with their prediction scores."""
     with _bpr_lock:
         rows = duckdb.execute(
             """
-            SELECT item_id
+            SELECT item_id, prediction
             FROM parquet_scan(?)
             WHERE user_id = ?
             ORDER BY prediction DESC
@@ -45,7 +45,18 @@ def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) 
             """,
             [parquet_path, goodreads_user_id, limit],
         ).fetchall()
-    return [row[0] for row in rows]
+    return [(row[0], float(row[1])) for row in rows]
+
+
+def _bpr_weight(db: Session, user_id: int) -> float:
+    """Adaptive BPR weight based on how much interaction history the user has.
+
+    Scales from 0.5 (cold user, equal weight) to 0.75 (50+ ratings, BPR dominant).
+    """
+    count = db.scalar(
+        select(func.count(BookRating.id)).where(BookRating.user_id == user_id)
+    )
+    return 0.5 + 0.25 * min(1.0, (count or 0) / 50)
 
 
 def _cold_start(db: Session, limit: int, metrics_parquet_path: str | None = None) -> list[Book]:
@@ -281,9 +292,9 @@ def get_recommendations(
         metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
         qdrant = getattr(request.app.state, "qdrant", None)
 
-    bpr_goodreads_ids: list[int] = []
+    bpr_scored: list[tuple[int, float]] = []
     if current_user is not None and bpr_path is not None and current_user.goodreads_id is not None:
-        bpr_goodreads_ids = _bpr_recommendations(
+        bpr_scored = _bpr_recommendations(
             bpr_path,
             current_user.goodreads_id,
             limit=max(limit * 5, 100),
@@ -306,9 +317,12 @@ def get_recommendations(
             )
 
     recommendations: list[Book] = []
-    if bpr_goodreads_ids or interaction_goodreads_ids:
-        ranked_lists = [l for l in [bpr_goodreads_ids, interaction_goodreads_ids] if l]
-        merged_ids = reciprocal_rank_fusion(ranked_lists)
+    if bpr_scored or interaction_goodreads_ids:
+        if bpr_scored and interaction_goodreads_ids:
+            weight = _bpr_weight(db, current_user.id)
+        else:
+            weight = 1.0 if bpr_scored else 0.0
+        merged_ids = hybrid_fusion(bpr_scored, interaction_goodreads_ids, bpr_weight=weight)
         merged_books = load_books_by_goodreads_ids(db, merged_ids[: limit * 2])
         _append_unique_books(recommendations, merged_books, limit=limit)
 
