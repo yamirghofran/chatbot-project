@@ -285,7 +285,7 @@ def _(mo):
 @app.cell
 def _(mo):
     weight_slider = mo.ui.slider(
-        start=0.0, stop=1.0, step=0.05, value=0.6,
+        start=0.0, stop=1.0, step=0.05, value=0.5,
         label="bpr_weight (0 = full vector, 1 = full BPR)",
     )
     return (weight_slider,)

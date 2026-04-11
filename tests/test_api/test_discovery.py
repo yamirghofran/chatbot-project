@@ -31,8 +31,8 @@ def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
         "_interaction_vector_recommendations",
         lambda *_a, **_kw: [101, 102, 103, 104],
     )
-    # Fix bpr_weight so the assertion is deterministic (0.6 BPR / 0.4 vector).
-    monkeypatch.setattr(discovery, "_bpr_weight", lambda *_a, **_kw: 0.6)
+    # Fix bpr_weight so the assertion is deterministic (0.5 BPR / 0.5 vector, the new max).
+    monkeypatch.setattr(discovery, "_bpr_weight", lambda *_a, **_kw: 0.5)
     monkeypatch.setattr(discovery, "_cold_start", lambda *_a, **_kw: [_book(i) for i in range(201, 230)])
     monkeypatch.setattr(
         discovery,
@@ -50,10 +50,9 @@ def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
 
     result = discovery.get_recommendations(limit=9, request=request, db=object(), current_user=current_user)
 
-    # With bpr_weight=0.6 and these scores, BPR item 1 (norm 1.0->0.6) outscores
-    # vector item 101 (norm 1.0->0.4), so BPR leads until its score drops below
-    # the top vector item (aorund rank 4).
-    assert result == [1, 2, 3, 4, 101, 5, 6, 102, 7]
+    # With bpr_weight=0.5, item 1 and vec-101 tie at 0.5 each; BPR items are
+    # inserted first so item 1 wins the tie. Vector item 101 slots in at position 2.
+    assert result == [1, 101, 2, 3, 4, 102, 5, 6, 7]
 
 
 def test_recommendations_use_interactions_when_no_bpr_user(monkeypatch):

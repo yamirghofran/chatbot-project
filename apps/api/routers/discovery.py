@@ -51,12 +51,12 @@ def _bpr_recommendations(parquet_path: str, goodreads_user_id: int, limit: int) 
 def _bpr_weight(db: Session, user_id: int) -> float:
     """Adaptive BPR weight based on how much interaction history the user has.
 
-    Scales from 0.5 (cold user, equal weight) to 0.75 (50+ ratings, BPR dominant).
+    Scales from 0.25 (cold user, vector-leaning) to 0.50 (50+ ratings, equal weight).
     """
     count = db.scalar(
         select(func.count(BookRating.id)).where(BookRating.user_id == user_id)
     )
-    return 0.5 + 0.25 * min(1.0, (count or 0) / 50)
+    return 0.25 + 0.25 * min(1.0, (count or 0) / 50)
 
 
 def _cold_start(db: Session, limit: int, metrics_parquet_path: str | None = None) -> list[Book]:
