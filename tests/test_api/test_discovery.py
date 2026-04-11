@@ -22,14 +22,18 @@ def _request_with_state(
 
 
 def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
-    monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_args, **_kwargs: list(range(1, 12)))
-    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_args, **_kwargs: [])
+    # BPR returns (id, score) pairs; scores descend so item 1 is most confident.
+    bpr_scored = [(i, float(12 - i)) for i in range(1, 12)]
+    monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_a, **_kw: bpr_scored)
+    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_a, **_kw: [])
     monkeypatch.setattr(
         discovery,
         "_interaction_vector_recommendations",
-        lambda *_args, **_kwargs: [101, 102, 103, 104],
+        lambda *_a, **_kw: [101, 102, 103, 104],
     )
-    monkeypatch.setattr(discovery, "_cold_start", lambda *_args, **_kwargs: [_book(i) for i in range(201, 230)])
+    # Fix bpr_weight so the assertion is deterministic (0.6 BPR / 0.4 vector).
+    monkeypatch.setattr(discovery, "_bpr_weight", lambda *_a, **_kw: 0.6)
+    monkeypatch.setattr(discovery, "_cold_start", lambda *_a, **_kw: [_book(i) for i in range(201, 230)])
     monkeypatch.setattr(
         discovery,
         "load_books_by_goodreads_ids",
@@ -38,7 +42,7 @@ def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
     monkeypatch.setattr(
         discovery,
         "serialize_books_with_engagement",
-        lambda _db, books: [int(book.goodreads_id) for book in books],
+        lambda _db, books: [int(b.goodreads_id) for b in books],
     )
 
     current_user = SimpleNamespace(id=42, goodreads_id=999)
@@ -46,18 +50,22 @@ def test_recommendations_blend_bpr_with_interaction_vector(monkeypatch):
 
     result = discovery.get_recommendations(limit=9, request=request, db=object(), current_user=current_user)
 
-    assert result == [1, 2, 3, 4, 5, 6, 101, 102, 103]
+    # With bpr_weight=0.6 and these scores, BPR item 1 (norm 1.0->0.6) outscores
+    # vector item 101 (norm 1.0->0.4), so BPR leads until its score drops below
+    # the top vector item (aorund rank 4).
+    assert result == [1, 2, 3, 4, 101, 5, 6, 102, 7]
 
 
 def test_recommendations_use_interactions_when_no_bpr_user(monkeypatch):
-    monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_args, **_kwargs: [])
+    # No goodreads_id → _bpr_recommendations is never called; bpr_scored stays [].
+    monkeypatch.setattr(discovery, "_bpr_recommendations", lambda *_a, **_kw: [])
+    monkeypatch.setattr(discovery, "_cluster_vector_recommendations", lambda *_a, **_kw: [])
     monkeypatch.setattr(
         discovery,
         "_interaction_vector_recommendations",
-        lambda *_args, **_kwargs: [10, 11],
+        lambda *_a, **_kw: [10, 11],
     )
-    monkeypatch.setattr(discovery, "_cold_start", lambda *_args, **_kwargs: [_book(i) for i in [11, 12, 13, 14, 15]])
+    monkeypatch.setattr(discovery, "_cold_start", lambda *_a, **_kw: [_book(i) for i in [11, 12, 13, 14, 15]])
     monkeypatch.setattr(
         discovery,
         "load_books_by_goodreads_ids",
@@ -66,7 +74,7 @@ def test_recommendations_use_interactions_when_no_bpr_user(monkeypatch):
     monkeypatch.setattr(
         discovery,
         "serialize_books_with_engagement",
-        lambda _db, books: [int(book.goodreads_id) for book in books],
+        lambda _db, books: [int(b.goodreads_id) for b in books],
     )
 
     current_user = SimpleNamespace(id=7, goodreads_id=None)
