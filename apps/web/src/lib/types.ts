@@ -75,3 +75,41 @@ export type Reply = {
   isLikedByMe?: boolean;
   timestamp: string;
 };
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ToolTrace = {
+  tool: string;
+  input: unknown;
+  output: unknown;
+  source?: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  toolName?: string;
+  toolTrace?: ToolTrace;
+  referencedBookIds?: number[];
+  referencedBooks?: Book[];
+  modelUsed?: string;
+  timestamp: string;
+};
+
+export type ChatSessionDetail = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  preferences?: Record<string, unknown>;
+  createdAt: string;
+};
