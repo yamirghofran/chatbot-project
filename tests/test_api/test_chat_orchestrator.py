@@ -1,0 +1,140 @@
+"""Tests for the chat orchestrator."""
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from apps.api.core import chat_orchestrator, chat_tools
+
+
+@pytest.fixture(autouse=True)
+def _mock_settings(monkeypatch):
+    """Provide minimal settings so the orchestrator doesn't need real env vars."""
+    fake_settings = SimpleNamespace(CHAT_MAX_HISTORY_MESSAGES=10)
+    monkeypatch.setattr(chat_orchestrator, "settings", fake_settings)
+
+
+def _mock_groq_stream_direct(content: str):
+    """Create a mock Groq streaming response that returns content directly."""
+    chunk = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(content=content, tool_calls=None),
+            )
+        ]
+    )
+    return [chunk]
+
+
+def _mock_groq_stream_tool_call(tool_name: str, arguments: str):
+    """Create a mock Groq streaming response with a tool call."""
+    tc = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name=tool_name, arguments=arguments),
+    )
+    chunk = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(content=None, tool_calls=[tc]),
+            )
+        ]
+    )
+    return [chunk]
+
+
+def test_orchestrate_direct_response():
+    """When the LLM responds without a tool call, content is returned directly."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_groq_stream_direct("Hello! How can I help?")
+
+    events = []
+    result = chat_orchestrator.orchestrate(
+        user_message="Hi",
+        history=[],
+        db=MagicMock(),
+        groq_client=client,
+        stream_callback=lambda evt, data: events.append((evt, data)),
+    )
+
+    assert result.content == "Hello! How can I help?"
+    assert result.tool_calls == []
+    assert any(evt == "token" for evt, _ in events)
+    assert any(evt == "done" for evt, _ in events)
+
+
+def test_orchestrate_tool_call_flow():
+    """When the LLM requests a tool call, the tool is executed and a follow-up response is generated."""
+    client = MagicMock()
+
+    # First call returns a tool call, second returns content
+    client.chat.completions.create.side_effect = [
+        _mock_groq_stream_tool_call("search_books", '{"query": "fantasy books"}'),
+        _mock_groq_stream_direct("Based on my search, I recommend..."),
+    ]
+
+    mock_tool_result = {
+        "success": True,
+        "data": {"llm_context_books": [], "reviews": [], "book_count": 2},
+        "books": [
+            {"id": "1", "title": "Book One", "author": "Author A"},
+            {"id": "2", "title": "Book Two", "author": "Author B"},
+        ],
+        "source": "vector_search",
+    }
+
+    events = []
+
+    with patch.dict(chat_tools.TOOL_FUNCTIONS, {"search_books": lambda *a, **kw: mock_tool_result}):
+        result = chat_orchestrator.orchestrate(
+            user_message="recommend fantasy books",
+            history=[],
+            db=MagicMock(),
+            groq_client=client,
+            stream_callback=lambda evt, data: events.append((evt, data)),
+        )
+
+    assert "recommend" in result.content.lower() or "search" in result.content.lower() or len(result.content) > 0
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "search_books"
+    assert len(result.books) == 2
+
+    event_types = [evt for evt, _ in events]
+    assert "tool_call" in event_types
+    assert "tool_result" in event_types
+
+
+def test_orchestrate_handles_llm_error():
+    """When the LLM fails, a graceful error message is returned."""
+    client = MagicMock()
+    client.chat.completions.create.side_effect = Exception("API unavailable")
+
+    events = []
+    result = chat_orchestrator.orchestrate(
+        user_message="hello",
+        history=[],
+        db=MagicMock(),
+        groq_client=client,
+        stream_callback=lambda evt, data: events.append((evt, data)),
+    )
+
+    assert "trouble" in result.content.lower() or "error" in result.content.lower()
+    assert any(evt == "done" for evt, _ in events)
+
+
+def test_truncate_history():
+    """History is truncated to max_messages while preserving the system message."""
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "msg1"},
+        {"role": "assistant", "content": "resp1"},
+        {"role": "user", "content": "msg2"},
+        {"role": "assistant", "content": "resp2"},
+        {"role": "user", "content": "msg3"},
+    ]
+
+    result = chat_orchestrator._truncate_history(messages, max_messages=3)
+    assert result[0]["role"] == "system"
+    assert len(result) == 4  # system + last 3
+    assert result[-1]["content"] == "msg3"
