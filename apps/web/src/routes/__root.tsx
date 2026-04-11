@@ -3,6 +3,7 @@ import {
   Outlet,
   createRootRoute,
   useNavigate,
+  useRouterState,
 } from "@tanstack/react-router";
 import { Navbar } from "@/components/navigation/Navbar";
 import { useCurrentUser } from "@/lib/auth";
@@ -15,6 +16,9 @@ function Root() {
   const { data: user } = useCurrentUser();
   const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState("");
+
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isChat = pathname === "/chat";
 
   function handleSearchSubmit(rawValue: string) {
     const query = rawValue.trim();
@@ -36,7 +40,7 @@ function Root() {
           onSearchSubmit={handleSearchSubmit}
         />
       )}
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className={isChat ? "px-0 py-0" : "mx-auto max-w-5xl px-4 py-8"}>
         <Outlet />
       </main>
     </div>
