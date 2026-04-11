@@ -151,6 +151,29 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "recommend_via_mcp",
+            "description": (
+                "Get book recommendations from the team's recommendation engine. "
+                "Supports preference and constraint parameters. Use when the user "
+                "wants personalized recommendations and you want to leverage the "
+                "external recommendation system."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of recommendations.",
+                        "default": 6,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -632,6 +655,60 @@ def tool_compare_books(
 
 
 # ---------------------------------------------------------------------------
+# Tool: recommend_via_mcp
+# ---------------------------------------------------------------------------
+
+def tool_recommend_via_mcp(
+    *,
+    mcp_adapter: Any | None = None,
+    db: Session,
+    qdrant: QdrantClient | None = None,
+    request_app_state: Any | None = None,
+    user_id: int | None = None,
+    preferences: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None = None,
+    limit: int = 6,
+) -> dict[str, Any]:
+    """Try the MCP recommendation server first; fall back to the local pipeline."""
+    if mcp_adapter is not None and mcp_adapter.is_available():
+        mcp_results = mcp_adapter.recommend(
+            user_id=user_id, preferences=preferences,
+            constraints=constraints, limit=limit,
+        )
+        if mcp_results:
+            # Try to resolve MCP results to local book records for rich cards
+            book_ids: list[int] = []
+            for item in mcp_results:
+                bid = item.get("book_id") or item.get("id")
+                if bid is not None:
+                    try:
+                        book_ids.append(int(bid))
+                    except (TypeError, ValueError):
+                        continue
+
+            if book_ids:
+                books = load_books_by_ids(db, book_ids)
+                if books:
+                    serialized = serialize_books_with_engagement(db, books[:limit])
+                    return _tool_result(success=True, books=serialized, source="mcp")
+
+            return _tool_result(
+                success=True,
+                data={"raw_recommendations": mcp_results[:limit]},
+                source="mcp",
+            )
+
+    # Fallback to local discovery pipeline
+    result = tool_get_recommendations(
+        db=db, qdrant=qdrant, request_app_state=request_app_state,
+        user_id=user_id, limit=limit,
+    )
+    if result["source"] != "mcp":
+        result["source"] = f"local_fallback ({result['source']})"
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Tool dispatcher
 # ---------------------------------------------------------------------------
 
@@ -641,4 +718,5 @@ TOOL_FUNCTIONS: dict[str, Any] = {
     "get_related_books": tool_get_related_books,
     "get_recommendations": tool_get_recommendations,
     "compare_books": tool_compare_books,
+    "recommend_via_mcp": tool_recommend_via_mcp,
 }
