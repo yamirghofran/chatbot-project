@@ -1,0 +1,644 @@
+"""Chat tool implementations for the orchestrator.
+
+Each tool is a plain function that accepts typed arguments plus injected
+dependencies (db, qdrant, groq_client, etc.) and returns a standardized
+result dict.  Alongside the functions, TOOL_DEFINITIONS provides the
+JSON-schema descriptors that Groq's function-calling API requires.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from groq import Groq
+from qdrant_client import QdrantClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from bookdb.db.models import Book, Review
+from bookdb.models.chatbot_llm import (
+    create_groq_client_sync,
+    rewrite_query_sync,
+)
+
+from .book_queries import (
+    BOOK_LOAD_OPTIONS,
+    load_books_by_goodreads_ids,
+    load_books_by_ids,
+    serialize_books_with_engagement,
+)
+from .config import settings
+from .embeddings import most_similar, most_similar_by_vector
+from .entity_extraction import resolve_entities
+
+
+# ---------------------------------------------------------------------------
+# Groq function-calling tool definitions
+# ---------------------------------------------------------------------------
+
+TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_books",
+            "description": (
+                "Search for books using a natural language query. Use this when the "
+                "user asks for book suggestions, wants to find specific books, or "
+                "describes what kind of book they're looking for."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query describing what books the user wants.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_book_details",
+            "description": (
+                "Fetch full details for a specific book by its ID, including "
+                "description, tags, authors, and stats. Use this when the user asks "
+                "about a particular book you already know the ID of."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "book_id": {
+                        "type": "integer",
+                        "description": "The internal book ID.",
+                    },
+                },
+                "required": ["book_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_related_books",
+            "description": (
+                "Find books similar to a given book using vector similarity. "
+                "Use when the user says 'more like this' or 'similar to X'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "book_id": {
+                        "type": "integer",
+                        "description": "The internal book ID to find related books for.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of related books to return.",
+                        "default": 6,
+                    },
+                },
+                "required": ["book_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recommendations",
+            "description": (
+                "Get personalized book recommendations for the current user based "
+                "on their ratings, shell, and lists. Use when the user asks for "
+                "general recommendations without a specific search query."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of recommendations.",
+                        "default": 6,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_books",
+            "description": (
+                "Compare two or three books side by side on dimensions like pacing, "
+                "themes, tone, difficulty, and length. Use when the user asks to "
+                "compare specific books."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "book_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "List of 2-3 book IDs to compare.",
+                        "minItems": 2,
+                        "maxItems": 3,
+                    },
+                },
+                "required": ["book_ids"],
+            },
+        },
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Standardized result builder
+# ---------------------------------------------------------------------------
+
+def _tool_result(
+    *,
+    success: bool,
+    data: dict[str, Any] | None = None,
+    books: list[dict[str, Any]] | None = None,
+    source: str = "",
+    error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "success": success,
+        "data": data or {},
+        "books": books or [],
+        "source": source,
+        "error": error,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool: search_books
+# ---------------------------------------------------------------------------
+
+def _embed_text_via_service(text: str) -> list[float]:
+    """Call the embedding service for a single text.  Returns [] on failure."""
+    import requests as http_requests
+
+    service_url = settings.EMBEDDING_SERVICE_URL
+    if not service_url:
+        return []
+
+    endpoint = service_url.rstrip("/") + "/embed"
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if settings.EMBEDDING_SERVICE_API_KEY:
+        headers["Authorization"] = f"Bearer {settings.EMBEDDING_SERVICE_API_KEY}"
+
+    body = {
+        "texts": [text],
+        "model": settings.EMBEDDING_SERVICE_MODEL,
+        "normalize_embeddings": True,
+    }
+
+    try:
+        response = http_requests.post(
+            endpoint, json=body, headers=headers,
+            timeout=settings.EMBEDDING_SERVICE_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"Embedding request failed: {e}")
+        return []
+
+    embeddings = data.get("embeddings")
+    if not isinstance(embeddings, list) or not embeddings:
+        return []
+    first = embeddings[0]
+    if not isinstance(first, list) or not first:
+        return []
+
+    vector: list[float] = []
+    for value in first:
+        try:
+            vector.append(float(value))
+        except (TypeError, ValueError):
+            return []
+    return vector
+
+
+def _book_author_names(book: Book) -> str:
+    names = [ba.author.name for ba in book.authors if ba.author]
+    return ", ".join(names) if names else "Unknown"
+
+
+def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
+    metadata = payload.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    document = payload.get("document")
+    document = document.strip() if isinstance(document, str) else ""
+    tags = [bt.tag.name for bt in book.tags if bt.tag]
+
+    title = str(metadata.get("title") or book.title)
+    author = str(metadata.get("author") or _book_author_names(book))
+    shelves = str(metadata.get("shelves") or ", ".join(tags[:5]) or "unspecified")
+    description = document or (book.description or "")
+    description = description.strip() or "No description available."
+
+    return (
+        f"TITLE: {title}\n"
+        f"AUTHOR: {author}\n"
+        f"SHELVES: {shelves}\n"
+        f"DESCRIPTION: {description}\n"
+    )
+
+
+def tool_search_books(
+    query: str,
+    *,
+    db: Session,
+    qdrant: QdrantClient | None,
+    groq_client: Groq | None = None,
+) -> dict[str, Any]:
+    """Semantic book search via entity extraction → query rewriting → Qdrant."""
+    if qdrant is None:
+        return _tool_result(success=False, error="Vector search unavailable")
+
+    groq_client = groq_client or create_groq_client_sync()
+
+    # Entity extraction
+    entity_context = None
+    if settings.ENTITY_EXTRACTION_ENABLED:
+        try:
+            resolution = resolve_entities(
+                db=db, query=query,
+                max_books=settings.ENTITY_MAX_BOOKS_PER_QUERY,
+                max_authors=settings.ENTITY_MAX_AUTHORS_PER_QUERY,
+                similarity_threshold=settings.ENTITY_SIMILARITY_THRESHOLD,
+                confidence_threshold=settings.ENTITY_CONFIDENCE_THRESHOLD,
+            )
+            entity_context = resolution.get("entity_context")
+        except Exception as e:
+            print(f"Entity extraction failed: {e}")
+
+    # Query rewriting
+    try:
+        rewritten_description, rewritten_review = rewrite_query_sync(
+            groq_client, query, entity_context=entity_context,
+        )
+    except Exception as e:
+        print(f"Query rewrite failed: {e}")
+        return _tool_result(success=False, error="Query rewrite failed")
+
+    rewritten_text = "\n\n".join(
+        part.strip() for part in [rewritten_description, rewritten_review]
+        if part and part.strip()
+    )
+    if not rewritten_text:
+        return _tool_result(success=False, error="Empty rewrite")
+
+    # Embed
+    query_embedding = _embed_text_via_service(rewritten_text)
+    if not query_embedding:
+        return _tool_result(success=False, error="Embedding failed")
+
+    # Vector search
+    try:
+        qdrant_hits = most_similar_by_vector(
+            qdrant, query_embedding, top_k=settings.CHATBOT_TOP_K,
+        )
+    except Exception as e:
+        print(f"Qdrant vector search failed: {e}")
+        return _tool_result(success=False, error="Vector search failed")
+
+    if not qdrant_hits:
+        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+
+    goodreads_ids: list[int] = []
+    for hit in qdrant_hits:
+        try:
+            goodreads_ids.append(int(hit["id"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    if not goodreads_ids:
+        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+
+    qdrant_books = load_books_by_goodreads_ids(db, goodreads_ids)
+    if not qdrant_books:
+        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+
+    books_by_gid = {int(book.goodreads_id): book for book in qdrant_books}
+    llm_context_books: list[dict[str, Any]] = []
+    ranked_books: list[Book] = []
+
+    for hit in qdrant_hits:
+        try:
+            gid = int(hit["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        book = books_by_gid.get(gid)
+        if book is None:
+            continue
+        ranked_books.append(book)
+        llm_context_books.append({
+            "book_id": int(book.id),
+            "description": _payload_to_book_context(book, hit.get("payload", {})),
+        })
+
+    if not ranked_books:
+        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+
+    # Fetch reviews for grounding
+    reviews: list[dict[str, Any]] = []
+    if settings.CHATBOT_MAX_REVIEWS > 0:
+        ranked_book_ids = [book.id for book in ranked_books]
+        review_rows = db.execute(
+            select(Review.id, Review.review_text, Book.title.label("book_title"))
+            .join(Book, Book.id == Review.book_id)
+            .where(Review.book_id.in_(ranked_book_ids))
+            .order_by(Review.created_at.desc())
+            .limit(settings.CHATBOT_MAX_REVIEWS)
+        ).all()
+        reviews = [
+            {"review_id": int(row.id), "book_title": str(row.book_title or ""), "review": str(row.review_text or "")}
+            for row in review_rows
+        ]
+
+    max_books = settings.CHATBOT_MAX_BOOKS
+    serialized = serialize_books_with_engagement(db, ranked_books[:max_books])
+
+    return _tool_result(
+        success=True,
+        data={
+            "llm_context_books": llm_context_books[:max_books],
+            "reviews": reviews,
+            "book_count": len(serialized),
+        },
+        books=serialized,
+        source="vector_search",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_book_details
+# ---------------------------------------------------------------------------
+
+def tool_get_book_details(
+    book_id: int,
+    *,
+    db: Session,
+) -> dict[str, Any]:
+    """Fetch full details for a single book."""
+    book = db.scalar(
+        select(Book).where(Book.id == book_id).options(*BOOK_LOAD_OPTIONS)
+    )
+    if book is None:
+        return _tool_result(success=False, error=f"Book {book_id} not found")
+
+    serialized = serialize_books_with_engagement(db, [book])
+    return _tool_result(success=True, books=serialized, source="database")
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_related_books
+# ---------------------------------------------------------------------------
+
+def tool_get_related_books(
+    book_id: int,
+    *,
+    db: Session,
+    qdrant: QdrantClient | None,
+    limit: int = 6,
+) -> dict[str, Any]:
+    """Find books similar to a given book via Qdrant recommend."""
+    row = db.execute(
+        select(Book.id, Book.goodreads_id).where(Book.id == book_id)
+    ).first()
+    if row is None:
+        return _tool_result(success=False, error=f"Book {book_id} not found")
+
+    if qdrant is None or row.goodreads_id is None:
+        return _tool_result(success=False, error="Vector search unavailable for this book")
+
+    try:
+        similar_gids = most_similar(qdrant, row.goodreads_id, top_k=limit * 3)
+    except Exception as e:
+        print(f"Qdrant recommend failed for book {book_id}: {e}")
+        return _tool_result(success=False, error="Vector search failed")
+
+    if not similar_gids:
+        return _tool_result(success=True, books=[], source="vector_similarity")
+
+    books = load_books_by_goodreads_ids(db, similar_gids)[:limit]
+    serialized = serialize_books_with_engagement(db, books)
+    return _tool_result(success=True, books=serialized, source="vector_similarity")
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_recommendations
+# ---------------------------------------------------------------------------
+
+def tool_get_recommendations(
+    *,
+    db: Session,
+    qdrant: QdrantClient | None,
+    request_app_state: Any | None = None,
+    user_id: int | None = None,
+    limit: int = 6,
+) -> dict[str, Any]:
+    """Personalized recommendations via the discovery pipeline.
+
+    This calls the same logic as GET /discovery/recommendations but as an
+    in-process function call instead of an HTTP request.
+    """
+    from ..routers.discovery import (
+        _append_unique_books,
+        _bpr_recommendations,
+        _cluster_vector_recommendations,
+        _cold_start,
+        _interaction_vector_recommendations,
+    )
+
+    bpr_path: str | None = getattr(request_app_state, "bpr_parquet_path", None) if request_app_state else None
+    metrics_path: str | None = getattr(request_app_state, "book_metrics_parquet_path", None) if request_app_state else None
+
+    # If no user, return cold start
+    if user_id is None:
+        cold = _cold_start(db, limit, metrics_path)
+        serialized = serialize_books_with_engagement(db, cold)
+        return _tool_result(success=True, books=serialized, source="cold_start")
+
+    from bookdb.db.models import User
+    user = db.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        cold = _cold_start(db, limit, metrics_path)
+        serialized = serialize_books_with_engagement(db, cold)
+        return _tool_result(success=True, books=serialized, source="cold_start")
+
+    # BPR
+    bpr_books: list[Book] = []
+    bpr_gids: list[int] = []
+    if bpr_path and user.goodreads_id is not None:
+        bpr_gids = _bpr_recommendations(bpr_path, user.goodreads_id, limit=max(limit * 5, 100))
+        if bpr_gids:
+            bpr_books = load_books_by_goodreads_ids(db, bpr_gids)
+
+    # Vector interaction recs
+    interaction_books: list[Book] = []
+    if qdrant is not None:
+        interaction_gids = _cluster_vector_recommendations(
+            db, user.id, qdrant_client=qdrant, limit=max(limit * 4, 80),
+            exclude_ids=set(bpr_gids),
+        )
+        if not interaction_gids:
+            interaction_gids = _interaction_vector_recommendations(
+                db, user.id, qdrant_client=qdrant, limit=max(limit * 4, 80),
+                exclude_ids=set(bpr_gids),
+            )
+        if interaction_gids:
+            interaction_books = load_books_by_goodreads_ids(db, interaction_gids)
+
+    recommendations: list[Book] = []
+    if bpr_books and interaction_books:
+        interaction_quota = max(1, min(limit // 3, 8)) if limit >= 3 else 0
+        interaction_reserved = min(interaction_quota, len(interaction_books))
+        bpr_target = max(limit - interaction_reserved, 0)
+        _append_unique_books(recommendations, bpr_books, limit=bpr_target)
+        _append_unique_books(recommendations, interaction_books, limit=limit)
+        _append_unique_books(recommendations, bpr_books, limit=limit)
+    else:
+        _append_unique_books(recommendations, bpr_books, limit=limit)
+        _append_unique_books(recommendations, interaction_books, limit=limit)
+
+    if len(recommendations) < limit:
+        cold = _cold_start(db, limit, metrics_path)
+        _append_unique_books(recommendations, cold, limit=limit)
+
+    source = "bpr+vector" if bpr_books and interaction_books else ("bpr" if bpr_books else ("vector" if interaction_books else "cold_start"))
+    serialized = serialize_books_with_engagement(db, recommendations[:limit])
+    return _tool_result(success=True, books=serialized, source=source)
+
+
+# ---------------------------------------------------------------------------
+# Tool: compare_books
+# ---------------------------------------------------------------------------
+
+_COMPARE_SYSTEM_PROMPT = """\
+You are a book comparison assistant. Given details about 2-3 books, produce a \
+structured comparison. Be specific and grounded in the provided metadata and descriptions.
+"""
+
+_COMPARE_RESPONSE_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "book_comparison",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "dimensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "values": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["name", "values"],
+                        "additionalProperties": False,
+                    },
+                },
+                "verdict": {"type": "string"},
+            },
+            "required": ["dimensions", "verdict"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def tool_compare_books(
+    book_ids: list[int],
+    *,
+    db: Session,
+    groq_client: Groq | None = None,
+) -> dict[str, Any]:
+    """Side-by-side comparison of 2-3 books."""
+    if len(book_ids) < 2 or len(book_ids) > 3:
+        return _tool_result(success=False, error="Provide 2 or 3 book IDs to compare")
+
+    books = load_books_by_ids(db, book_ids)
+    if len(books) < 2:
+        return _tool_result(success=False, error="Could not find enough books to compare")
+
+    groq_client = groq_client or create_groq_client_sync()
+
+    book_descriptions = []
+    for book in books:
+        author = _book_author_names(book)
+        tags = [bt.tag.name for bt in book.tags if bt.tag]
+        desc = (book.description or "").strip() or "No description available."
+        book_descriptions.append(
+            f"[book_id: {book.id}] TITLE: {book.title}\n"
+            f"AUTHOR: {author}\nGENRE: {', '.join(tags[:5]) or 'unspecified'}\n"
+            f"DESCRIPTION: {desc}"
+        )
+
+    user_message = (
+        "Compare these books:\n\n" + "\n\n".join(book_descriptions)
+        + "\n\nCompare on: pacing, themes, tone/mood, difficulty, target audience, and overall recommendation."
+    )
+
+    try:
+        from bookdb.models.chatbot_llm import (
+            DEFAULT_CHATBOT_MODEL,
+            _create_structured_completion_with_retries_sync,
+            _parse_structured_content,
+        )
+
+        response = _create_structured_completion_with_retries_sync(
+            groq_client,
+            model=DEFAULT_CHATBOT_MODEL,
+            messages=[
+                {"role": "system", "content": _COMPARE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.5,
+            max_completion_tokens=1024,
+            response_format=_COMPARE_RESPONSE_SCHEMA,
+        )
+        parsed = _parse_structured_content(response, label="comparison")
+    except Exception as e:
+        print(f"Comparison LLM call failed: {e}")
+        parsed = None
+
+    serialized = serialize_books_with_engagement(db, books)
+
+    if parsed is None:
+        return _tool_result(
+            success=True,
+            data={"comparison": None},
+            books=serialized,
+            source="comparison",
+        )
+
+    return _tool_result(
+        success=True,
+        data={"comparison": parsed},
+        books=serialized,
+        source="comparison",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool dispatcher
+# ---------------------------------------------------------------------------
+
+TOOL_FUNCTIONS: dict[str, Any] = {
+    "search_books": tool_search_books,
+    "get_book_details": tool_get_book_details,
+    "get_related_books": tool_get_related_books,
+    "get_recommendations": tool_get_recommendations,
+    "compare_books": tool_compare_books,
+}
