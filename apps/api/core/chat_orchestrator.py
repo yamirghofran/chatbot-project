@@ -673,10 +673,11 @@ def orchestrate(
         for b in result.get("books", []):
             books_summary += f"  - [id:{b.get('id')}] {b.get('title', '?')} by {b.get('author', '?')}\n"
 
+        no_books_line = "  (none)\n"
         tool_context_parts.append(
             f"Tool: {record.name}\n"
             f"Source: {result.get('source', 'unknown')}\n"
-            f"Books found:\n{books_summary or '  (none)\n'}"
+            f"Books found:\n{books_summary or no_books_line}"
         )
 
         comparison = result.get("data", {}).get("comparison")
