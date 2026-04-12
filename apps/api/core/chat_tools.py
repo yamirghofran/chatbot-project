@@ -33,7 +33,7 @@ from .book_queries import (
 )
 from .config import settings
 from .embeddings import most_similar, most_similar_by_vector
-from .entity_extraction import resolve_entities
+from .entity_extraction import find_books_by_title, resolve_entities
 
 
 # ---------------------------------------------------------------------------
@@ -688,8 +688,6 @@ def _resolve_books_for_comparison(
     When titles are resolved, books are re-fetched by ID with full
     relationship loading so that authors/tags are available.
     """
-    from .entity_extraction import find_books_by_title
-
     warnings: list[str] = []
 
     if book_ids:

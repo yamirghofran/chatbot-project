@@ -7,6 +7,7 @@ executes it, and streams a grounded response back via a callback.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from typing import Any, Callable
 from groq import APIError, Groq
 from qdrant_client import QdrantClient
 from sqlalchemy.orm import Session
+
+from bookdb.models.chatbot_llm import DEFAULT_CHATBOT_MODEL, create_groq_client_sync
 
 from .chat_tools import TOOL_DEFINITIONS, TOOL_FUNCTIONS
 from .config import settings
@@ -341,9 +344,7 @@ def _parse_failed_generation(err: APIError) -> tuple[str, list[dict[str, Any]]]:
     return failed, []
 
 
-import logging as _logging
-
-_log = _logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 def _first_turn_with_tools(
@@ -597,7 +598,6 @@ def orchestrate(
     Returns:
         OrchestratorResult with the final content, book IDs, and tool traces.
     """
-    from bookdb.models.chatbot_llm import DEFAULT_CHATBOT_MODEL, create_groq_client_sync
 
     model = DEFAULT_ORCHESTRATOR_MODEL or DEFAULT_CHATBOT_MODEL
     client = groq_client or create_groq_client_sync()
@@ -722,8 +722,6 @@ def _has_meaningful_output(output: dict[str, Any]) -> bool:
         return bool(data)
 
     all_failed = all(not _has_meaningful_output(rec.output) for rec in all_tool_records)
-        for rec in all_tool_records
-    )
 
     # If every tool failed/empty, fall back to a direct answer without tool context
     if all_failed:
