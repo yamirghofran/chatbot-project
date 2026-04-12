@@ -21,6 +21,7 @@ export function ChatPage() {
   const [sessionPreferences, setSessionPreferences] = useState<UserPreferences | undefined>();
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
 
   const sessionsQuery = useQuery({
@@ -120,6 +121,8 @@ export function ChatPage() {
       setStreamingToolName(undefined);
       setStreamingMsgId(assistantId);
       abortRef.current = false;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       let fullText = "";
       let allBooks: Book[] = [];
@@ -187,8 +190,8 @@ export function ChatPage() {
           setStreamingComparison(undefined);
           setStreamingSource(undefined);
           setStreamingToolName(undefined);
+          abortControllerRef.current = null;
           queryClient.invalidateQueries({ queryKey: ["chatSessions"] });
-          // Re-fetch session to get updated preferences
           if (sessionId) {
             chatApi.getSession(sessionId).then((detail) => {
               setSessionPreferences(detail.preferences ?? undefined);
@@ -206,14 +209,16 @@ export function ChatPage() {
           setIsStreaming(false);
           setStreamingMsgId(undefined);
           setStreamingToolName(undefined);
+          abortControllerRef.current = null;
         },
-      });
+      }, controller.signal);
     },
     [activeSessionId, queryClient],
   );
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
+    abortControllerRef.current?.abort();
     setIsStreaming(false);
     setStreamingMsgId(undefined);
     setStreamingToolName(undefined);

@@ -86,6 +86,7 @@ export async function sendMessage(
   sessionId: string,
   content: string,
   callbacks: SendMessageCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   let res: Response;
   try {
@@ -93,8 +94,10 @@ export async function sendMessage(
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ content }),
+      signal,
     });
   } catch (err) {
+    if ((err as Error).name === "AbortError") return;
     callbacks.onError(err instanceof Error ? err : new Error(String(err)));
     return;
   }
