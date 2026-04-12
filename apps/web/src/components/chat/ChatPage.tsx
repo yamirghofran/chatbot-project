@@ -43,15 +43,20 @@ export function ChatPage() {
       return;
     }
     setIsLoadingSession(true);
-    chatApi.getSession(activeSessionId).then((detail) => {
+    let stale = false;
+    const currentId = activeSessionId;
+    chatApi.getSession(currentId).then((detail) => {
+      if (stale || currentId !== activeSessionId) return;
       setMessages(detail.messages);
       setSessionPreferences(detail.preferences ?? undefined);
     }).catch(() => {
+      if (stale || currentId !== activeSessionId) return;
       setMessages([]);
       setSessionPreferences(undefined);
     }).finally(() => {
-      setIsLoadingSession(false);
+      if (!stale) setIsLoadingSession(false);
     });
+    return () => { stale = true; };
   }, [activeSessionId]);
 
   const handleNewSession = useCallback(async () => {
