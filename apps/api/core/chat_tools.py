@@ -43,16 +43,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "search_books",
             "description": (
-                "Search for books using a natural language query. Use this when the "
-                "user asks for book suggestions, wants to find specific books, or "
-                "describes what kind of book they're looking for."
+                "Search the BookDB catalogue using a DESCRIPTIVE natural-language "
+                "query. Use ONLY when you have a concrete description of what kind "
+                "of book the user wants (genre, theme, mood, specific title, etc.). "
+                "The query parameter MUST be a rich, descriptive search phrase — "
+                "never a single word, 'yes', or a vague confirmation. If the user "
+                "just said 'yes' or 'sure', use get_recommendations instead."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query describing what books the user wants.",
+                        "description": (
+                            "A descriptive search query (at least 3-4 words) that "
+                            "captures what the user is looking for. Expand short "
+                            "or contextual requests using the conversation history. "
+                            "For example, if the user discussed Harry Potter and "
+                            "then said 'yes, recommend me some', write: "
+                            "'fantasy books similar to Harry Potter with magic "
+                            "and coming-of-age themes'."
+                        ),
                     },
                 },
                 "required": ["query"],
@@ -86,7 +97,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "name": "get_related_books",
             "description": (
                 "Find books similar to a given book using vector similarity. "
-                "Use when the user says 'more like this' or 'similar to X'."
+                "Use when the user says 'more like this' or 'similar to X' and "
+                "you already have a book ID from a previous tool result."
             ),
             "parameters": {
                 "type": "object",
@@ -111,8 +123,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "name": "get_recommendations",
             "description": (
                 "Get personalized book recommendations for the current user based "
-                "on their ratings, shell, and lists. Use when the user asks for "
-                "general recommendations without a specific search query."
+                "on their reading history, ratings, and shelves. Use this when: "
+                "(a) the user gives a vague or short confirmation like 'yes', "
+                "'sure', 'recommend me something'; "
+                "(b) the user asks for general recommendations without specifying "
+                "genre/theme/mood; "
+                "(c) you don't have a descriptive query for search_books. "
+                "This tool does NOT require a search query."
             ),
             "parameters": {
                 "type": "object",
@@ -134,7 +151,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Compare two or three books side by side on dimensions like pacing, "
                 "themes, tone, difficulty, and length. Use when the user asks to "
-                "compare specific books."
+                "compare specific books and you have their IDs from previous results."
             ),
             "parameters": {
                 "type": "object",
@@ -156,10 +173,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "recommend_via_mcp",
             "description": (
-                "Get book recommendations from the team's recommendation engine. "
-                "Supports preference and constraint parameters. Use when the user "
-                "wants personalized recommendations and you want to leverage the "
-                "external recommendation system."
+                "Get book recommendations from the team's external recommendation "
+                "engine. Use when the user wants personalized recommendations and "
+                "you want to leverage the external recommendation system. Falls back "
+                "to local recommendations if the external service is unavailable."
             ),
             "parameters": {
                 "type": "object",

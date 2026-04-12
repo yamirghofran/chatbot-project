@@ -194,6 +194,34 @@ def test_degenerate_history_filtered():
     assert result.content == "Seven books total."
 
 
+def test_enrich_search_query_short_input():
+    """Short queries get enriched with prior user messages from history."""
+    history = [
+        {"role": "user", "content": "I just finished reading Harry Potter and loved the magic"},
+        {"role": "assistant", "content": "Great choice! Want recommendations?"},
+        {"role": "user", "content": "yes"},
+    ]
+    enriched = chat_orchestrator._enrich_search_query("yes", history)
+    assert "Harry Potter" in enriched
+    assert "yes" in enriched
+
+
+def test_enrich_search_query_already_descriptive():
+    """Queries that are already descriptive pass through unchanged."""
+    history = [
+        {"role": "user", "content": "something about wizards"},
+    ]
+    long_query = "dark fantasy books with complex magic systems"
+    result = chat_orchestrator._enrich_search_query(long_query, history)
+    assert result == long_query
+
+
+def test_enrich_search_query_no_history():
+    """Short queries without usable history pass through unchanged."""
+    result = chat_orchestrator._enrich_search_query("yes", [])
+    assert result == "yes"
+
+
 def test_truncate_history():
     """History is truncated to max_messages while preserving the system message."""
     messages = [

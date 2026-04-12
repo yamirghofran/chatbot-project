@@ -133,6 +133,40 @@ def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
     return content, tool_calls
 
 
+_MIN_SEARCH_QUERY_WORDS = 3
+
+
+def _enrich_search_query(
+    raw_query: str, history: list[dict[str, Any]],
+) -> str:
+    """If the LLM passed a short/vague query, expand it from conversation context.
+
+    Scans recent history for substantive user messages that provide topical
+    context (e.g. "I just finished Harry Potter and loved it") and prepends
+    that context to the raw query so the embedding has real signal.
+    """
+    words = raw_query.split()
+    if len(words) >= _MIN_SEARCH_QUERY_WORDS:
+        return raw_query
+
+    context_parts: list[str] = []
+    for msg in reversed(history):
+        if msg.get("role") != "user":
+            continue
+        text = (msg.get("content") or "").strip()
+        if len(text.split()) >= _MIN_SEARCH_QUERY_WORDS:
+            context_parts.append(text)
+            if len(context_parts) >= 2:
+                break
+
+    if not context_parts:
+        return raw_query
+
+    context_parts.reverse()
+    enriched = "; ".join(context_parts) + " — " + raw_query
+    return enriched
+
+
 def _execute_tool(
     tool_name: str,
     tool_args: dict[str, Any],
@@ -144,6 +178,7 @@ def _execute_tool(
     request_app_state: Any | None,
     user_id: int | None,
     preferences: dict[str, Any] | None,
+    history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Dispatch a tool call to the correct function."""
     func = TOOL_FUNCTIONS.get(tool_name)
@@ -151,7 +186,8 @@ def _execute_tool(
         return {"success": False, "error": f"Unknown tool: {tool_name}", "books": [], "data": {}, "source": ""}
 
     if tool_name == "search_books":
-        return func(tool_args.get("query", ""), db=db, qdrant=qdrant, groq_client=groq_client)
+        query = _enrich_search_query(tool_args.get("query", ""), history or [])
+        return func(query, db=db, qdrant=qdrant, groq_client=groq_client)
     elif tool_name == "get_book_details":
         return func(tool_args.get("book_id", 0), db=db)
     elif tool_name == "get_related_books":
@@ -281,6 +317,7 @@ def orchestrate(
             db=db, qdrant=qdrant_client, groq_client=client,
             mcp_adapter=mcp_adapter, request_app_state=request_app_state,
             user_id=user_id, preferences=preferences,
+            history=messages,
         )
 
         tool_books = tool_result.get("books", [])
