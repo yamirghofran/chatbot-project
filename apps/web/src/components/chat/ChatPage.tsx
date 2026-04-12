@@ -19,6 +19,7 @@ export function ChatPage() {
   const [streamingSource, setStreamingSource] = useState<string | undefined>();
   const [streamingToolName, setStreamingToolName] = useState<string | undefined>();
   const [sessionPreferences, setSessionPreferences] = useState<UserPreferences | undefined>();
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const abortRef = useRef(false);
   const skipNextLoadRef = useRef(false);
 
@@ -33,18 +34,22 @@ export function ChatPage() {
     if (!activeSessionId) {
       setMessages([]);
       setSessionPreferences(undefined);
+      setIsLoadingSession(false);
       return;
     }
     if (skipNextLoadRef.current) {
       skipNextLoadRef.current = false;
       return;
     }
+    setIsLoadingSession(true);
     chatApi.getSession(activeSessionId).then((detail) => {
       setMessages(detail.messages);
       setSessionPreferences(detail.preferences ?? undefined);
     }).catch(() => {
       setMessages([]);
       setSessionPreferences(undefined);
+    }).finally(() => {
+      setIsLoadingSession(false);
     });
   }, [activeSessionId]);
 
@@ -239,6 +244,7 @@ export function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <MessageList
           messages={messages}
+          isLoadingSession={isLoadingSession}
           streamingMessageId={streamingMsgId}
           streamingText={streamingText}
           streamingBooks={streamingBooks}

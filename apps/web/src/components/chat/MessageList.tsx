@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { Loader2 } from "lucide-react";
 import type { Book, ChatMessage, ComparisonResult } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 
 export type MessageListProps = {
   messages: ChatMessage[];
+  isLoadingSession?: boolean;
   streamingMessageId?: string;
   streamingText?: string;
   streamingBooks?: Book[];
@@ -14,6 +16,7 @@ export type MessageListProps = {
 
 export function MessageList({
   messages,
+  isLoadingSession,
   streamingMessageId,
   streamingText,
   streamingBooks,
@@ -26,6 +29,17 @@ export function MessageList({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, streamingText]);
+
+  if (isLoadingSession) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="size-6 animate-spin" />
+          <p className="text-sm">Loading conversation…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (messages.length === 0) {
     return (
