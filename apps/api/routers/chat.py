@@ -36,6 +36,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _serialize_session(session: ChatSession) -> dict[str, Any]:
     return {
         "id": str(session.id),
@@ -49,14 +50,14 @@ def _resolve_books(db: Session, book_ids: list[int]) -> list[dict[str, Any]]:
     """Fetch Book records by ID and return serialized dicts."""
     if not book_ids:
         return []
-    books = db.scalars(
-        select(Book).where(Book.id.in_(book_ids))
-    ).all()
+    books = db.scalars(select(Book).where(Book.id.in_(book_ids))).all()
     book_map = {b.id: b for b in books}
     return [serialize_book(book_map[bid]) for bid in book_ids if bid in book_map]
 
 
-def _serialize_message(msg: ChatMessage, *, books_by_id: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
+def _serialize_message(
+    msg: ChatMessage, *, books_by_id: dict[int, dict[str, Any]] | None = None
+) -> dict[str, Any]:
     tool_traces: list[dict[str, Any]] = []
     comparison_data: dict[str, Any] | None = None
 
@@ -75,16 +76,26 @@ def _serialize_message(msg: ChatMessage, *, books_by_id: dict[int, dict[str, Any
         # Multi-tool format: list of {tool, input/output}
         if isinstance(tool_output, list):
             for i, entry in enumerate(tool_output):
-                inp = tool_input[i]["input"] if isinstance(tool_input, list) and i < len(tool_input) else tool_input
+                inp = (
+                    tool_input[i]["input"]
+                    if isinstance(tool_input, list) and i < len(tool_input)
+                    else tool_input
+                )
                 out = entry.get("output", {}) if isinstance(entry, dict) else {}
                 trace = {
-                    "tool": entry.get("tool", msg.tool_name) if isinstance(entry, dict) else msg.tool_name,
+                    "tool": entry.get("tool", msg.tool_name)
+                    if isinstance(entry, dict)
+                    else msg.tool_name,
                     "input": inp,
                     "output": out,
                     "source": out.get("source") if isinstance(out, dict) else None,
                 }
                 tool_traces.append(trace)
-                comp = out.get("data", {}).get("comparison") if isinstance(out, dict) else None
+                comp = (
+                    out.get("data", {}).get("comparison")
+                    if isinstance(out, dict)
+                    else None
+                )
                 if comp and comparison_data is None:
                     comparison_data = comp
         else:
@@ -133,7 +144,9 @@ def _serialize_message(msg: ChatMessage, *, books_by_id: dict[int, dict[str, Any
 
 
 def _get_session_or_404(
-    db: Session, session_id: int, user: User | None,
+    db: Session,
+    session_id: int,
+    user: User | None,
 ) -> ChatSession:
     session = db.scalar(
         select(ChatSession).where(
@@ -142,9 +155,14 @@ def _get_session_or_404(
         )
     )
     if session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    if session.user_id is not None and user is not None and session.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your session")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+    if session.user_id is not None:
+        if user is None or session.user_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not your session"
+            )
     return session
 
 
@@ -156,6 +174,7 @@ def _sse_event(event: str, data: Any) -> str:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("/sessions", response_model=SessionOut)
 def create_session(
@@ -349,8 +368,12 @@ def send_message(
                 except (TypeError, ValueError):
                     pass
             else:
-                all_inputs = [{"tool": tc.name, "input": tc.input} for tc in result.tool_calls]
-                all_outputs = [{"tool": tc.name, "output": tc.output} for tc in result.tool_calls]
+                all_inputs = [
+                    {"tool": tc.name, "input": tc.input} for tc in result.tool_calls
+                ]
+                all_outputs = [
+                    {"tool": tc.name, "output": tc.output} for tc in result.tool_calls
+                ]
                 try:
                     tool_input_json = json.dumps(all_inputs)
                 except (TypeError, ValueError):
@@ -360,7 +383,11 @@ def send_message(
                 except (TypeError, ValueError):
                     pass
 
-        ref_ids_json = json.dumps(result.referenced_book_ids) if result.referenced_book_ids else None
+        ref_ids_json = (
+            json.dumps(result.referenced_book_ids)
+            if result.referenced_book_ids
+            else None
+        )
 
         assistant_msg = ChatMessage(
             session_id=session.id,
@@ -392,11 +419,14 @@ def send_message(
         for event_type, data in events:
             yield _sse_event(event_type, data)
 
-        yield _sse_event("done", {
-            "message_id": str(assistant_msg.id),
-            "referenced_book_ids": result.referenced_book_ids,
-            "model_used": result.model_used,
-        })
+        yield _sse_event(
+            "done",
+            {
+                "message_id": str(assistant_msg.id),
+                "referenced_book_ids": result.referenced_book_ids,
+                "model_used": result.model_used,
+            },
+        )
 
     return StreamingResponse(
         event_stream(),
