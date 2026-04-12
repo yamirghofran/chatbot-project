@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Book, ChatMessage } from "@/lib/types";
+import type { Book, ChatMessage, ComparisonResult } from "@/lib/types";
 import { MessageBubble } from "./MessageBubble";
 
 export type MessageListProps = {
@@ -7,6 +7,9 @@ export type MessageListProps = {
   streamingMessageId?: string;
   streamingText?: string;
   streamingBooks?: Book[];
+  streamingComparison?: ComparisonResult;
+  streamingSource?: string;
+  streamingToolName?: string;
 };
 
 export function MessageList({
@@ -14,6 +17,9 @@ export function MessageList({
   streamingMessageId,
   streamingText,
   streamingBooks,
+  streamingComparison,
+  streamingSource,
+  streamingToolName,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -43,6 +49,9 @@ export function MessageList({
             isStreaming={isStreaming}
             streamingText={isStreaming ? streamingText : undefined}
             books={isStreaming ? streamingBooks : undefined}
+            comparison={isStreaming ? streamingComparison : undefined}
+            source={isStreaming ? streamingSource : msg.toolTrace?.source}
+            activeToolName={isStreaming ? streamingToolName : undefined}
           />
         );
       })}

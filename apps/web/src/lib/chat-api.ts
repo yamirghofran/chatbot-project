@@ -1,4 +1,4 @@
-import type { Book, ChatMessage, ChatSession, ChatSessionDetail } from "./types";
+import type { Book, ChatMessage, ChatSession, ChatSessionDetail, ComparisonResult, UserPreferences } from "./types";
 
 const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
@@ -58,6 +58,16 @@ export async function deleteSession(id: string): Promise<void> {
   return chatFetch<void>(`/chat/sessions/${id}`, { method: "DELETE" });
 }
 
+export async function updatePreferences(
+  sessionId: string,
+  preferences: UserPreferences | null,
+): Promise<void> {
+  return chatFetch<void>(`/chat/sessions/${sessionId}/preferences`, {
+    method: "PATCH",
+    body: JSON.stringify({ preferences }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // SSE message stream
 // ---------------------------------------------------------------------------
@@ -65,7 +75,8 @@ export async function deleteSession(id: string): Promise<void> {
 export interface SendMessageCallbacks {
   onToken: (text: string) => void;
   onToolCall: (tool: string, input: unknown) => void;
-  onToolResult: (tool: string, books: Book[], source: string) => void;
+  onToolResult: (tool: string, books: Book[], source: string, data?: Record<string, unknown>) => void;
+  onComparison?: (comparison: ComparisonResult) => void;
   onBookCards: (books: Book[]) => void;
   onDone: (messageId: string, referencedBookIds: number[], modelUsed?: string) => void;
   onError: (error: Error) => void;
@@ -156,7 +167,15 @@ function dispatchEvent(
         String(data.tool ?? ""),
         (data.books ?? []) as Book[],
         String(data.source ?? ""),
+        (data.data ?? undefined) as Record<string, unknown> | undefined,
       );
+      break;
+    case "comparison":
+      cb.onComparison?.({
+        dimensions: (data.dimensions ?? []) as ComparisonResult["dimensions"],
+        verdict: String(data.verdict ?? ""),
+        bookIds: (data.book_ids ?? []) as number[],
+      });
       break;
     case "book_cards":
       cb.onBookCards((data.books ?? []) as Book[]);

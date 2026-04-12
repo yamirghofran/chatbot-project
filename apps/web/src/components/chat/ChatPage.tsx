@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Book, ChatMessage, ChatSession } from "@/lib/types";
+import type { Book, ChatMessage, ComparisonResult, ToolTrace, UserPreferences } from "@/lib/types";
 import * as chatApi from "@/lib/chat-api";
 import { ChatInput } from "./ChatInput";
 import { ChatSidebar } from "./ChatSidebar";
@@ -15,9 +15,11 @@ export function ChatPage() {
   const [streamingText, setStreamingText] = useState("");
   const [streamingBooks, setStreamingBooks] = useState<Book[]>([]);
   const [streamingMsgId, setStreamingMsgId] = useState<string | undefined>();
+  const [streamingComparison, setStreamingComparison] = useState<ComparisonResult | undefined>();
+  const [streamingSource, setStreamingSource] = useState<string | undefined>();
+  const [streamingToolName, setStreamingToolName] = useState<string | undefined>();
+  const [sessionPreferences, setSessionPreferences] = useState<UserPreferences | undefined>();
   const abortRef = useRef(false);
-  // Skip the next session-load effect when we just auto-created a session
-  // during handleSend (the messages are already optimistically set).
   const skipNextLoadRef = useRef(false);
 
   const sessionsQuery = useQuery({
@@ -27,10 +29,10 @@ export function ChatPage() {
 
   const sessions = sessionsQuery.data ?? [];
 
-  // Load session messages when active session changes
   useEffect(() => {
     if (!activeSessionId) {
       setMessages([]);
+      setSessionPreferences(undefined);
       return;
     }
     if (skipNextLoadRef.current) {
@@ -39,8 +41,10 @@ export function ChatPage() {
     }
     chatApi.getSession(activeSessionId).then((detail) => {
       setMessages(detail.messages);
+      setSessionPreferences(detail.preferences ?? undefined);
     }).catch(() => {
       setMessages([]);
+      setSessionPreferences(undefined);
     });
   }, [activeSessionId]);
 
@@ -75,12 +79,10 @@ export function ChatPage() {
     async (content: string) => {
       let sessionId = activeSessionId;
 
-      // Auto-create session if none active
       if (!sessionId) {
         try {
           const session = await chatApi.createSession(content.slice(0, 100));
           sessionId = session.id;
-          // Prevent the useEffect from overwriting our optimistic messages
           skipNextLoadRef.current = true;
           setActiveSessionId(sessionId);
           queryClient.invalidateQueries({ queryKey: ["chatSessions"] });
@@ -89,7 +91,6 @@ export function ChatPage() {
         }
       }
 
-      // Add optimistic user message
       const userMsg: ChatMessage = {
         id: `temp-user-${Date.now()}`,
         role: "user",
@@ -98,7 +99,6 @@ export function ChatPage() {
       };
       setMessages((prev) => [...prev, userMsg]);
 
-      // Prepare streaming assistant message
       const assistantId = `temp-assistant-${Date.now()}`;
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -110,11 +110,18 @@ export function ChatPage() {
       setIsStreaming(true);
       setStreamingText("");
       setStreamingBooks([]);
+      setStreamingComparison(undefined);
+      setStreamingSource(undefined);
+      setStreamingToolName(undefined);
       setStreamingMsgId(assistantId);
       abortRef.current = false;
 
       let fullText = "";
       let allBooks: Book[] = [];
+      let lastComparison: ComparisonResult | undefined;
+      let lastSource: string | undefined;
+      let lastToolName: string | undefined;
+      let lastToolInput: unknown;
 
       await chatApi.sendMessage(sessionId, content, {
         onToken: (text) => {
@@ -122,13 +129,24 @@ export function ChatPage() {
           fullText += text;
           setStreamingText(fullText);
         },
-        onToolCall: () => {
-          // Could show a loading state here
+        onToolCall: (tool, input) => {
+          if (abortRef.current) return;
+          lastToolName = tool;
+          lastToolInput = input;
+          setStreamingToolName(tool);
         },
-        onToolResult: (_tool, books) => {
+        onToolResult: (_tool, books, source) => {
           if (abortRef.current) return;
           allBooks = [...allBooks, ...books];
           setStreamingBooks(allBooks);
+          lastSource = source;
+          setStreamingSource(source);
+          setStreamingToolName(undefined);
+        },
+        onComparison: (comparison) => {
+          if (abortRef.current) return;
+          lastComparison = comparison;
+          setStreamingComparison(comparison);
         },
         onBookCards: (books) => {
           if (abortRef.current) return;
@@ -138,6 +156,10 @@ export function ChatPage() {
           }
         },
         onDone: (messageId, referencedBookIds, modelUsed) => {
+          const toolTrace: ToolTrace | undefined = lastToolName
+            ? { tool: lastToolName, input: lastToolInput, output: {}, source: lastSource }
+            : undefined;
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
@@ -148,13 +170,25 @@ export function ChatPage() {
                     referencedBooks: allBooks,
                     referencedBookIds,
                     modelUsed,
+                    toolName: lastToolName,
+                    toolTrace,
+                    comparison: lastComparison,
                   }
                 : m,
             ),
           );
           setIsStreaming(false);
           setStreamingMsgId(undefined);
+          setStreamingComparison(undefined);
+          setStreamingSource(undefined);
+          setStreamingToolName(undefined);
           queryClient.invalidateQueries({ queryKey: ["chatSessions"] });
+          // Re-fetch session to get updated preferences
+          if (sessionId) {
+            chatApi.getSession(sessionId).then((detail) => {
+              setSessionPreferences(detail.preferences ?? undefined);
+            }).catch(() => {});
+          }
         },
         onError: (err) => {
           setMessages((prev) =>
@@ -166,6 +200,7 @@ export function ChatPage() {
           );
           setIsStreaming(false);
           setStreamingMsgId(undefined);
+          setStreamingToolName(undefined);
         },
       });
     },
@@ -176,26 +211,40 @@ export function ChatPage() {
     abortRef.current = true;
     setIsStreaming(false);
     setStreamingMsgId(undefined);
+    setStreamingToolName(undefined);
   }, []);
+
+  const handleClearPreferences = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      await chatApi.updatePreferences(activeSessionId, null);
+      setSessionPreferences(undefined);
+    } catch {
+      // ignore
+    }
+  }, [activeSessionId]);
 
   return (
     <div className="flex h-full">
-      {/* Sidebar */}
       <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId ?? undefined}
         onSelectSession={setActiveSessionId}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+        preferences={sessionPreferences}
+        onClearPreferences={handleClearPreferences}
       />
 
-      {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
         <MessageList
           messages={messages}
           streamingMessageId={streamingMsgId}
           streamingText={streamingText}
           streamingBooks={streamingBooks}
+          streamingComparison={streamingComparison}
+          streamingSource={streamingSource}
+          streamingToolName={streamingToolName}
         />
 
         <div className="shrink-0 border-t border-border px-4 py-3">

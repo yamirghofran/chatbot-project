@@ -1,6 +1,7 @@
 import { MessageSquarePlus, Trash2 } from "lucide-react";
-import type { ChatSession } from "@/lib/types";
+import type { ChatSession, UserPreferences } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { PreferencesPanel } from "./PreferencesPanel";
 
 export type ChatSidebarProps = {
   sessions: ChatSession[];
@@ -8,6 +9,8 @@ export type ChatSidebarProps = {
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
   onDeleteSession: (id: string) => void;
+  preferences?: UserPreferences;
+  onClearPreferences?: () => void;
 };
 
 export function ChatSidebar({
@@ -16,6 +19,8 @@ export function ChatSidebar({
   onSelectSession,
   onNewSession,
   onDeleteSession,
+  preferences,
+  onClearPreferences,
 }: ChatSidebarProps) {
   return (
     <aside className="w-64 shrink-0 border-r border-border flex flex-col bg-background">
@@ -62,6 +67,10 @@ export function ChatSidebar({
           </div>
         ))}
       </div>
+
+      {preferences && onClearPreferences && (
+        <PreferencesPanel preferences={preferences} onClear={onClearPreferences} />
+      )}
     </aside>
   );
 }

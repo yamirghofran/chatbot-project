@@ -1,9 +1,11 @@
 import { Sparkles, User } from "lucide-react";
 import { useMemo } from "react";
-import type { Book, ChatMessage } from "@/lib/types";
+import type { Book, ChatMessage, ComparisonResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ComparisonTable } from "./ComparisonTable";
 import { InlineBookCard } from "./InlineBookCard";
 import { ToolTrace } from "./ToolTrace";
+import { WhyPanel } from "./WhyPanel";
 
 // Lightweight markdown: bold, italic, inline code
 function renderInlineMarkdown(text: string): string {
@@ -63,6 +65,9 @@ export type MessageBubbleProps = {
   books?: Book[];
   isStreaming?: boolean;
   streamingText?: string;
+  comparison?: ComparisonResult;
+  source?: string;
+  activeToolName?: string;
 };
 
 export function MessageBubble({
@@ -70,12 +75,16 @@ export function MessageBubble({
   books = [],
   isStreaming = false,
   streamingText,
+  comparison,
+  source,
+  activeToolName,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const displayText = isStreaming && streamingText != null ? streamingText : message.content;
   const html = useMemo(() => markdownToHtml(displayText || ""), [displayText]);
 
   const displayBooks = books.length > 0 ? books : message.referencedBooks ?? [];
+  const comparisonData = comparison ?? message.comparison;
 
   return (
     <div className={cn("flex gap-3 max-w-full", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -100,8 +109,11 @@ export function MessageBubble({
           isUser ? "items-end" : "items-start",
         )}
       >
-        {/* Tool trace */}
-        {message.toolTrace && (
+        {/* Tool trace — live during streaming, persisted after */}
+        {isStreaming && activeToolName && (
+          <ToolTrace toolName={activeToolName} isLoading />
+        )}
+        {!isStreaming && message.toolTrace && (
           <ToolTrace
             toolName={message.toolTrace.tool}
             source={message.toolTrace.source ?? undefined}
@@ -124,6 +136,11 @@ export function MessageBubble({
           />
         )}
 
+        {/* Comparison table */}
+        {comparisonData && (
+          <ComparisonTable comparison={comparisonData} books={displayBooks} />
+        )}
+
         {/* Streaming cursor */}
         {isStreaming && (
           <span className="inline-block w-1.5 h-4 bg-primary/60 rounded-full animate-pulse ml-1" />
@@ -131,10 +148,15 @@ export function MessageBubble({
 
         {/* Book cards */}
         {displayBooks.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {displayBooks.map((book) => (
-              <InlineBookCard key={book.id} book={book} />
-            ))}
+          <div className="space-y-2">
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+              {displayBooks.map((book) => (
+                <InlineBookCard key={book.id} book={book} source={source} />
+              ))}
+            </div>
+            {message.toolTrace && (
+              <WhyPanel toolTrace={message.toolTrace} />
+            )}
           </div>
         )}
       </div>

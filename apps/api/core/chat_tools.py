@@ -150,8 +150,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "name": "compare_books",
             "description": (
                 "Compare two or three books side by side on dimensions like pacing, "
-                "themes, tone, difficulty, and length. Use when the user asks to "
-                "compare specific books and you have their IDs from previous results."
+                "themes, tone, difficulty, and length. You can pass either book IDs "
+                "(if you know them from previous results) or book titles. Titles "
+                "will be fuzzy-matched against the database, so partial titles and "
+                "minor misspellings are fine."
             ),
             "parameters": {
                 "type": "object",
@@ -159,12 +161,18 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "book_ids": {
                         "type": "array",
                         "items": {"type": "integer"},
-                        "description": "List of 2-3 book IDs to compare.",
-                        "minItems": 2,
-                        "maxItems": 3,
+                        "description": "List of 2-3 book IDs to compare (use if you have IDs).",
+                    },
+                    "titles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "List of 2-3 book titles to compare. Use this when the "
+                            "user mentions books by name and you don't have IDs. "
+                            "Partial titles and misspellings are handled."
+                        ),
                     },
                 },
-                "required": ["book_ids"],
             },
         },
     },
@@ -291,16 +299,37 @@ def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
     )
 
 
+def _apply_preferences_to_query(query: str, prefs: dict[str, Any] | None) -> str:
+    """Append preference constraints to search query for better embedding."""
+    if not prefs:
+        return query
+    parts = [query]
+    if prefs.get("disliked_genres"):
+        parts.append(f"excluding {', '.join(prefs['disliked_genres'])}")
+    if prefs.get("preferred_mood"):
+        parts.append(f"mood: {prefs['preferred_mood']}")
+    if prefs.get("max_pages"):
+        parts.append(f"under {prefs['max_pages']} pages")
+    if prefs.get("standalone_only"):
+        parts.append("standalone books only")
+    if prefs.get("other_constraints"):
+        parts.append("; ".join(prefs["other_constraints"]))
+    return ", ".join(parts)
+
+
 def tool_search_books(
     query: str,
     *,
     db: Session,
     qdrant: QdrantClient | None,
     groq_client: Groq | None = None,
+    preferences: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Semantic book search via entity extraction → query rewriting → Qdrant."""
     if qdrant is None:
         return _tool_result(success=False, error="Vector search unavailable")
+
+    query = _apply_preferences_to_query(query, preferences)
 
     groq_client = groq_client or create_groq_client_sync()
 
@@ -598,19 +627,71 @@ _COMPARE_RESPONSE_SCHEMA = {
 }
 
 
+def _resolve_books_for_comparison(
+    db: Session,
+    book_ids: list[int] | None,
+    titles: list[str] | None,
+) -> tuple[list[Any], list[str]]:
+    """Resolve books by IDs or fuzzy title matching. Returns (books, warnings).
+
+    When titles are resolved, books are re-fetched by ID with full
+    relationship loading so that authors/tags are available.
+    """
+    from .entity_extraction import find_books_by_title
+
+    warnings: list[str] = []
+
+    if book_ids:
+        books = load_books_by_ids(db, book_ids)
+        if len(books) >= 2:
+            return books, warnings
+        warnings.append(f"Only found {len(books)} of {len(book_ids)} books by ID.")
+
+    if titles:
+        resolved_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for title in titles:
+            matches = find_books_by_title(db, title, limit=1, similarity_threshold=0.25)
+            if matches:
+                book, score = matches[0]
+                if book.id not in seen_ids:
+                    resolved_ids.append(book.id)
+                    seen_ids.add(book.id)
+                    if score < 0.5:
+                        warnings.append(
+                            f'Closest match for "{title}" was "{book.title}" '
+                            f"(confidence: {score:.0%})"
+                        )
+            else:
+                warnings.append(f'Could not find a book matching "{title}" in the catalogue.')
+        if len(resolved_ids) >= 2:
+            books = load_books_by_ids(db, resolved_ids)
+            if len(books) >= 2:
+                return books, warnings
+
+    return [], warnings
+
+
 def tool_compare_books(
-    book_ids: list[int],
+    book_ids: list[int] | None = None,
+    titles: list[str] | None = None,
     *,
     db: Session,
     groq_client: Groq | None = None,
 ) -> dict[str, Any]:
-    """Side-by-side comparison of 2-3 books."""
-    if len(book_ids) < 2 or len(book_ids) > 3:
-        return _tool_result(success=False, error="Provide 2 or 3 book IDs to compare")
+    """Side-by-side comparison of 2-3 books by ID or title."""
+    total = len(book_ids or []) + len(titles or [])
+    if total < 2:
+        return _tool_result(success=False, error="Provide at least 2 books to compare (by ID or title)")
+    if total > 3 and not book_ids:
+        titles = (titles or [])[:3]
 
-    books = load_books_by_ids(db, book_ids)
+    books, warnings = _resolve_books_for_comparison(db, book_ids, titles)
     if len(books) < 2:
-        return _tool_result(success=False, error="Could not find enough books to compare")
+        msg = "Could not find enough books to compare."
+        if warnings:
+            msg += " " + " ".join(warnings)
+        return _tool_result(success=False, error=msg)
 
     groq_client = groq_client or create_groq_client_sync()
 

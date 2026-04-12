@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from groq import Groq
+from groq import APIError, Groq
 from qdrant_client import QdrantClient
 from sqlalchemy.orm import Session
 
@@ -68,9 +68,116 @@ class OrchestratorResult:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     books: list[dict[str, Any]] = field(default_factory=list)
     model_used: str = ""
+    extracted_preferences: dict[str, Any] | None = None
 
 
 StreamCallback = Callable[[str, dict[str, Any]], None]
+
+_PREFERENCE_KEYWORDS = frozenset({
+    "genre", "recommend", "like", "dislike", "prefer", "hate", "love",
+    "shorter", "longer", "less", "more", "avoid", "only", "standalone",
+    "mood", "dark", "light", "funny", "serious", "fast", "slow",
+    "romance", "fantasy", "sci-fi", "mystery", "horror", "thriller",
+    "literary", "classic", "modern", "pages", "page",
+})
+
+_PREFERENCES_EXTRACTION_PROMPT = """\
+You are a preference extraction assistant. Given the latest exchange between \
+a user and a book recommendation assistant, extract any reading preferences \
+the user expressed.
+
+Return a JSON object with ONLY the fields that have evidence in the conversation. \
+Omit fields where you have no evidence. Merge with any existing preferences provided.
+
+Fields (all optional):
+- liked_genres: list of genres the user likes
+- disliked_genres: list of genres the user dislikes
+- max_pages: maximum page count (integer)
+- standalone_only: true if user wants only standalone books
+- preferred_mood: mood the user prefers (e.g. "dark", "light", "funny")
+- liked_books: list of book titles the user mentioned positively
+- disliked_books: list of book titles the user mentioned negatively
+- other_constraints: list of other constraints (e.g. "female protagonist")
+"""
+
+_PREFERENCES_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "user_preferences",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "liked_genres": {"type": "array", "items": {"type": "string"}},
+                "disliked_genres": {"type": "array", "items": {"type": "string"}},
+                "max_pages": {"type": "integer"},
+                "standalone_only": {"type": "boolean"},
+                "preferred_mood": {"type": "string"},
+                "liked_books": {"type": "array", "items": {"type": "string"}},
+                "disliked_books": {"type": "array", "items": {"type": "string"}},
+                "other_constraints": {"type": "array", "items": {"type": "string"}},
+            },
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def _should_extract_preferences(user_message: str, assistant_content: str) -> bool:
+    """Check if the exchange likely contains preference signals."""
+    combined = (user_message + " " + assistant_content).lower()
+    return any(kw in combined for kw in _PREFERENCE_KEYWORDS)
+
+
+def _merge_preferences(
+    existing: dict[str, Any] | None, extracted: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge newly extracted preferences into existing ones."""
+    if not existing:
+        return extracted
+    merged = dict(existing)
+    for key, value in extracted.items():
+        if value is None:
+            continue
+        if isinstance(value, list) and isinstance(merged.get(key), list):
+            combined = list(dict.fromkeys(merged[key] + value))
+            merged[key] = combined
+        else:
+            merged[key] = value
+    return merged
+
+
+def _extract_preferences(
+    client: Groq,
+    model: str,
+    user_message: str,
+    assistant_content: str,
+    existing_preferences: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Extract structured preferences from the latest exchange."""
+    context = ""
+    if existing_preferences:
+        context = f"\n\nExisting preferences to merge with:\n{json.dumps(existing_preferences)}"
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _PREFERENCES_EXTRACTION_PROMPT + context},
+                {"role": "user", "content": f"User said: {user_message}\n\nAssistant replied: {assistant_content[:500]}"},
+            ],
+            response_format=_PREFERENCES_SCHEMA,
+            temperature=0.1,
+            max_completion_tokens=256,
+        )
+        raw = response.choices[0].message.content
+        if not raw:
+            return None
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict) or not parsed:
+            return None
+        return _merge_preferences(existing_preferences, parsed)
+    except Exception:
+        return None
 
 
 def _build_system_message(preferences: dict[str, Any] | None) -> str:
@@ -142,8 +249,134 @@ def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
     return content, tool_calls
 
 
+def _message_to_content_and_tool_calls(message: Any) -> tuple[str, list[dict[str, Any]]]:
+    """Parse content and tool calls from a non-streaming assistant message."""
+    content = (getattr(message, "content", None) or "") if message else ""
+    tool_calls: list[dict[str, Any]] = []
+    raw_tcs = getattr(message, "tool_calls", None) if message else None
+    if raw_tcs:
+        for i, tc in enumerate(raw_tcs):
+            fn = getattr(tc, "function", None)
+            name = (getattr(fn, "name", None) or "") if fn else ""
+            args = (getattr(fn, "arguments", None) or "") if fn else ""
+            tool_calls.append({
+                "id": getattr(tc, "id", None) or f"call_{i}",
+                "name": name,
+                "arguments": args,
+            })
+    if not tool_calls and content:
+        content, text_tool_calls = _extract_text_function_calls(content)
+        if text_tool_calls:
+            tool_calls = text_tool_calls
+    return content, tool_calls
+
+
+def _parse_failed_generation(err: APIError) -> tuple[str, list[dict[str, Any]]]:
+    """Try to salvage a tool call from Groq's failed_generation error body."""
+    body = getattr(err, "body", None)
+    if not body or not isinstance(body, dict):
+        return "", []
+    failed = body.get("error", {}).get("failed_generation", "")
+    if not failed:
+        return "", []
+    # The failed generation is the raw text the model produced — may contain
+    # <tool_call> JSON or <function=...> tags.
+    content, tool_calls = _extract_text_function_calls(failed)
+    if tool_calls:
+        return content, tool_calls
+    # Try to parse as raw JSON tool call: {"name": "...", "arguments": {...}}
+    try:
+        parsed = json.loads(failed)
+        if isinstance(parsed, dict) and "name" in parsed:
+            args = parsed.get("arguments") or parsed.get("parameters") or {}
+            return "", [{
+                "id": "recovered_0",
+                "name": parsed["name"],
+                "arguments": json.dumps(args) if not isinstance(args, str) else args,
+            }]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return failed, []
+
+
+import logging as _logging
+
+_log = _logging.getLogger(__name__)
+
+
+def _first_turn_with_tools(
+    client: Groq,
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    temperature: float,
+    max_tokens: int,
+    freq_penalty: float,
+) -> tuple[str, list[dict[str, Any]]]:
+    """First model turn with tools: prefer streaming, fall back on Groq tool errors.
+
+    Fallback order:
+    1. Streaming + tools
+    2. If stream raises APIError, try to parse the failed_generation body
+    3. Non-streaming + tools
+    4. Non-streaming without tools (last resort)
+    """
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "tools": TOOL_DEFINITIONS,
+        "temperature": temperature,
+        "max_completion_tokens": max_tokens,
+        "frequency_penalty": freq_penalty,
+        "parallel_tool_calls": False,
+    }
+
+    # 1. Streaming with tools (preferred path)
+    try:
+        stream = client.chat.completions.create(stream=True, **kwargs)
+        try:
+            return _extract_tool_calls_from_stream(stream)
+        except APIError as e:
+            _log.warning("Groq stream tool error: %s — trying to recover", e)
+            content, tool_calls = _parse_failed_generation(e)
+            if tool_calls:
+                _log.info("Recovered tool call from failed_generation")
+                return content, tool_calls
+    except APIError as e:
+        _log.warning("Groq stream create error: %s — falling back to non-streaming", e)
+        content, tool_calls = _parse_failed_generation(e)
+        if tool_calls:
+            return content, tool_calls
+
+    # 2. Non-streaming with tools
+    try:
+        _log.info("Retrying non-streaming with tools")
+        completion = client.chat.completions.create(stream=False, **kwargs)
+        msg = completion.choices[0].message if completion.choices else None
+        return _message_to_content_and_tool_calls(msg)
+    except APIError as e:
+        _log.warning("Groq non-streaming tool error: %s — dropping tools", e)
+        content, tool_calls = _parse_failed_generation(e)
+        if tool_calls:
+            return content, tool_calls
+
+    # 3. Last resort: no tools, plain text response
+    _log.warning("All tool attempts failed, completing without tools")
+    completion = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_completion_tokens=max_tokens,
+        frequency_penalty=freq_penalty,
+        stream=False,
+    )
+    msg = completion.choices[0].message if completion.choices else None
+    content, _ = _message_to_content_and_tool_calls(msg)
+    return content, []
+
+
 _TEXT_FUNC_RE = re.compile(
-    r"<function=(\w+)>(.*?)</function>",
+    r"<function=(\w+)>?(.*?)</function>",
     re.DOTALL,
 )
 
@@ -222,7 +455,7 @@ def _execute_tool(
 
     if tool_name == "search_books":
         query = _enrich_search_query(tool_args.get("query", ""), history or [])
-        return func(query, db=db, qdrant=qdrant, groq_client=groq_client)
+        return func(query, db=db, qdrant=qdrant, groq_client=groq_client, preferences=preferences)
     elif tool_name == "get_book_details":
         return func(tool_args.get("book_id", 0), db=db)
     elif tool_name == "get_related_books":
@@ -233,7 +466,11 @@ def _execute_tool(
             user_id=user_id, limit=tool_args.get("limit", 6),
         )
     elif tool_name == "compare_books":
-        return func(tool_args.get("book_ids", []), db=db, groq_client=groq_client)
+        return func(
+            book_ids=tool_args.get("book_ids"),
+            titles=tool_args.get("titles"),
+            db=db, groq_client=groq_client,
+        )
     elif tool_name == "recommend_via_mcp":
         return func(
             mcp_adapter=mcp_adapter, db=db, qdrant=qdrant,
@@ -308,16 +545,17 @@ def orchestrate(
     max_tokens = int(os.environ.get("MAX_CHATBOT_TOKENS", "1024"))
     freq_penalty = float(os.environ.get("CHATBOT_FREQUENCY_PENALTY", "0.3"))
 
-    # First LLM call — may produce a tool call or a direct response
+    # First LLM call — may produce a tool call or a direct response.
+    # Groq sometimes raises APIError mid-stream ("Failed to call a function");
+    # _first_turn_with_tools retries buffered then tool-less completion.
     try:
-        stream = client.chat.completions.create(
+        content, tool_calls = _first_turn_with_tools(
+            client,
             model=model,
             messages=messages,
-            tools=TOOL_DEFINITIONS,
             temperature=temperature,
-            max_completion_tokens=max_tokens,
-            frequency_penalty=freq_penalty,
-            stream=True,
+            max_tokens=max_tokens,
+            freq_penalty=freq_penalty,
         )
     except Exception as e:
         error_msg = f"I'm having trouble connecting to the AI service right now. Please try again shortly. ({e})"
@@ -325,14 +563,15 @@ def orchestrate(
         cb("done", {"referenced_book_ids": []})
         return OrchestratorResult(content=error_msg, model_used=model)
 
-    content, tool_calls = _extract_tool_calls_from_stream(stream)
-
     # If no tool calls, the model responded directly — stream what we got
     if not tool_calls:
         if content:
             cb("token", {"text": content})
         cb("done", {"referenced_book_ids": []})
-        return OrchestratorResult(content=content, model_used=model)
+        prefs_out = None
+        if content and _should_extract_preferences(user_message, content):
+            prefs_out = _extract_preferences(client, model, user_message, content, preferences)
+        return OrchestratorResult(content=content, model_used=model, extracted_preferences=prefs_out)
 
     # Execute tool calls
     all_books: list[dict[str, Any]] = []
@@ -341,8 +580,11 @@ def orchestrate(
     for tc in tool_calls:
         tool_name = tc["name"]
         try:
-            tool_args = json.loads(tc["arguments"]) if tc["arguments"] else {}
-        except json.JSONDecodeError:
+            raw_args = tc.get("arguments") or ""
+            tool_args = json.loads(raw_args) if raw_args else {}
+        except (json.JSONDecodeError, TypeError):
+            tool_args = {}
+        if not isinstance(tool_args, dict):
             tool_args = {}
 
         cb("tool_call", {"tool": tool_name, "input": tool_args})
@@ -365,7 +607,16 @@ def orchestrate(
             "tool": tool_name,
             "books": tool_books,
             "source": tool_result.get("source", ""),
+            "data": tool_result.get("data", {}),
         })
+
+        comparison = tool_result.get("data", {}).get("comparison")
+        if comparison:
+            cb("comparison", {
+                "dimensions": comparison.get("dimensions", []),
+                "verdict": comparison.get("verdict", ""),
+                "book_ids": _collect_book_ids(tool_books),
+            })
 
     # Check if ALL tools failed or returned no books
     all_failed = all(
@@ -488,10 +739,15 @@ def orchestrate(
     cb("book_cards", {"books": all_books})
     cb("done", {"referenced_book_ids": book_ids})
 
+    prefs_out = None
+    if _should_extract_preferences(user_message, final_content):
+        prefs_out = _extract_preferences(client, model, user_message, final_content, preferences)
+
     return OrchestratorResult(
         content=final_content,
         referenced_book_ids=book_ids,
         tool_calls=all_tool_records,
         books=all_books,
         model_used=model,
+        extracted_preferences=prefs_out,
     )

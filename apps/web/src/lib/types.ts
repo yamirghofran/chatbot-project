@@ -92,6 +92,29 @@ export type ToolTrace = {
   input: unknown;
   output: unknown;
   source?: string;
+  data?: Record<string, unknown>;
+};
+
+export type ComparisonDimension = {
+  name: string;
+  values: string[];
+};
+
+export type ComparisonResult = {
+  dimensions: ComparisonDimension[];
+  verdict: string;
+  bookIds: number[];
+};
+
+export type UserPreferences = {
+  liked_genres?: string[];
+  disliked_genres?: string[];
+  max_pages?: number;
+  standalone_only?: boolean;
+  preferred_mood?: string;
+  liked_books?: string[];
+  disliked_books?: string[];
+  other_constraints?: string[];
 };
 
 export type ChatMessage = {
@@ -100,6 +123,8 @@ export type ChatMessage = {
   content: string;
   toolName?: string;
   toolTrace?: ToolTrace;
+  toolTraces?: ToolTrace[];
+  comparison?: ComparisonResult;
   referencedBookIds?: number[];
   referencedBooks?: Book[];
   modelUsed?: string;
@@ -110,6 +135,6 @@ export type ChatSessionDetail = {
   id: string;
   title: string;
   messages: ChatMessage[];
-  preferences?: Record<string, unknown>;
+  preferences?: UserPreferences;
   createdAt: string;
 };
