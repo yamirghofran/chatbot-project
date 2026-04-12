@@ -21,7 +21,7 @@ from .mcp_adapter import MCPAdapter
 
 DEFAULT_ORCHESTRATOR_MODEL = os.environ.get(
     "CHAT_ORCHESTRATOR_MODEL",
-    os.environ.get("DEFAULT_CHATBOT_MODEL", "moonshotai/kimi-k2-instruct-0905"),
+    os.environ.get("DEFAULT_CHATBOT_MODEL", "llama-3.3-70b-versatile"),
 )
 
 _SYSTEM_PROMPT = """\
@@ -29,18 +29,22 @@ You are BookDB Assistant, a knowledgeable and friendly book recommendation assis
 for BookDB — a social book tracking platform.
 
 You have access to tools for searching books, getting recommendations, comparing books, \
-and fetching book details. Use them when the user asks about books.
+and fetching book details.
 
 Rules:
-1. Always use a tool when the user asks for book suggestions, information, or comparisons.
-2. Cite specific books from tool results. Never invent books that aren't in the results.
-3. Be conversational but concise. Aim for 2-4 sentences per recommendation, not essays.
-4. When referencing books, always mention them by title so the frontend can render book cards.
-5. If you're unsure or lack data, say so honestly rather than guessing.
-6. For comparison requests, use the compare_books tool.
-7. For follow-up refinements like "less romance" or "shorter books", re-search with updated criteria.
-8. You can have normal conversations too — greetings, book discussions, reading advice.
-9. When multiple tools could help, prefer the most specific one.
+1. For general book knowledge (authors, series info, plot summaries, publication facts), \
+answer directly from your own knowledge. Do NOT call a tool for simple factual questions.
+2. Use tools when the user wants personalised recommendations, wants to search the BookDB \
+catalogue, needs specific book IDs, or asks to compare books in the database.
+3. When you do use a tool, cite specific books from the results. Never invent books that \
+aren't in the tool results.
+4. Be conversational but concise. Aim for 2-4 sentences per recommendation, not essays.
+5. When referencing books from tools, mention them by title so the frontend can render cards.
+6. If a tool returns an error or no results, tell the user honestly and answer from your \
+own knowledge if possible.
+7. For comparison requests, use the compare_books tool.
+8. For follow-up refinements like "less romance" or "shorter books", re-search with updated criteria.
+9. You can have normal conversations too — greetings, book discussions, reading advice.
 """
 
 _PREFERENCES_ADDENDUM = """
@@ -82,6 +86,17 @@ def _truncate_history(
     if len(messages) <= max_messages + 1:
         return messages
     return [messages[0]] + messages[-(max_messages):]
+
+
+def _is_degenerate(text: str, *, threshold: float = 0.4) -> bool:
+    """Detect degenerate repetitive output by checking token diversity."""
+    if not text or len(text) < 80:
+        return False
+    tokens = text.split()
+    if len(tokens) < 20:
+        return False
+    unique_ratio = len(set(tokens)) / len(tokens)
+    return unique_ratio < threshold
 
 
 def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
@@ -207,10 +222,20 @@ def orchestrate(
     system_msg = _build_system_message(preferences)
     max_history = settings.CHAT_MAX_HISTORY_MESSAGES
 
+    # Filter degenerate messages from history so bad outputs don't poison context
+    clean_history = [
+        m for m in history
+        if m.get("content") and not _is_degenerate(m["content"])
+    ]
+
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_msg}]
-    messages.extend(history)
+    messages.extend(clean_history)
     messages.append({"role": "user", "content": user_message})
     messages = _truncate_history(messages, max_history)
+
+    temperature = float(os.environ.get("CHATBOT_TEMPERATURE", "0.6"))
+    max_tokens = int(os.environ.get("MAX_CHATBOT_TOKENS", "1024"))
+    freq_penalty = float(os.environ.get("CHATBOT_FREQUENCY_PENALTY", "0.3"))
 
     # First LLM call — may produce a tool call or a direct response
     try:
@@ -218,8 +243,9 @@ def orchestrate(
             model=model,
             messages=messages,
             tools=TOOL_DEFINITIONS,
-            temperature=float(os.environ.get("CHATBOT_TEMPERATURE", "0.7")),
-            max_completion_tokens=int(os.environ.get("MAX_CHATBOT_TOKENS", "1024")),
+            temperature=temperature,
+            max_completion_tokens=max_tokens,
+            frequency_penalty=freq_penalty,
             stream=True,
         )
     except Exception as e:
@@ -269,6 +295,53 @@ def orchestrate(
             "source": tool_result.get("source", ""),
         })
 
+    # Check if ALL tools failed or returned no books
+    all_failed = all(
+        not rec.output.get("success", False) or (
+            not rec.output.get("books") and not rec.output.get("data", {}).get("comparison")
+        )
+        for rec in all_tool_records
+    )
+
+    # If every tool failed/empty, fall back to a direct answer without tool context
+    if all_failed:
+        fallback_msgs = list(messages)
+        fallback_msgs.append({
+            "role": "system",
+            "content": (
+                "The database tools returned no results (the catalogue may be "
+                "empty or the search service is unavailable). Answer the user's "
+                "question from your own knowledge. Be honest that you couldn't "
+                "search the BookDB catalogue."
+            ),
+        })
+        try:
+            fallback_stream = client.chat.completions.create(
+                model=model,
+                messages=fallback_msgs,
+                temperature=temperature,
+                max_completion_tokens=max_tokens,
+                frequency_penalty=freq_penalty,
+                stream=True,
+            )
+            parts: list[str] = []
+            for chunk in fallback_stream:
+                choice = chunk.choices[0] if chunk.choices else None
+                if choice and choice.delta and choice.delta.content:
+                    text = choice.delta.content
+                    parts.append(text)
+                    cb("token", {"text": text})
+            fallback_content = "".join(parts)
+            cb("done", {"referenced_book_ids": []})
+            return OrchestratorResult(
+                content=fallback_content, tool_calls=all_tool_records, model_used=model,
+            )
+        except Exception:
+            msg = "I wasn't able to search the book catalogue right now. Could you try again?"
+            cb("token", {"text": msg})
+            cb("done", {"referenced_book_ids": []})
+            return OrchestratorResult(content=msg, model_used=model)
+
     # Build tool result message for the second LLM call
     tool_context_parts: list[str] = []
     for record in all_tool_records:
@@ -306,8 +379,9 @@ def orchestrate(
         follow_stream = client.chat.completions.create(
             model=model,
             messages=follow_up_messages,
-            temperature=float(os.environ.get("CHATBOT_TEMPERATURE", "0.7")),
-            max_completion_tokens=int(os.environ.get("MAX_CHATBOT_TOKENS", "1024")),
+            temperature=temperature,
+            max_completion_tokens=max_tokens,
+            frequency_penalty=freq_penalty,
             stream=True,
         )
     except Exception as e:
@@ -329,6 +403,14 @@ def orchestrate(
             cb("token", {"text": text})
 
     final_content = "".join(final_parts)
+
+    # Safety net: if the model produced degenerate output, replace it
+    if _is_degenerate(final_content):
+        final_content = (
+            "I found some books but had trouble generating a summary. "
+            "Here are the results I found."
+        )
+
     book_ids = _collect_book_ids(all_books)
 
     cb("book_cards", {"books": all_books})

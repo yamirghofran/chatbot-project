@@ -123,6 +123,77 @@ def test_orchestrate_handles_llm_error():
     assert any(evt == "done" for evt, _ in events)
 
 
+def test_orchestrate_all_tools_fail_fallback():
+    """When every tool returns failure/empty, the orchestrator falls back to a direct answer."""
+    client = MagicMock()
+
+    # First call triggers a tool, fallback call returns direct content
+    client.chat.completions.create.side_effect = [
+        _mock_groq_stream_tool_call("search_books", '{"query": "harry potter"}'),
+        _mock_groq_stream_direct("The Harry Potter series has 7 books."),
+    ]
+
+    empty_result = {
+        "success": False,
+        "data": {},
+        "books": [],
+        "source": "",
+        "error": "Embedding failed",
+    }
+
+    events = []
+
+    with patch.dict(chat_tools.TOOL_FUNCTIONS, {"search_books": lambda *a, **kw: empty_result}):
+        result = chat_orchestrator.orchestrate(
+            user_message="How many Harry Potter books are there?",
+            history=[],
+            db=MagicMock(),
+            groq_client=client,
+            stream_callback=lambda evt, data: events.append((evt, data)),
+        )
+
+    assert "7" in result.content or "Harry Potter" in result.content
+    assert any(evt == "done" for evt, _ in events)
+
+
+def test_degenerate_detection():
+    """Degenerate repetitive text is detected correctly."""
+    normal = "The Harry Potter series has seven books written by J.K. Rowling."
+    assert not chat_orchestrator._is_degenerate(normal)
+
+    garbage = " ".join(["Mr Mc France Paris sn blue"] * 30)
+    assert chat_orchestrator._is_degenerate(garbage)
+
+    short = "Mr Mr Mr"
+    assert not chat_orchestrator._is_degenerate(short)
+
+
+def test_degenerate_history_filtered():
+    """Degenerate assistant messages are stripped from history before sending to LLM."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_groq_stream_direct("Seven books total.")
+
+    garbage_history = [
+        {"role": "user", "content": "How many HP books?"},
+        {"role": "assistant", "content": " ".join(["Mr Mc France Paris sn blue"] * 30)},
+    ]
+
+    result = chat_orchestrator.orchestrate(
+        user_message="How many books?",
+        history=garbage_history,
+        db=MagicMock(),
+        groq_client=client,
+        stream_callback=lambda _e, _d: None,
+    )
+
+    # The call should succeed and the degenerate message should not be in the messages
+    call_args = client.chat.completions.create.call_args
+    sent_messages = call_args.kwargs.get("messages") or call_args[1].get("messages", [])
+    contents = [m.get("content", "") for m in sent_messages]
+    assert not any(chat_orchestrator._is_degenerate(c) for c in contents if c)
+    assert result.content == "Seven books total."
+
+
 def test_truncate_history():
     """History is truncated to max_messages while preserving the system message."""
     messages = [

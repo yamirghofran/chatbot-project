@@ -17,13 +17,25 @@ function renderInlineMarkdown(text: string): string {
   return html;
 }
 
-function markdownToHtml(text: string): string {
+function isUnorderedList(block: string): boolean {
+  return block.split(/\n/).every((l) => !l.trim() || /^\s*[-*]\s+/.test(l));
+}
+
+function isOrderedList(block: string): boolean {
+  return block.split(/\n/).every((l) => !l.trim() || /^\s*\d+[.)]\s+/.test(l));
+}
+
+function markdownToHtml(raw: string): string {
+  // Normalise HTML line-break tags the LLM sometimes emits
+  const text = raw.replace(/<br\s*\/?>/gi, "\n");
+
   const paragraphs = text.split(/\n{2,}/);
   return paragraphs
     .map((p) => {
       const trimmed = p.trim();
       if (!trimmed) return "";
-      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+
+      if (isUnorderedList(trimmed)) {
         const items = trimmed
           .split(/\n/)
           .filter((l) => l.trim())
@@ -31,6 +43,16 @@ function markdownToHtml(text: string): string {
           .join("");
         return `<ul>${items}</ul>`;
       }
+
+      if (isOrderedList(trimmed)) {
+        const items = trimmed
+          .split(/\n/)
+          .filter((l) => l.trim())
+          .map((l) => `<li>${renderInlineMarkdown(l.replace(/^\s*\d+[.)]\s+/, ""))}</li>`)
+          .join("");
+        return `<ol>${items}</ol>`;
+      }
+
       return `<p>${renderInlineMarkdown(trimmed.replace(/\n/g, "<br/>"))}</p>`;
     })
     .join("");
@@ -96,7 +118,7 @@ export function MessageBubble({
                 : "bg-input/30",
               "[&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic",
               "[&_code]:rounded [&_code]:bg-background/50 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs",
-              "[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2 [&_li]:mb-0.5",
+              "[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2 [&_li]:mb-0.5",
             )}
             dangerouslySetInnerHTML={{ __html: html }}
           />

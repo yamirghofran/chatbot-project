@@ -16,6 +16,9 @@ export function ChatPage() {
   const [streamingBooks, setStreamingBooks] = useState<Book[]>([]);
   const [streamingMsgId, setStreamingMsgId] = useState<string | undefined>();
   const abortRef = useRef(false);
+  // Skip the next session-load effect when we just auto-created a session
+  // during handleSend (the messages are already optimistically set).
+  const skipNextLoadRef = useRef(false);
 
   const sessionsQuery = useQuery({
     queryKey: ["chatSessions"],
@@ -28,6 +31,10 @@ export function ChatPage() {
   useEffect(() => {
     if (!activeSessionId) {
       setMessages([]);
+      return;
+    }
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
       return;
     }
     chatApi.getSession(activeSessionId).then((detail) => {
@@ -73,6 +80,8 @@ export function ChatPage() {
         try {
           const session = await chatApi.createSession(content.slice(0, 100));
           sessionId = session.id;
+          // Prevent the useEffect from overwriting our optimistic messages
+          skipNextLoadRef.current = true;
           setActiveSessionId(sessionId);
           queryClient.invalidateQueries({ queryKey: ["chatSessions"] });
         } catch {
@@ -170,7 +179,7 @@ export function ChatPage() {
   }, []);
 
   return (
-    <div className="flex h-[calc(100dvh-65px)] -mx-4 -my-8">
+    <div className="flex h-full">
       {/* Sidebar */}
       <ChatSidebar
         sessions={sessions}
