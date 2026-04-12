@@ -154,19 +154,34 @@ def _count_bpr_preprocessed_rows(data_path: str) -> int:
     """
     Load and preprocess the BPR parquet using the exact same pipeline as
     train_bpr.main() to get the post-preprocessing row count.
+    Also logs user counts before and after the min-interaction filter.
     """
     cfg = _bpr.DEFAULT_CONFIG
+    min_interactions = cfg["min_user_interactions"]
+
     df = _bpr.load_data(
         data_path,
         required_columns=[cfg["col_user"], cfg["col_item"]],
         optional_columns=[cfg["col_rating"]],
     )
+
+    users_before = df[cfg["col_user"]].n_unique()
+    logger.info(f"  Raw dataset: {df.height:,} interactions, {users_before:,} unique users")
+
     df = _bpr.preprocess_data(
         df,
         col_user=cfg["col_user"],
         col_item=cfg["col_item"],
         col_rating=cfg.get("col_rating"),
-        min_user_interactions=cfg["min_user_interactions"],
+        min_user_interactions=min_interactions,
+    )
+
+    users_after = df[cfg["col_user"]].n_unique()
+    users_dropped = users_before - users_after
+    logger.info(
+        f"  After filter (≥{min_interactions} interactions): "
+        f"{df.height:,} interactions, {users_after:,} users "
+        f"({users_dropped:,} users dropped as below threshold)"
     )
     return df.height
 
