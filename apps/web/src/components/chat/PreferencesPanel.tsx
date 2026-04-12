@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useState } from "react";
 import type { UserPreferences } from "@/lib/types";
@@ -8,7 +9,7 @@ export type PreferencesPanelProps = {
   onClear: () => void;
 };
 
-function PreferenceChip({ children, variant = "positive" }: { children: React.ReactNode; variant?: "positive" | "negative" | "neutral" }) {
+function PreferenceChip({ children, variant = "positive" }: { children: ReactNode; variant?: "positive" | "negative" | "neutral" }) {
   return (
     <span
       className={cn(
