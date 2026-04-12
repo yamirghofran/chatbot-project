@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from bookdb.db.crud import BookCRUD, BookListCRUD, BookRatingCRUD, ReviewCRUD, ShellCRUD
+from bookdb.db.crud import BookListCRUD, BookRatingCRUD, ReviewCRUD, ShellCRUD
 from bookdb.db.models import (
     Book,
     BookAuthor,
@@ -236,28 +236,78 @@ async def import_goodreads(
     try:
         text = content.decode("utf-8-sig")  # strip BOM if present
         reader = csv.DictReader(io.StringIO(text))
-        rows = list(reader)
-    except Exception:
+        # Extract only the fields we need; avoids materialising full row dicts
+        rows = [
+            (
+                (row.get("Book Id") or "").strip(),
+                _strip_goodreads_isbn(row.get("ISBN13") or ""),
+                (row.get("My Rating") or "0").strip(),
+                (row.get("My Review") or "").strip(),
+            )
+            for row in reader
+        ]
+    except (UnicodeDecodeError, csv.Error):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid CSV file")
 
-    matched = skipped = ratings_imported = reviews_imported = 0
-
-    for row in rows:
-        # --- locate book ---
-        book: Book | None = None
-
-        raw_gid = (row.get("Book Id") or "").strip()
+    # --- bulk-fetch all books referenced in the CSV (avoids N+1) ---
+    row_gids: dict[int, int] = {}  # row index → parsed goodreads_id int
+    for i, (raw_gid, _, _, _) in enumerate(rows):
         if raw_gid:
             try:
-                book = BookCRUD.get_by_goodreads_id(db, int(raw_gid))
+                row_gids[i] = int(raw_gid)
             except (ValueError, TypeError):
                 pass
 
-        if book is None:
-            isbn13 = _strip_goodreads_isbn(row.get("ISBN13") or "")
-            if isbn13:
-                book = db.scalar(select(Book).where(Book.isbn13 == isbn13))
+    books_by_gid: dict[int, Book] = {}
+    if row_gids:
+        stmt = select(Book).where(Book.goodreads_id.in_(row_gids.values()))
+        for book in db.scalars(stmt).all():
+            books_by_gid[book.goodreads_id] = book
 
+    # Collect ISBN-13s only for rows whose goodreads_id wasn't found
+    isbn13s_needed = {
+        isbn13
+        for i, (_, isbn13, _, _) in enumerate(rows)
+        if isbn13 and row_gids.get(i) not in books_by_gid
+    }
+    books_by_isbn13: dict[str, Book] = {}
+    if isbn13s_needed:
+        stmt = select(Book).where(Book.isbn13.in_(isbn13s_needed))
+        for book in db.scalars(stmt).all():
+            books_by_isbn13[book.isbn13] = book
+
+    # Resolve each row to a Book (or None)
+    row_books: list[Book | None] = []
+    for i, (_, isbn13, _, _) in enumerate(rows):
+        gid = row_gids.get(i)
+        book = books_by_gid.get(gid) if gid is not None else None
+        if book is None and isbn13:
+            book = books_by_isbn13.get(isbn13)
+        row_books.append(book)
+
+    matched_book_ids = {b.id for b in row_books if b is not None}
+
+    # Warm the identity map so BookRatingCRUD.upsert() needs no extra queries
+    if matched_book_ids:
+        db.scalars(
+            select(BookRating).where(
+                BookRating.user_id == current_user.id,
+                BookRating.book_id.in_(matched_book_ids),
+            )
+        ).all()
+
+    # Bulk-fetch book IDs that already have a review from this user
+    reviewed_book_ids: set[int] = set()
+    if matched_book_ids:
+        stmt = select(Review.book_id).where(
+            Review.user_id == current_user.id,
+            Review.book_id.in_(matched_book_ids),
+        )
+        reviewed_book_ids = set(db.scalars(stmt).all())
+
+    matched = skipped = ratings_imported = reviews_imported = 0
+
+    for (_, _, raw_rating, review_text), book in zip(rows, row_books):
         if book is None:
             skipped += 1
             continue
@@ -266,7 +316,7 @@ async def import_goodreads(
 
         # --- rating ---
         try:
-            my_rating = int((row.get("My Rating") or "0").strip())
+            my_rating = int(raw_rating)
         except (ValueError, TypeError):
             my_rating = 0
 
@@ -278,15 +328,13 @@ async def import_goodreads(
                 pass
 
         # --- review ---
-        review_text = (row.get("My Review") or "").strip()
-        if review_text:
-            existing = ReviewCRUD.get_by_user_and_book(db, current_user.id, book.id)
-            if not existing:
-                try:
-                    ReviewCRUD.create(db, current_user.id, book.id, review_text)
-                    reviews_imported += 1
-                except ValueError:
-                    pass
+        if review_text and book.id not in reviewed_book_ids:
+            try:
+                ReviewCRUD.create(db, current_user.id, book.id, review_text)
+                reviews_imported += 1
+                reviewed_book_ids.add(book.id)  # prevent duplicate within same import
+            except ValueError:
+                pass
 
     db.commit()
 
