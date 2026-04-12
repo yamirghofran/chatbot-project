@@ -194,6 +194,55 @@ def test_degenerate_history_filtered():
     assert result.content == "Seven books total."
 
 
+def test_text_function_call_parsed():
+    """Function calls emitted as text are parsed and executed as tool calls."""
+    client = MagicMock()
+
+    text_with_func = (
+        'It seems like you want sci-fi. '
+        '<function=get_recommendations>{"genre":"science fiction","limit":6}</function>'
+    )
+    # First call returns function-as-text, second returns grounded response
+    client.chat.completions.create.side_effect = [
+        _mock_groq_stream_direct(text_with_func),
+        _mock_groq_stream_direct("Here are some great sci-fi picks!"),
+    ]
+
+    mock_result = {
+        "success": True,
+        "data": {},
+        "books": [{"id": "1", "title": "Dune", "author": "Frank Herbert"}],
+        "source": "cold_start",
+    }
+
+    events = []
+
+    with patch.dict(chat_tools.TOOL_FUNCTIONS, {"get_recommendations": lambda *a, **kw: mock_result}):
+        result = chat_orchestrator.orchestrate(
+            user_message="I like sci-fi books",
+            history=[],
+            db=MagicMock(),
+            groq_client=client,
+            stream_callback=lambda evt, data: events.append((evt, data)),
+        )
+
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "get_recommendations"
+    event_types = [evt for evt, _ in events]
+    assert "tool_call" in event_types
+    assert "tool_result" in event_types
+
+
+def test_text_function_call_stripped_from_content():
+    """The raw function tag is removed from content shown to the user."""
+    content = 'Let me search. <function=search_books>{"query":"fantasy"}</function>'
+    cleaned, calls = chat_orchestrator._extract_text_function_calls(content)
+    assert "<function" not in cleaned
+    assert len(calls) == 1
+    assert calls[0]["name"] == "search_books"
+    assert "fantasy" in calls[0]["arguments"]
+
+
 def test_enrich_search_query_short_input():
     """Short queries get enriched with prior user messages from history."""
     history = [

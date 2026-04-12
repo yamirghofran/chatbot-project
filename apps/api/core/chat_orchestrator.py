@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -130,7 +131,41 @@ def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
 
     content = "".join(content_parts)
     tool_calls = [tool_calls_accum[k] for k in sorted(tool_calls_accum)]
+
+    # Some models emit function calls as text instead of structured tool_calls.
+    # Detect <function=name>{...}</function> or similar patterns and convert them.
+    if not tool_calls and content:
+        content, text_tool_calls = _extract_text_function_calls(content)
+        if text_tool_calls:
+            tool_calls = text_tool_calls
+
     return content, tool_calls
+
+
+_TEXT_FUNC_RE = re.compile(
+    r"<function=(\w+)>(.*?)</function>",
+    re.DOTALL,
+)
+
+
+def _extract_text_function_calls(
+    content: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Parse function calls embedded as text and strip them from content."""
+    matches = list(_TEXT_FUNC_RE.finditer(content))
+    if not matches:
+        return content, []
+
+    tool_calls: list[dict[str, Any]] = []
+    for i, m in enumerate(matches):
+        tool_calls.append({
+            "id": f"text_call_{i}",
+            "name": m.group(1),
+            "arguments": m.group(2).strip(),
+        })
+
+    cleaned = _TEXT_FUNC_RE.sub("", content).strip()
+    return cleaned, tool_calls
 
 
 _MIN_SEARCH_QUERY_WORDS = 3
