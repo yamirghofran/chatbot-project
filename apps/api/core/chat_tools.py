@@ -9,6 +9,7 @@ JSON-schema descriptors that Groq's function-calling API requires.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from groq import Groq
@@ -21,6 +22,8 @@ from bookdb.models.chatbot_llm import (
     create_groq_client_sync,
     rewrite_query_sync,
 )
+
+_log = logging.getLogger(__name__)
 
 from .book_queries import (
     BOOK_LOAD_OPTIONS,
@@ -206,6 +209,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 # Standardized result builder
 # ---------------------------------------------------------------------------
 
+
 def _tool_result(
     *,
     success: bool,
@@ -226,6 +230,7 @@ def _tool_result(
 # ---------------------------------------------------------------------------
 # Tool: search_books
 # ---------------------------------------------------------------------------
+
 
 def _embed_text_via_service(text: str) -> list[float]:
     """Call the embedding service for a single text.  Returns [] on failure."""
@@ -248,13 +253,15 @@ def _embed_text_via_service(text: str) -> list[float]:
 
     try:
         response = http_requests.post(
-            endpoint, json=body, headers=headers,
+            endpoint,
+            json=body,
+            headers=headers,
             timeout=settings.EMBEDDING_SERVICE_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         data = response.json()
     except Exception as e:
-        print(f"Embedding request failed: {e}")
+        _log.warning("Embedding request failed: %s", e)
         return []
 
     embeddings = data.get("embeddings")
@@ -338,7 +345,8 @@ def tool_search_books(
     if settings.ENTITY_EXTRACTION_ENABLED:
         try:
             resolution = resolve_entities(
-                db=db, query=query,
+                db=db,
+                query=query,
                 max_books=settings.ENTITY_MAX_BOOKS_PER_QUERY,
                 max_authors=settings.ENTITY_MAX_AUTHORS_PER_QUERY,
                 similarity_threshold=settings.ENTITY_SIMILARITY_THRESHOLD,
@@ -346,19 +354,22 @@ def tool_search_books(
             )
             entity_context = resolution.get("entity_context")
         except Exception as e:
-            print(f"Entity extraction failed: {e}")
+            _log.warning("Entity extraction failed: %s", e)
 
     # Query rewriting
     try:
         rewritten_description, rewritten_review = rewrite_query_sync(
-            groq_client, query, entity_context=entity_context,
+            groq_client,
+            query,
+            entity_context=entity_context,
         )
     except Exception as e:
-        print(f"Query rewrite failed: {e}")
+        _log.warning("Query rewrite failed: %s", e)
         return _tool_result(success=False, error="Query rewrite failed")
 
     rewritten_text = "\n\n".join(
-        part.strip() for part in [rewritten_description, rewritten_review]
+        part.strip()
+        for part in [rewritten_description, rewritten_review]
         if part and part.strip()
     )
     if not rewritten_text:
@@ -372,14 +383,18 @@ def tool_search_books(
     # Vector search
     try:
         qdrant_hits = most_similar_by_vector(
-            qdrant, query_embedding, top_k=settings.CHATBOT_TOP_K,
+            qdrant,
+            query_embedding,
+            top_k=settings.CHATBOT_TOP_K,
         )
     except Exception as e:
-        print(f"Qdrant vector search failed: {e}")
+        _log.warning("Qdrant vector search failed: %s", e)
         return _tool_result(success=False, error="Vector search failed")
 
     if not qdrant_hits:
-        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+        return _tool_result(
+            success=True, data={"narrative": None}, source="vector_search"
+        )
 
     goodreads_ids: list[int] = []
     for hit in qdrant_hits:
@@ -389,11 +404,15 @@ def tool_search_books(
             continue
 
     if not goodreads_ids:
-        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+        return _tool_result(
+            success=True, data={"narrative": None}, source="vector_search"
+        )
 
     qdrant_books = load_books_by_goodreads_ids(db, goodreads_ids)
     if not qdrant_books:
-        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+        return _tool_result(
+            success=True, data={"narrative": None}, source="vector_search"
+        )
 
     books_by_gid = {int(book.goodreads_id): book for book in qdrant_books}
     llm_context_books: list[dict[str, Any]] = []
@@ -408,13 +427,17 @@ def tool_search_books(
         if book is None:
             continue
         ranked_books.append(book)
-        llm_context_books.append({
-            "book_id": int(book.id),
-            "description": _payload_to_book_context(book, hit.get("payload", {})),
-        })
+        llm_context_books.append(
+            {
+                "book_id": int(book.id),
+                "description": _payload_to_book_context(book, hit.get("payload", {})),
+            }
+        )
 
     if not ranked_books:
-        return _tool_result(success=True, data={"narrative": None}, source="vector_search")
+        return _tool_result(
+            success=True, data={"narrative": None}, source="vector_search"
+        )
 
     # Fetch reviews for grounding
     reviews: list[dict[str, Any]] = []
@@ -428,7 +451,11 @@ def tool_search_books(
             .limit(settings.CHATBOT_MAX_REVIEWS)
         ).all()
         reviews = [
-            {"review_id": int(row.id), "book_title": str(row.book_title or ""), "review": str(row.review_text or "")}
+            {
+                "review_id": int(row.id),
+                "book_title": str(row.book_title or ""),
+                "review": str(row.review_text or ""),
+            }
             for row in review_rows
         ]
 
@@ -451,15 +478,14 @@ def tool_search_books(
 # Tool: get_book_details
 # ---------------------------------------------------------------------------
 
+
 def tool_get_book_details(
     book_id: int,
     *,
     db: Session,
 ) -> dict[str, Any]:
     """Fetch full details for a single book."""
-    book = db.scalar(
-        select(Book).where(Book.id == book_id).options(*BOOK_LOAD_OPTIONS)
-    )
+    book = db.scalar(select(Book).where(Book.id == book_id).options(*BOOK_LOAD_OPTIONS))
     if book is None:
         return _tool_result(success=False, error=f"Book {book_id} not found")
 
@@ -470,6 +496,7 @@ def tool_get_book_details(
 # ---------------------------------------------------------------------------
 # Tool: get_related_books
 # ---------------------------------------------------------------------------
+
 
 def tool_get_related_books(
     book_id: int,
@@ -486,12 +513,14 @@ def tool_get_related_books(
         return _tool_result(success=False, error=f"Book {book_id} not found")
 
     if qdrant is None or row.goodreads_id is None:
-        return _tool_result(success=False, error="Vector search unavailable for this book")
+        return _tool_result(
+            success=False, error="Vector search unavailable for this book"
+        )
 
     try:
         similar_gids = most_similar(qdrant, row.goodreads_id, top_k=limit * 3)
     except Exception as e:
-        print(f"Qdrant recommend failed for book {book_id}: {e}")
+        _log.warning("Qdrant recommend failed for book %s: %s", book_id, e)
         return _tool_result(success=False, error="Vector search failed")
 
     if not similar_gids:
@@ -505,6 +534,7 @@ def tool_get_related_books(
 # ---------------------------------------------------------------------------
 # Tool: get_recommendations
 # ---------------------------------------------------------------------------
+
 
 def tool_get_recommendations(
     *,
@@ -527,8 +557,16 @@ def tool_get_recommendations(
         _interaction_vector_recommendations,
     )
 
-    bpr_path: str | None = getattr(request_app_state, "bpr_parquet_path", None) if request_app_state else None
-    metrics_path: str | None = getattr(request_app_state, "book_metrics_parquet_path", None) if request_app_state else None
+    bpr_path: str | None = (
+        getattr(request_app_state, "bpr_parquet_path", None)
+        if request_app_state
+        else None
+    )
+    metrics_path: str | None = (
+        getattr(request_app_state, "book_metrics_parquet_path", None)
+        if request_app_state
+        else None
+    )
 
     # If no user, return cold start
     if user_id is None:
@@ -537,6 +575,7 @@ def tool_get_recommendations(
         return _tool_result(success=True, books=serialized, source="cold_start")
 
     from bookdb.db.models import User
+
     user = db.scalar(select(User).where(User.id == user_id))
     if user is None:
         cold = _cold_start(db, limit, metrics_path)
@@ -547,7 +586,9 @@ def tool_get_recommendations(
     bpr_books: list[Book] = []
     bpr_gids: list[int] = []
     if bpr_path and user.goodreads_id is not None:
-        bpr_gids = _bpr_recommendations(bpr_path, user.goodreads_id, limit=max(limit * 5, 100))
+        bpr_gids = _bpr_recommendations(
+            bpr_path, user.goodreads_id, limit=max(limit * 5, 100)
+        )
         if bpr_gids:
             bpr_books = load_books_by_goodreads_ids(db, bpr_gids)
 
@@ -555,12 +596,18 @@ def tool_get_recommendations(
     interaction_books: list[Book] = []
     if qdrant is not None:
         interaction_gids = _cluster_vector_recommendations(
-            db, user.id, qdrant_client=qdrant, limit=max(limit * 4, 80),
+            db,
+            user.id,
+            qdrant_client=qdrant,
+            limit=max(limit * 4, 80),
             exclude_ids=set(bpr_gids),
         )
         if not interaction_gids:
             interaction_gids = _interaction_vector_recommendations(
-                db, user.id, qdrant_client=qdrant, limit=max(limit * 4, 80),
+                db,
+                user.id,
+                qdrant_client=qdrant,
+                limit=max(limit * 4, 80),
                 exclude_ids=set(bpr_gids),
             )
         if interaction_gids:
@@ -582,7 +629,11 @@ def tool_get_recommendations(
         cold = _cold_start(db, limit, metrics_path)
         _append_unique_books(recommendations, cold, limit=limit)
 
-    source = "bpr+vector" if bpr_books and interaction_books else ("bpr" if bpr_books else ("vector" if interaction_books else "cold_start"))
+    source = (
+        "bpr+vector"
+        if bpr_books and interaction_books
+        else ("bpr" if bpr_books else ("vector" if interaction_books else "cold_start"))
+    )
     serialized = serialize_books_with_engagement(db, recommendations[:limit])
     return _tool_result(success=True, books=serialized, source=source)
 
@@ -663,7 +714,9 @@ def _resolve_books_for_comparison(
                             f"(confidence: {score:.0%})"
                         )
             else:
-                warnings.append(f'Could not find a book matching "{title}" in the catalogue.')
+                warnings.append(
+                    f'Could not find a book matching "{title}" in the catalogue.'
+                )
         if len(resolved_ids) >= 2:
             books = load_books_by_ids(db, resolved_ids)
             if len(books) >= 2:
@@ -682,7 +735,9 @@ def tool_compare_books(
     """Side-by-side comparison of 2-3 books by ID or title."""
     total = len(book_ids or []) + len(titles or [])
     if total < 2:
-        return _tool_result(success=False, error="Provide at least 2 books to compare (by ID or title)")
+        return _tool_result(
+            success=False, error="Provide at least 2 books to compare (by ID or title)"
+        )
     if total > 3 and not book_ids:
         titles = (titles or [])[:3]
 
@@ -707,7 +762,8 @@ def tool_compare_books(
         )
 
     user_message = (
-        "Compare these books:\n\n" + "\n\n".join(book_descriptions)
+        "Compare these books:\n\n"
+        + "\n\n".join(book_descriptions)
         + "\n\nCompare on: pacing, themes, tone/mood, difficulty, target audience, and overall recommendation."
     )
 
@@ -731,7 +787,7 @@ def tool_compare_books(
         )
         parsed = _parse_structured_content(response, label="comparison")
     except Exception as e:
-        print(f"Comparison LLM call failed: {e}")
+        _log.warning("Comparison LLM call failed: %s", e)
         parsed = None
 
     serialized = serialize_books_with_engagement(db, books)
@@ -756,6 +812,7 @@ def tool_compare_books(
 # Tool: recommend_via_mcp
 # ---------------------------------------------------------------------------
 
+
 def tool_recommend_via_mcp(
     *,
     mcp_adapter: Any | None = None,
@@ -770,8 +827,10 @@ def tool_recommend_via_mcp(
     """Try the MCP recommendation server first; fall back to the local pipeline."""
     if mcp_adapter is not None and mcp_adapter.is_available():
         mcp_results = mcp_adapter.recommend(
-            user_id=user_id, preferences=preferences,
-            constraints=constraints, limit=limit,
+            user_id=user_id,
+            preferences=preferences,
+            constraints=constraints,
+            limit=limit,
         )
         if mcp_results:
             # Try to resolve MCP results to local book records for rich cards
@@ -798,8 +857,11 @@ def tool_recommend_via_mcp(
 
     # Fallback to local discovery pipeline
     result = tool_get_recommendations(
-        db=db, qdrant=qdrant, request_app_state=request_app_state,
-        user_id=user_id, limit=limit,
+        db=db,
+        qdrant=qdrant,
+        request_app_state=request_app_state,
+        user_id=user_id,
+        limit=limit,
     )
     if result["source"] != "mcp":
         result["source"] = f"local_fallback ({result['source']})"

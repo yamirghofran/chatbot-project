@@ -8,9 +8,12 @@ list so callers can fall back to the local discovery pipeline.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import requests
+
+_log = logging.getLogger(__name__)
 
 
 class MCPAdapter:
@@ -54,7 +57,7 @@ class MCPAdapter:
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            print(f"MCP recommendation request failed: {e}")
+            _log.warning("MCP recommendation request failed: %s", e)
             return []
 
         if isinstance(data, list):
