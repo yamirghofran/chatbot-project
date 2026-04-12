@@ -73,13 +73,42 @@ class OrchestratorResult:
 
 StreamCallback = Callable[[str, dict[str, Any]], None]
 
-_PREFERENCE_KEYWORDS = frozenset({
-    "genre", "recommend", "like", "dislike", "prefer", "hate", "love",
-    "shorter", "longer", "less", "more", "avoid", "only", "standalone",
-    "mood", "dark", "light", "funny", "serious", "fast", "slow",
-    "romance", "fantasy", "sci-fi", "mystery", "horror", "thriller",
-    "literary", "classic", "modern", "pages", "page",
-})
+_PREFERENCE_KEYWORDS = frozenset(
+    {
+        "genre",
+        "recommend",
+        "like",
+        "dislike",
+        "prefer",
+        "hate",
+        "love",
+        "shorter",
+        "longer",
+        "less",
+        "more",
+        "avoid",
+        "only",
+        "standalone",
+        "mood",
+        "dark",
+        "light",
+        "funny",
+        "serious",
+        "fast",
+        "slow",
+        "romance",
+        "fantasy",
+        "sci-fi",
+        "mystery",
+        "horror",
+        "thriller",
+        "literary",
+        "classic",
+        "modern",
+        "pages",
+        "page",
+    }
+)
 
 _PREFERENCES_EXTRACTION_PROMPT = """\
 You are a preference extraction assistant. Given the latest exchange between \
@@ -129,7 +158,8 @@ def _should_extract_preferences(user_message: str, assistant_content: str) -> bo
 
 
 def _merge_preferences(
-    existing: dict[str, Any] | None, extracted: dict[str, Any],
+    existing: dict[str, Any] | None,
+    extracted: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge newly extracted preferences into existing ones."""
     if not existing:
@@ -163,7 +193,10 @@ def _extract_preferences(
             model=model,
             messages=[
                 {"role": "system", "content": _PREFERENCES_EXTRACTION_PROMPT + context},
-                {"role": "user", "content": f"User said: {user_message}\n\nAssistant replied: {assistant_content[:500]}"},
+                {
+                    "role": "user",
+                    "content": f"User said: {user_message}\n\nAssistant replied: {assistant_content[:500]}",
+                },
             ],
             response_format=_PREFERENCES_SCHEMA,
             temperature=0.1,
@@ -188,7 +221,8 @@ def _build_system_message(preferences: dict[str, Any] | None) -> str:
 
 
 def _truncate_history(
-    messages: list[dict[str, str]], max_messages: int,
+    messages: list[dict[str, str]],
+    max_messages: int,
 ) -> list[dict[str, str]]:
     """Keep the last max_messages entries, always preserving the system message."""
     if len(messages) <= max_messages + 1:
@@ -249,7 +283,9 @@ def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
     return content, tool_calls
 
 
-def _message_to_content_and_tool_calls(message: Any) -> tuple[str, list[dict[str, Any]]]:
+def _message_to_content_and_tool_calls(
+    message: Any,
+) -> tuple[str, list[dict[str, Any]]]:
     """Parse content and tool calls from a non-streaming assistant message."""
     content = (getattr(message, "content", None) or "") if message else ""
     tool_calls: list[dict[str, Any]] = []
@@ -259,11 +295,13 @@ def _message_to_content_and_tool_calls(message: Any) -> tuple[str, list[dict[str
             fn = getattr(tc, "function", None)
             name = (getattr(fn, "name", None) or "") if fn else ""
             args = (getattr(fn, "arguments", None) or "") if fn else ""
-            tool_calls.append({
-                "id": getattr(tc, "id", None) or f"call_{i}",
-                "name": name,
-                "arguments": args,
-            })
+            tool_calls.append(
+                {
+                    "id": getattr(tc, "id", None) or f"call_{i}",
+                    "name": name,
+                    "arguments": args,
+                }
+            )
     if not tool_calls and content:
         content, text_tool_calls = _extract_text_function_calls(content)
         if text_tool_calls:
@@ -289,11 +327,15 @@ def _parse_failed_generation(err: APIError) -> tuple[str, list[dict[str, Any]]]:
         parsed = json.loads(failed)
         if isinstance(parsed, dict) and "name" in parsed:
             args = parsed.get("arguments") or parsed.get("parameters") or {}
-            return "", [{
-                "id": "recovered_0",
-                "name": parsed["name"],
-                "arguments": json.dumps(args) if not isinstance(args, str) else args,
-            }]
+            return "", [
+                {
+                    "id": "recovered_0",
+                    "name": parsed["name"],
+                    "arguments": json.dumps(args)
+                    if not isinstance(args, str)
+                    else args,
+                }
+            ]
     except (json.JSONDecodeError, TypeError):
         pass
     return failed, []
@@ -391,11 +433,13 @@ def _extract_text_function_calls(
 
     tool_calls: list[dict[str, Any]] = []
     for i, m in enumerate(matches):
-        tool_calls.append({
-            "id": f"text_call_{i}",
-            "name": m.group(1),
-            "arguments": m.group(2).strip(),
-        })
+        tool_calls.append(
+            {
+                "id": f"text_call_{i}",
+                "name": m.group(1),
+                "arguments": m.group(2).strip(),
+            }
+        )
 
     cleaned = _TEXT_FUNC_RE.sub("", content).strip()
     return cleaned, tool_calls
@@ -405,7 +449,8 @@ _MIN_SEARCH_QUERY_WORDS = 3
 
 
 def _enrich_search_query(
-    raw_query: str, history: list[dict[str, Any]],
+    raw_query: str,
+    history: list[dict[str, Any]],
 ) -> str:
     """If the LLM passed a short/vague query, expand it from conversation context.
 
@@ -451,34 +496,65 @@ def _execute_tool(
     """Dispatch a tool call to the correct function."""
     func = TOOL_FUNCTIONS.get(tool_name)
     if func is None:
-        return {"success": False, "error": f"Unknown tool: {tool_name}", "books": [], "data": {}, "source": ""}
+        return {
+            "success": False,
+            "error": f"Unknown tool: {tool_name}",
+            "books": [],
+            "data": {},
+            "source": "",
+        }
 
     if tool_name == "search_books":
         query = _enrich_search_query(tool_args.get("query", ""), history or [])
-        return func(query, db=db, qdrant=qdrant, groq_client=groq_client, preferences=preferences)
+        return func(
+            query,
+            db=db,
+            qdrant=qdrant,
+            groq_client=groq_client,
+            preferences=preferences,
+        )
     elif tool_name == "get_book_details":
         return func(tool_args.get("book_id", 0), db=db)
     elif tool_name == "get_related_books":
-        return func(tool_args.get("book_id", 0), db=db, qdrant=qdrant, limit=tool_args.get("limit", 6))
+        return func(
+            tool_args.get("book_id", 0),
+            db=db,
+            qdrant=qdrant,
+            limit=tool_args.get("limit", 6),
+        )
     elif tool_name == "get_recommendations":
         return func(
-            db=db, qdrant=qdrant, request_app_state=request_app_state,
-            user_id=user_id, limit=tool_args.get("limit", 6),
+            db=db,
+            qdrant=qdrant,
+            request_app_state=request_app_state,
+            user_id=user_id,
+            limit=tool_args.get("limit", 6),
         )
     elif tool_name == "compare_books":
         return func(
             book_ids=tool_args.get("book_ids"),
             titles=tool_args.get("titles"),
-            db=db, groq_client=groq_client,
+            db=db,
+            groq_client=groq_client,
         )
     elif tool_name == "recommend_via_mcp":
         return func(
-            mcp_adapter=mcp_adapter, db=db, qdrant=qdrant,
-            request_app_state=request_app_state, user_id=user_id,
-            preferences=preferences, limit=tool_args.get("limit", 6),
+            mcp_adapter=mcp_adapter,
+            db=db,
+            qdrant=qdrant,
+            request_app_state=request_app_state,
+            user_id=user_id,
+            preferences=preferences,
+            limit=tool_args.get("limit", 6),
         )
     else:
-        return {"success": False, "error": f"Unhandled tool: {tool_name}", "books": [], "data": {}, "source": ""}
+        return {
+            "success": False,
+            "error": f"Unhandled tool: {tool_name}",
+            "books": [],
+            "data": {},
+            "source": "",
+        }
 
 
 def _collect_book_ids(books: list[dict[str, Any]]) -> list[int]:
@@ -532,8 +608,7 @@ def orchestrate(
 
     # Filter degenerate messages from history so bad outputs don't poison context
     clean_history = [
-        m for m in history
-        if m.get("content") and not _is_degenerate(m["content"])
+        m for m in history if m.get("content") and not _is_degenerate(m["content"])
     ]
 
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_msg}]
@@ -560,18 +635,20 @@ def orchestrate(
     except Exception as e:
         error_msg = f"I'm having trouble connecting to the AI service right now. Please try again shortly. ({e})"
         cb("token", {"text": error_msg})
-        cb("done", {"referenced_book_ids": []})
         return OrchestratorResult(content=error_msg, model_used=model)
 
     # If no tool calls, the model responded directly — stream what we got
     if not tool_calls:
         if content:
             cb("token", {"text": content})
-        cb("done", {"referenced_book_ids": []})
         prefs_out = None
         if content and _should_extract_preferences(user_message, content):
-            prefs_out = _extract_preferences(client, model, user_message, content, preferences)
-        return OrchestratorResult(content=content, model_used=model, extracted_preferences=prefs_out)
+            prefs_out = _extract_preferences(
+                client, model, user_message, content, preferences
+            )
+        return OrchestratorResult(
+            content=content, model_used=model, extracted_preferences=prefs_out
+        )
 
     # Execute tool calls
     all_books: list[dict[str, Any]] = []
@@ -590,38 +667,55 @@ def orchestrate(
         cb("tool_call", {"tool": tool_name, "input": tool_args})
 
         tool_result = _execute_tool(
-            tool_name, tool_args,
-            db=db, qdrant=qdrant_client, groq_client=client,
-            mcp_adapter=mcp_adapter, request_app_state=request_app_state,
-            user_id=user_id, preferences=preferences,
+            tool_name,
+            tool_args,
+            db=db,
+            qdrant=qdrant_client,
+            groq_client=client,
+            mcp_adapter=mcp_adapter,
+            request_app_state=request_app_state,
+            user_id=user_id,
+            preferences=preferences,
             history=messages,
         )
 
         tool_books = tool_result.get("books", [])
         all_books.extend(tool_books)
-        all_tool_records.append(ToolCallRecord(
-            name=tool_name, input=tool_args, output=tool_result,
-        ))
+        all_tool_records.append(
+            ToolCallRecord(
+                name=tool_name,
+                input=tool_args,
+                output=tool_result,
+            )
+        )
 
-        cb("tool_result", {
-            "tool": tool_name,
-            "books": tool_books,
-            "source": tool_result.get("source", ""),
-            "data": tool_result.get("data", {}),
-        })
+        cb(
+            "tool_result",
+            {
+                "tool": tool_name,
+                "books": tool_books,
+                "source": tool_result.get("source", ""),
+                "data": tool_result.get("data", {}),
+            },
+        )
 
         comparison = tool_result.get("data", {}).get("comparison")
         if comparison:
-            cb("comparison", {
-                "dimensions": comparison.get("dimensions", []),
-                "verdict": comparison.get("verdict", ""),
-                "book_ids": _collect_book_ids(tool_books),
-            })
+            cb(
+                "comparison",
+                {
+                    "dimensions": comparison.get("dimensions", []),
+                    "verdict": comparison.get("verdict", ""),
+                    "book_ids": _collect_book_ids(tool_books),
+                },
+            )
 
     # Check if ALL tools failed or returned no books
     all_failed = all(
-        not rec.output.get("success", False) or (
-            not rec.output.get("books") and not rec.output.get("data", {}).get("comparison")
+        not rec.output.get("success", False)
+        or (
+            not rec.output.get("books")
+            and not rec.output.get("data", {}).get("comparison")
         )
         for rec in all_tool_records
     )
@@ -629,15 +723,17 @@ def orchestrate(
     # If every tool failed/empty, fall back to a direct answer without tool context
     if all_failed:
         fallback_msgs = list(messages)
-        fallback_msgs.append({
-            "role": "system",
-            "content": (
-                "The database tools returned no results (the catalogue may be "
-                "empty or the search service is unavailable). Answer the user's "
-                "question from your own knowledge. Be honest that you couldn't "
-                "search the BookDB catalogue."
-            ),
-        })
+        fallback_msgs.append(
+            {
+                "role": "system",
+                "content": (
+                    "The database tools returned no results (the catalogue may be "
+                    "empty or the search service is unavailable). Answer the user's "
+                    "question from your own knowledge. Be honest that you couldn't "
+                    "search the BookDB catalogue."
+                ),
+            }
+        )
         try:
             fallback_stream = client.chat.completions.create(
                 model=model,
@@ -654,15 +750,13 @@ def orchestrate(
                     text = choice.delta.content
                     parts.append(text)
                     cb("token", {"text": text})
-            fallback_content = "".join(parts)
-            cb("done", {"referenced_book_ids": []})
+fallback_content = "".join(parts)
             return OrchestratorResult(
                 content=fallback_content, tool_calls=all_tool_records, model_used=model,
             )
         except Exception:
             msg = "I wasn't able to search the book catalogue right now. Could you try again?"
             cb("token", {"text": msg})
-            cb("done", {"referenced_book_ids": []})
             return OrchestratorResult(content=msg, model_used=model)
 
     # Build tool result message for the second LLM call
@@ -688,16 +782,28 @@ def orchestrate(
 
     # Second LLM call — generate grounded response
     follow_up_messages = list(messages)
-    follow_up_messages.append({"role": "assistant", "content": content, "tool_calls": [
-        {"id": tc["id"] or f"call_{i}", "type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}}
-        for i, tc in enumerate(tool_calls)
-    ]})
+    follow_up_messages.append(
+        {
+            "role": "assistant",
+            "content": content,
+            "tool_calls": [
+                {
+                    "id": tc["id"] or f"call_{i}",
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                }
+                for i, tc in enumerate(tool_calls)
+            ],
+        }
+    )
     for i, tc in enumerate(tool_calls):
-        follow_up_messages.append({
-            "role": "tool",
-            "tool_call_id": tc["id"] or f"call_{i}",
-            "content": tool_message_content if i == 0 else "(see above)",
-        })
+        follow_up_messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tc["id"] or f"call_{i}",
+                "content": tool_message_content if i == 0 else "(see above)",
+            }
+        )
 
     try:
         follow_stream = client.chat.completions.create(
@@ -712,10 +818,12 @@ def orchestrate(
         fallback = "I found some books but had trouble generating a summary. Here are the results."
         cb("token", {"text": fallback})
         book_ids = _collect_book_ids(all_books)
-        cb("done", {"referenced_book_ids": book_ids})
         return OrchestratorResult(
-            content=fallback, referenced_book_ids=book_ids,
-            tool_calls=all_tool_records, books=all_books, model_used=model,
+            content=fallback,
+            referenced_book_ids=book_ids,
+            tool_calls=all_tool_records,
+            books=all_books,
+            model_used=model,
         )
 
     final_parts: list[str] = []
@@ -738,11 +846,12 @@ def orchestrate(
     book_ids = _collect_book_ids(all_books)
 
     cb("book_cards", {"books": all_books})
-    cb("done", {"referenced_book_ids": book_ids})
 
     prefs_out = None
     if _should_extract_preferences(user_message, final_content):
-        prefs_out = _extract_preferences(client, model, user_message, final_content, preferences)
+        prefs_out = _extract_preferences(
+            client, model, user_message, final_content, preferences
+        )
 
     return OrchestratorResult(
         content=final_content,

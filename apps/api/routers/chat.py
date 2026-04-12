@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import queue
+import threading
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -16,7 +18,7 @@ from bookdb.models.chatbot_llm import create_groq_client_sync
 
 from ..core.serialize import serialize_book
 
-from ..core.chat_orchestrator import orchestrate
+from ..core.chat_orchestrator import OrchestratorResult, orchestrate
 from ..core.config import settings
 from ..core.deps import get_db, get_optional_user
 from ..core.mcp_adapter import MCPAdapter
@@ -333,32 +335,55 @@ def send_message(
     groq_client = create_groq_client_sync()
 
     def event_stream():
-        events: list[tuple[str, dict[str, Any]]] = []
+        q: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
+        final_result_holder: list[OrchestratorResult] = []
 
-        def collect_event(event_type: str, data: dict[str, Any]):
-            events.append((event_type, data))
+        def stream_event(event_type: str, data: dict[str, Any]):
+            q.put((event_type, data))
 
-        result = orchestrate(
-            user_message=body.content,
-            history=history,
-            preferences=prefs,
-            db=db,
-            qdrant_client=qdrant,
-            mcp_adapter=mcp,
-            groq_client=groq_client,
-            request_app_state=request.app.state,
-            user_id=current_user.id if current_user else None,
-            stream_callback=collect_event,
-        )
+        def run_orchestrate():
+            try:
+                result = orchestrate(
+                    user_message=body.content,
+                    history=history,
+                    preferences=prefs,
+                    db=db,
+                    qdrant_client=qdrant,
+                    mcp_adapter=mcp,
+                    groq_client=groq_client,
+                    request_app_state=request.app.state,
+                    user_id=current_user.id if current_user else None,
+                    stream_callback=stream_event,
+                )
+                final_result_holder.append(result)
+            except Exception:
+                q.put(None)
+                return
+            q.put(None)
 
-        # Persist assistant message — store all tool calls, not just first
+        worker = threading.Thread(target=run_orchestrate, daemon=True)
+        worker.start()
+
+        for item in iter(q.get, None):
+            event_type, data = item
+            if event_type == "done":
+                continue
+            yield _sse_event(event_type, data)
+
+        worker.join(timeout=60)
+
+        final_result = final_result_holder[0] if final_result_holder else None
+        if final_result is None:
+            yield _sse_event("done", {"message_id": "", "referenced_book_ids": []})
+            return
+
         tool_name = None
         tool_input_json = None
         tool_output_json = None
-        if result.tool_calls:
-            tool_name = result.tool_calls[0].name
-            if len(result.tool_calls) == 1:
-                tc = result.tool_calls[0]
+        if final_result.tool_calls:
+            tool_name = final_result.tool_calls[0].name
+            if len(final_result.tool_calls) == 1:
+                tc = final_result.tool_calls[0]
                 try:
                     tool_input_json = json.dumps(tc.input)
                 except (TypeError, ValueError):
@@ -369,10 +394,12 @@ def send_message(
                     pass
             else:
                 all_inputs = [
-                    {"tool": tc.name, "input": tc.input} for tc in result.tool_calls
+                    {"tool": tc.name, "input": tc.input}
+                    for tc in final_result.tool_calls
                 ]
                 all_outputs = [
-                    {"tool": tc.name, "output": tc.output} for tc in result.tool_calls
+                    {"tool": tc.name, "output": tc.output}
+                    for tc in final_result.tool_calls
                 ]
                 try:
                     tool_input_json = json.dumps(all_inputs)
@@ -384,47 +411,41 @@ def send_message(
                     pass
 
         ref_ids_json = (
-            json.dumps(result.referenced_book_ids)
-            if result.referenced_book_ids
+            json.dumps(final_result.referenced_book_ids)
+            if final_result.referenced_book_ids
             else None
         )
 
         assistant_msg = ChatMessage(
             session_id=session.id,
             role="assistant",
-            content=result.content,
+            content=final_result.content,
             tool_name=tool_name,
             tool_input=tool_input_json,
             tool_output=tool_output_json,
             referenced_book_ids=ref_ids_json,
-            model_used=result.model_used,
+            model_used=final_result.model_used,
         )
         db.add(assistant_msg)
 
-        # Auto-title: use the first user message as session title
         if session.title == "New conversation" and body.content:
             session.title = body.content[:100]
 
-        # Persist extracted preferences
-        if result.extracted_preferences:
+        if final_result.extracted_preferences:
             try:
-                session.preferences = json.dumps(result.extracted_preferences)
+                session.preferences = json.dumps(final_result.extracted_preferences)
             except (TypeError, ValueError):
                 pass
 
         db.commit()
         db.refresh(assistant_msg)
 
-        # Yield SSE events
-        for event_type, data in events:
-            yield _sse_event(event_type, data)
-
         yield _sse_event(
             "done",
             {
                 "message_id": str(assistant_msg.id),
-                "referenced_book_ids": result.referenced_book_ids,
-                "model_used": result.model_used,
+                "referenced_book_ids": final_result.referenced_book_ids,
+                "model_used": final_result.model_used,
             },
         )
 
