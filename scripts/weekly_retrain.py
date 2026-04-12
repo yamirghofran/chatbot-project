@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """
-Weekly offline retraining pipeline for BPR and SAR recommendation models.
+Weekly offline retraining pipeline for the BPR recommendation model.
 
-FIRST RUN: detected automatically when neither BPR_Recommender nor SAR_Recommender
-           exists in the MLflow Model Registry. Loads baseline metrics from
-           sample-artifacts/, counts the preprocessed historical dataset size,
-           exports any app interactions recorded since APP_LIVE_SINCE, merges,
-           trains, registers models, and writes the manifest.
+FIRST RUN: detected automatically when BPR_Recommender does not exist in the
+           MLflow Model Registry. Loads baseline metrics from sample-artifacts/,
+           counts the preprocessed historical dataset size, exports any app
+           interactions recorded since APP_LIVE_SINCE, merges, trains, registers
+           the model, and writes the manifest.
 
 SUBSEQUENT RUNS: loads the manifest written by the previous accepted run, exports
                  app interactions since the last accepted training cutoff, checks
@@ -19,8 +19,7 @@ Usage:
     # dry-run against tiny test data (no DB, no writes):
     python scripts/weekly_retrain.py \\
         --dry-run --no-db \\
-        --bpr-data-path data/bpr_interactions_merged_tiny.parquet \\
-        --sar-data-path data/bpr_interactions_merged_tiny.parquet
+        --bpr-data-path data/bpr_interactions_merged_tiny.parquet
 
     # force a retrain even if data threshold not met:
     python scripts/weekly_retrain.py --force
@@ -41,8 +40,6 @@ import polars as pl
 from dotenv import load_dotenv
 from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 # ---------------------------------------------------------------------------
 # Bootstrap: add project root to path and load .env
@@ -51,13 +48,9 @@ _project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_project_root))
 load_dotenv(_project_root / ".env")
 
-from bookdb.db.models import Book, BookRating
-from bookdb.db.session import SessionLocal
-
-# These imports pull preprocessing/loading logic directly from the existing
-# training scripts so new data is treated identically to the historical data.
+# Imported here (not from bookdb.db) to avoid triggering SQLAlchemy engine
+# creation at module level, which would block on DB connect.
 import scripts.train_bpr as _bpr
-import scripts.train_sar as _sar
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -69,20 +62,19 @@ logging.basicConfig(
 logger = logging.getLogger("weekly_retrain")
 
 # ---------------------------------------------------------------------------
-# Constants  ← update APP_LIVE_SINCE to your actual application launch date
+# Constants
+#   APP_LIVE_SINCE distinguishes between our data and goodreads, only for first run
 # ---------------------------------------------------------------------------
-APP_LIVE_SINCE = datetime(2025, 1, 1, tzinfo=timezone.utc)
+APP_LIVE_SINCE = datetime(2026, 2, 1, tzinfo=timezone.utc)
 
 _DEFAULT_MANIFEST_PATH = _project_root / "data" / "retrain_manifest.json"
 _DEFAULT_RUN_LOG_PATH = _project_root / "data" / "retrain_runs.jsonl"
 _SAMPLE_ARTIFACTS_DIR = _project_root / "sample-artifacts"
 
 _BPR_REGISTRY_NAME = "BPR_Recommender"
-_SAR_REGISTRY_NAME = "SAR_Recommender"
 
-# Merged parquet paths written during a retrain run (overwritten each time).
+# Merged parquet path written during a retrain run (overwritten each time).
 _MERGED_BPR_PATH = _project_root / "data" / "bpr_interactions_retrain.parquet"
-_MERGED_SAR_PATH = _project_root / "data" / "sar_interactions_retrain.parquet"
 
 # ---------------------------------------------------------------------------
 # MLflow Model Registry helpers
@@ -90,7 +82,8 @@ _MERGED_SAR_PATH = _project_root / "data" / "sar_interactions_retrain.parquet"
 
 def _setup_mlflow() -> MlflowClient:
     """Configure MLflow tracking URI and return a client."""
-    uri = os.getenv("MLFLOW_TRACKING_URI", "https://mlflow.yousef.gg")
+    uri = os.getenv("MLFLOW_TRACKING_URI")
+    logger.info(f"Connecting to MLflow at {uri} …")
     mlflow.set_tracking_uri(uri)
     return MlflowClient()
 
@@ -153,36 +146,8 @@ def _load_bpr_baseline_metrics() -> dict:
     logger.info(f"Loaded BPR baseline metrics from {path}")
     return metrics
 
-
-def _load_sar_baseline_metrics(client: MlflowClient) -> dict:
-    """
-    Query MLflow for the most recent SAR_Recommendations run and return its
-    logged metrics dict.  Returns an empty dict if no runs exist (metrics check
-    will be skipped on promotion).
-    """
-    try:
-        experiments = client.search_experiments(filter_string="name = 'SAR_Recommendations'")
-        if not experiments:
-            logger.warning("No SAR_Recommendations experiment found in MLflow; SAR baseline empty")
-            return {}
-        exp_id = experiments[0].experiment_id
-        runs = client.search_runs(
-            experiment_ids=[exp_id],
-            order_by=["start_time DESC"],
-            max_results=1,
-        )
-        if not runs:
-            logger.warning("No runs found in SAR_Recommendations; SAR baseline empty")
-            return {}
-        metrics = runs[0].data.metrics
-        logger.info(f"Loaded SAR baseline metrics from MLflow run {runs[0].info.run_id}")
-        return dict(metrics)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"Could not query SAR baseline from MLflow: {exc}")
-        return {}
-
 # ---------------------------------------------------------------------------
-# Dataset size counter — reuses train scripts' preprocessing exactly
+# Dataset size counter — reuses train_bpr's preprocessing exactly
 # ---------------------------------------------------------------------------
 
 def _count_bpr_preprocessed_rows(data_path: str) -> int:
@@ -205,25 +170,6 @@ def _count_bpr_preprocessed_rows(data_path: str) -> int:
     )
     return df.height
 
-
-def _count_sar_preprocessed_rows(data_path: str) -> int:
-    """
-    Load and preprocess the SAR parquet using the exact same pipeline as
-    train_sar.main() to get the post-preprocessing row count.
-    """
-    cfg = _sar.DEFAULT_CONFIG
-    df = _sar.load_data(data_path)
-    df = _sar.preprocess_data(
-        df,
-        col_user=cfg["col_user"],
-        col_item=cfg["col_item"],
-        col_rating=cfg["col_rating"],
-        col_timestamp=cfg["col_timestamp"],
-        min_user_interactions=cfg["min_user_interactions"],
-        min_item_interactions=cfg["min_item_interactions"],
-    )
-    return df.height
-
 # ---------------------------------------------------------------------------
 # App interaction export
 # ---------------------------------------------------------------------------
@@ -232,16 +178,24 @@ def _export_app_interactions(since: datetime) -> Optional[pl.DataFrame]:
     """
     Query the production book_ratings table for all ratings created after
     *since*, join with books to get the Goodreads book ID, and return a
-    Polars DataFrame whose columns exactly match the historical training
-    parquet columns used by both BPR and SAR:
+    Polars DataFrame whose columns exactly match the historical training parquet:
 
-        user_id   (Utf8)   — "app_<pg_user_id>"  (Option-A namespace)
-        book_id   (Int64)  — books.goodreads_id   (same canonical ID space)
+        user_id   (Utf8)   — "app_<pg_user_id>"
+        book_id   (Int64)  — books.goodreads_id
         weight    (Float32)— rating / 5.0
         timestamp (Int64)  — Unix epoch of created_at
 
+    DB imports are deferred to this function so that module-level import does
+    not trigger SQLAlchemy engine creation (which would block on DB connect).
+
     Returns None when the DB is unavailable or no rows exist.
     """
+    # Lazy imports — only hit the DB when we actually need it.
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+    from bookdb.db.models import Book, BookRating
+    from bookdb.db.session import SessionLocal
+
     try:
         session: Session = SessionLocal()
         try:
@@ -267,17 +221,12 @@ def _export_app_interactions(since: datetime) -> Optional[pl.DataFrame]:
         logger.info("No new app interactions found since the cutoff date")
         return None
 
-    user_ids = [f"app_{r.user_id}" for r in rows]
-    book_ids = [int(r.book_id) for r in rows]
-    weights = [float(r.rating) / 5.0 for r in rows]
-    timestamps = [int(r.created_at.timestamp()) for r in rows]
-
     df = pl.DataFrame(
         {
-            "user_id": pl.Series(user_ids, dtype=pl.Utf8),
-            "book_id": pl.Series(book_ids, dtype=pl.Int64),
-            "weight": pl.Series(weights, dtype=pl.Float32),
-            "timestamp": pl.Series(timestamps, dtype=pl.Int64),
+            "user_id": pl.Series([f"app_{r.user_id}" for r in rows], dtype=pl.Utf8),
+            "book_id": pl.Series([int(r.book_id) for r in rows], dtype=pl.Int64),
+            "weight": pl.Series([float(r.rating) / 5.0 for r in rows], dtype=pl.Float32),
+            "timestamp": pl.Series([int(r.created_at.timestamp()) for r in rows], dtype=pl.Int64),
         }
     )
     logger.info(f"Exported {df.height} new app interactions from the database")
@@ -295,7 +244,7 @@ def _merge_bpr(historical_path: str, new_interactions: Optional[pl.DataFrame]) -
         user_id (Utf8), book_id (Int64), weight (Float32)
 
     The historical user_id column (Int64 Goodreads IDs) is cast to Utf8 so
-    that it can be concatenated with the app_ prefixed string IDs while
+    that it can be concatenated with the app_-prefixed string IDs while
     remaining compatible with BPR's internal string-to-int mapping.
     The file is then passed to train_bpr.main() which applies the full
     preprocessing pipeline (user filter ≥5, dedup, Float32 cast) uniformly
@@ -326,45 +275,8 @@ def _merge_bpr(historical_path: str, new_interactions: Optional[pl.DataFrame]) -
     )
 
     merged.write_parquet(_MERGED_BPR_PATH)
-    logger.info(
-        f"Wrote merged BPR dataset ({merged.height} rows) → {_MERGED_BPR_PATH}"
-    )
+    logger.info(f"Wrote merged BPR dataset ({merged.height} rows) → {_MERGED_BPR_PATH}")
     return _MERGED_BPR_PATH
-
-
-def _merge_sar(historical_path: str, new_interactions: Optional[pl.DataFrame]) -> Path:
-    """
-    Merge the historical SAR parquet with new app interactions.
-
-    Produces data/sar_interactions_retrain.parquet with columns:
-        user_id (Utf8), book_id (Int64), weight (Float32), timestamp (Int64)
-
-    Deduplication keeps the most recent timestamp per user-book pair, matching
-    train_sar.preprocess_data's own dedup policy.
-    """
-    cfg = _sar.DEFAULT_CONFIG
-    historical = _sar.load_data(historical_path)
-    historical = historical.with_columns(
-        pl.col(cfg["col_user"]).cast(pl.Utf8).alias(cfg["col_user"])
-    )
-
-    if new_interactions is not None and new_interactions.height > 0:
-        merged = pl.concat([historical, new_interactions], how="diagonal_relaxed")
-    else:
-        merged = historical
-
-    # Keep most recent interaction per user-book pair.
-    merged = (
-        merged
-        .sort("timestamp", descending=True)
-        .unique(subset=[cfg["col_user"], cfg["col_item"]], keep="first")
-    )
-
-    merged.write_parquet(_MERGED_SAR_PATH)
-    logger.info(
-        f"Wrote merged SAR dataset ({merged.height} rows) → {_MERGED_SAR_PATH}"
-    )
-    return _MERGED_SAR_PATH
 
 # ---------------------------------------------------------------------------
 # Promotion decision
@@ -377,7 +289,7 @@ def _metrics_acceptable(
 ) -> bool:
     """
     Accept the new model if NDCG@10 does not regress by more than *tolerance*
-    relative to the baseline.  If either dict is missing the key, allow
+    relative to the baseline. If either dict is missing the key, allow
     promotion (no comparison is possible).
     """
     key = "ndcg_at_10"
@@ -423,63 +335,59 @@ def _run_first_train(args: argparse.Namespace, client: MlflowClient) -> int:
     """
     Execute the first-ever retraining run.
 
-    - Loads baseline metrics from sample-artifacts (BPR) and MLflow (SAR).
-    - Counts preprocessed rows in the historical parquets (becomes the baseline
+    - Loads baseline metrics from sample-artifacts/.
+    - Counts preprocessed rows in the historical parquet (becomes the baseline
       for subsequent threshold checks).
     - Exports any app interactions recorded since APP_LIVE_SINCE.
-    - Merges all data, trains both models, registers them in Production.
+    - Merges data, trains the model, registers it in Production.
     - Writes the manifest.
 
     Returns 0 on success.
     """
     logger.info("=" * 60)
-    logger.info("FIRST RUN detected — no registered models found in MLflow")
+    logger.info("FIRST RUN detected — BPR_Recommender not found in MLflow")
+    logger.info(f"  BPR data : {args.bpr_data_path}")
     logger.info("=" * 60)
 
     bpr_baseline = _load_bpr_baseline_metrics()
-    sar_baseline = _load_sar_baseline_metrics(client)
 
     # Count post-preprocessing rows from the historical data.
-    # This is the denominator used for threshold checks in future runs.
-    logger.info("Counting preprocessed rows in historical datasets …")
+    # This becomes the denominator for threshold checks in future runs.
+    logger.info("Counting preprocessed rows in historical dataset …")
     bpr_historical_rows = _count_bpr_preprocessed_rows(args.bpr_data_path)
-    sar_historical_rows = _count_sar_preprocessed_rows(args.sar_data_path)
-    logger.info(
-        f"Historical rows: BPR={bpr_historical_rows:,}  SAR={sar_historical_rows:,}"
-    )
+    logger.info(f"  BPR historical rows (post-preprocessing): {bpr_historical_rows:,}")
 
     # Export any app interactions accumulated since the application went live.
     new_interactions: Optional[pl.DataFrame] = None
     if not args.no_db:
+        logger.info(f"Exporting app interactions since {APP_LIVE_SINCE.isoformat()} …")
         new_interactions = _export_app_interactions(since=APP_LIVE_SINCE)
+        if new_interactions is not None:
+            logger.info(f"  Exported {new_interactions.height:,} raw interaction rows")
+        elif not args.force:
+            logger.info(
+                "No new app interactions found — nothing has changed since the historical "
+                "training data was collected. Skipping retrain. Use --force to override."
+            )
+            return 0
     else:
         logger.info("--no-db: skipping app interaction export")
 
-    # Build the merged datasets (historical + new app rows, same column schema).
+    # Build the merged dataset (historical + new app rows).
+    logger.info("Merging BPR dataset …")
     merged_bpr_path = _merge_bpr(args.bpr_data_path, new_interactions)
-    merged_sar_path = _merge_sar(args.sar_data_path, new_interactions)
 
-    # Train BPR — delegate entirely to the existing training script.
+    # Train — delegate entirely to the existing training script.
     bpr_config = _bpr.DEFAULT_CONFIG.copy()
     bpr_config["data_path"] = str(merged_bpr_path)
-    # Column names remain user_id / book_id / weight — matching the parquet we wrote.
     logger.info("Training BPR …")
     _bpr_model, bpr_recs_path, bpr_metrics, bpr_run_id = _bpr.main(bpr_config)
     logger.info(f"BPR training complete (run_id={bpr_run_id})")
+    logger.info(f"  BPR metrics: { {k: round(v, 4) for k, v in bpr_metrics.items()} }")
 
-    # Train SAR — same approach.
-    sar_config = _sar.DEFAULT_CONFIG.copy()
-    sar_config["data_path"] = str(merged_sar_path)
-    logger.info("Training SAR …")
-    _sar_model, sar_metrics, sar_run_id = _sar.main(sar_config)
-    logger.info(f"SAR training complete (run_id={sar_run_id})")
-
-    # Register models.  On first run we always promote to Production.
+    # Register — on first run we always promote to Production.
     bpr_version = _register_model(
         client, bpr_run_id, "model.pkl", _BPR_REGISTRY_NAME, "Production", args.dry_run
-    )
-    sar_version = _register_model(
-        client, sar_run_id, "sar_model_state.npz", _SAR_REGISTRY_NAME, "Production", args.dry_run
     )
 
     now_iso = datetime.now(tz=timezone.utc).isoformat()
@@ -488,13 +396,9 @@ def _run_first_train(args: argparse.Namespace, client: MlflowClient) -> int:
         "run_at": now_iso,
         "last_accepted_train_at": now_iso,
         "bpr_training_row_count": bpr_historical_rows,
-        "sar_training_row_count": sar_historical_rows,
         "bpr_mlflow_run_id": bpr_run_id,
-        "sar_mlflow_run_id": sar_run_id,
         "bpr_model_version": bpr_version,
-        "sar_model_version": sar_version,
         "bpr_baseline_metrics": bpr_metrics,
-        "sar_baseline_metrics": sar_metrics,
         "outcome": "accepted",
         "bpr_recs_path": str(bpr_recs_path),
     }
@@ -524,25 +428,31 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
     if not manifest_path.exists():
         logger.error(
             f"Manifest not found at {manifest_path}. "
-            "Run without --manifest-path or ensure a first run has completed."
+            "Ensure a first run has completed, or delete the registry entry to re-trigger it."
         )
         return 1
 
     manifest = _load_manifest(manifest_path)
     last_train_at_str = manifest["last_accepted_train_at"]
     last_train_at = datetime.fromisoformat(last_train_at_str)
-    logger.info(f"Last accepted training cutoff: {last_train_at_str}")
+    logger.info(f"Last accepted training cutoff : {last_train_at_str}")
+    logger.info(f"BPR data path                : {args.bpr_data_path}")
 
     # Export new interactions since the last accepted run.
     new_interactions: Optional[pl.DataFrame] = None
     if not args.no_db:
+        logger.info(f"Exporting app interactions since {last_train_at_str} …")
         new_interactions = _export_app_interactions(since=last_train_at)
+        if new_interactions is not None:
+            logger.info(f"  Exported {new_interactions.height:,} raw interaction rows")
+        else:
+            logger.info("  No new interactions found")
     else:
         logger.info("--no-db: skipping app interaction export")
 
     # Count new deduplicated BPR rows using the same preprocessing pipeline.
-    # We build a temporary in-memory merged frame just for counting — we don't
-    # re-run the full merge/write here to avoid wasted I/O before the threshold check.
+    # We build a temporary in-memory frame just for counting to avoid wasted
+    # I/O before the threshold check.
     new_bpr_rows = 0
     if new_interactions is not None and new_interactions.height > 0:
         cfg = _bpr.DEFAULT_CONFIG
@@ -560,7 +470,7 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
     previous_row_count = manifest.get("bpr_training_row_count", 0)
     threshold_ratio = new_bpr_rows / max(previous_row_count, 1)
     logger.info(
-        f"Threshold check: {new_bpr_rows:,} / {previous_row_count:,} = "
+        f"Threshold check: {new_bpr_rows:,} new / {previous_row_count:,} previous = "
         f"{threshold_ratio:.3f}  (required ≥ {args.threshold})"
     )
 
@@ -580,37 +490,27 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
             _append_run_log(record, Path(args.run_log_path))
         return 0
 
-    # Threshold met — build merged datasets and train.
+    logger.info("Threshold met — proceeding with retrain")
+
+    logger.info("Merging BPR dataset …")
     merged_bpr_path = _merge_bpr(args.bpr_data_path, new_interactions)
-    merged_sar_path = _merge_sar(args.sar_data_path, new_interactions)
 
     bpr_config = _bpr.DEFAULT_CONFIG.copy()
     bpr_config["data_path"] = str(merged_bpr_path)
     logger.info("Training BPR …")
     _bpr_model, bpr_recs_path, bpr_metrics, bpr_run_id = _bpr.main(bpr_config)
-
-    sar_config = _sar.DEFAULT_CONFIG.copy()
-    sar_config["data_path"] = str(merged_sar_path)
-    logger.info("Training SAR …")
-    _sar_model, sar_metrics, sar_run_id = _sar.main(sar_config)
+    logger.info(f"BPR training complete (run_id={bpr_run_id})")
+    logger.info(f"  BPR metrics: { {k: round(v, 4) for k, v in bpr_metrics.items()} }")
 
     # Evaluate against manifest baseline metrics.
-    bpr_ok = _metrics_acceptable(
+    accepted = _metrics_acceptable(
         bpr_metrics, manifest.get("bpr_baseline_metrics", {}), args.tolerance
     )
-    sar_ok = _metrics_acceptable(
-        sar_metrics, manifest.get("sar_baseline_metrics", {}), args.tolerance
-    )
-    accepted = bpr_ok and sar_ok
+    logger.info(f"Metrics gate: BPR={'PASS' if accepted else 'FAIL'} → {'ACCEPTED' if accepted else 'REJECTED'}")
 
     bpr_stage = "Production" if accepted else "Archived"
-    sar_stage = "Production" if accepted else "Archived"
-
     bpr_version = _register_model(
         client, bpr_run_id, "model.pkl", _BPR_REGISTRY_NAME, bpr_stage, args.dry_run
-    )
-    sar_version = _register_model(
-        client, sar_run_id, "sar_model_state.npz", _SAR_REGISTRY_NAME, sar_stage, args.dry_run
     )
 
     now_iso = datetime.now(tz=timezone.utc).isoformat()
@@ -619,11 +519,8 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
         "run_at": now_iso,
         "outcome": "accepted" if accepted else "rejected",
         "bpr_mlflow_run_id": bpr_run_id,
-        "sar_mlflow_run_id": sar_run_id,
         "bpr_model_version": bpr_version,
-        "sar_model_version": sar_version,
         "bpr_metrics": bpr_metrics,
-        "sar_metrics": sar_metrics,
         "threshold_ratio": threshold_ratio,
     }
 
@@ -632,11 +529,7 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
             **run_record,
             "last_accepted_train_at": now_iso,
             "bpr_training_row_count": new_bpr_rows + previous_row_count,
-            "sar_training_row_count": manifest.get("sar_training_row_count", 0) + (
-                new_interactions.height if new_interactions is not None else 0
-            ),
             "bpr_baseline_metrics": bpr_metrics,
-            "sar_baseline_metrics": sar_metrics,
             "bpr_recs_path": str(bpr_recs_path),
         }
         if not args.dry_run:
@@ -646,8 +539,8 @@ def _run_retrain(args: argparse.Namespace, client: MlflowClient) -> int:
         return 0
     else:
         logger.warning(
-            "New models did NOT pass the metrics gate. "
-            "Previous Production versions remain unchanged."
+            "New model did NOT pass the metrics gate. "
+            "Previous Production version remains unchanged."
         )
         if not args.dry_run:
             _append_run_log(run_record, Path(args.run_log_path))
@@ -668,8 +561,6 @@ def _print_summary(record: dict) -> None:
         logger.info("  Update BPR_PARQUET_URL in your backend .env to this path.")
     if "bpr_model_version" in record and record["bpr_model_version"]:
         logger.info(f"BPR model version  : {record['bpr_model_version']}")
-    if "sar_model_version" in record and record["sar_model_version"]:
-        logger.info(f"SAR model version  : {record['sar_model_version']}")
     logger.info(sep)
 
 # ---------------------------------------------------------------------------
@@ -678,17 +569,12 @@ def _print_summary(record: dict) -> None:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Offline weekly retraining pipeline for BPR and SAR"
+        description="Offline weekly retraining pipeline for the BPR recommendation model"
     )
     parser.add_argument(
         "--bpr-data-path",
         default=str(_project_root / "data" / "bpr_interactions_merged.parquet"),
         help="Path to the historical BPR interactions parquet",
-    )
-    parser.add_argument(
-        "--sar-data-path",
-        default=str(_project_root / "data" / "sar_interactions_sample.parquet"),
-        help="Path to the historical SAR interactions parquet",
     )
     parser.add_argument(
         "--manifest-path",
@@ -741,9 +627,8 @@ def main() -> int:
 
     client = _setup_mlflow()
 
-    bpr_registered = _model_registered(client, _BPR_REGISTRY_NAME)
-    sar_registered = _model_registered(client, _SAR_REGISTRY_NAME)
-    is_first_run = not (bpr_registered and sar_registered)
+    is_first_run = not _model_registered(client, _BPR_REGISTRY_NAME)
+    logger.info(f"BPR_Recommender registered: {not is_first_run} → {'first run' if is_first_run else 'retrain'}")
 
     if is_first_run:
         return _run_first_train(args, client)
