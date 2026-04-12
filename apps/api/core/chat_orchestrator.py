@@ -711,12 +711,17 @@ def orchestrate(
             )
 
     # Check if ALL tools failed or returned no books
-    all_failed = all(
-        not rec.output.get("success", False)
-        or (
-            not rec.output.get("books")
-            and not rec.output.get("data", {}).get("comparison")
-        )
+def _has_meaningful_output(output: dict[str, Any]) -> bool:
+        if not output.get("success", False):
+            return False
+        if output.get("books"):
+            return True
+        data = output.get("data")
+        if isinstance(data, dict):
+            return any(v not in (None, "", [], {}, ()) for v in data.values())
+        return bool(data)
+
+    all_failed = all(not _has_meaningful_output(rec.output) for rec in all_tool_records)
         for rec in all_tool_records
     )
 
