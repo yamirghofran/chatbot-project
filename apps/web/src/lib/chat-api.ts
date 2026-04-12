@@ -113,6 +113,22 @@ export async function sendMessage(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let currentEvent = "";
+  let dataLines: string[] = [];
+
+  const flushEvent = (): void => {
+    if (currentEvent && dataLines.length > 0) {
+      const raw = dataLines.join("\n");
+      try {
+        const data = JSON.parse(raw);
+        dispatchEvent(currentEvent, data, callbacks);
+      } catch {
+        // skip malformed events
+      }
+    }
+    currentEvent = "";
+    dataLines = [];
+  };
 
   try {
     while (true) {
@@ -123,28 +139,19 @@ export async function sendMessage(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      let currentEvent = "";
-      let dataLines: string[] = [];
-
       for (const line of lines) {
         if (line.startsWith("event: ")) {
+          flushEvent();
           currentEvent = line.slice(7).trim();
-          dataLines = [];
         } else if (line.startsWith("data: ")) {
           dataLines.push(line.slice(6));
-        } else if (line === "" && currentEvent && dataLines.length > 0) {
-          const raw = dataLines.join("\n");
-          try {
-            const data = JSON.parse(raw);
-            dispatchEvent(currentEvent, data, callbacks);
-          } catch {
-            // skip malformed events
-          }
-          currentEvent = "";
-          dataLines = [];
+        } else if (line === "") {
+          flushEvent();
         }
       }
     }
+
+    flushEvent();
   } catch (err) {
     callbacks.onError(err instanceof Error ? err : new Error(String(err)));
   }
