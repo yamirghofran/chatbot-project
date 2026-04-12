@@ -27,6 +27,7 @@ from bookdb.models.chatbot_llm import (
     generate_response_sync,
     rewrite_query_sync,
 )
+from ..core.entity_extraction import resolve_entities
 
 from ..core.book_engagement import build_book_engagement_map
 from ..core.book_metrics import get_metrics_for_goodreads_ids
@@ -197,9 +198,34 @@ def _run_chatbot_search_pipeline(
     if qdrant is None:
         return None, []
 
+    # === Entity Extraction ===
+    entity_context = None
+    if settings.ENTITY_EXTRACTION_ENABLED:
+        try:
+            resolution = resolve_entities(
+                db=db,
+                query=query,
+                max_books=settings.ENTITY_MAX_BOOKS_PER_QUERY,
+                max_authors=settings.ENTITY_MAX_AUTHORS_PER_QUERY,
+                similarity_threshold=settings.ENTITY_SIMILARITY_THRESHOLD,
+                confidence_threshold=settings.ENTITY_CONFIDENCE_THRESHOLD,
+            )
+            entity_context = resolution.get("entity_context")
+            if entity_context:
+                print(
+                    f"Entity extraction successful. Confidence: {resolution.get('confidence', 0):.2f}"
+                )
+        except Exception as e:
+            # Don't fail on entity extraction - log and continue
+            print(f"Entity extraction failed: {e}")
+            entity_context = None
+
+    # === Query Rewriting (with optional entity context) ===
     try:
         groq_client = create_groq_client_sync()
-        rewritten_description, rewritten_review = rewrite_query_sync(groq_client, query)
+        rewritten_description, rewritten_review = rewrite_query_sync(
+            groq_client, query, entity_context=entity_context
+        )
     except Exception as e:
         print(f"Query rewrite failed: {e}")
         return None, []
