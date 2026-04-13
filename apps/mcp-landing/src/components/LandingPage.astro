@@ -1,0 +1,132 @@
+---
+// Main landing page component for BookDB MCP Server
+---
+
+<main class="min-h-screen bg-bg-primary">
+	<!-- Hero Section -->
+	<section class="min-h-screen flex items-center py-24">
+		<div class="w-full max-w-7xl mx-auto px-6">
+			<div class="grid lg:grid-cols-2 gap-12 items-center">
+				<div class="flex flex-col gap-6">
+					<div class="inline-flex items-center px-4 py-2 bg-accent-sage text-white text-xs font-semibold tracking-wider uppercase rounded-full w-fit">
+						MCP Server
+					</div>
+					<h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary leading-tight">
+						Connect Your Book Database to <span class="text-accent-sage italic">AI Assistants</span>
+					</h1>
+					<p class="text-lg text-text-secondary max-w-lg leading-relaxed">
+						BookDB MCP Server enables semantic search, personalized recommendations, and collaborative filtering through the Model Context Protocol.
+					</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Tools Section -->
+	<section id="tools" class="py-24">
+		<div class="w-full max-w-7xl mx-auto px-6">
+			<h2 class="font-serif text-3xl font-bold text-text-primary mb-8">8 Powerful Book Discovery Tools</h2>
+			<div class="bg-white rounded-2xl shadow-medium p-6">
+				<table class="w-full">
+					<thead>
+						<tr class="border-b border-accent-beige">
+							<th class="text-left py-3 font-serif font-bold">Tool</th>
+							<th class="text-left py-3 font-serif font-bold">Description</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr><td class="py-3 font-mono text-accent-sage">search_books</td><td class="py-3 text-text-secondary">Search books by title, author, or keyword</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_book</td><td class="py-3 text-text-secondary">Get detailed book info and stats</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_related_books</td><td class="py-3 text-text-secondary">Find semantically similar books</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_book_reviews</td><td class="py-3 text-text-secondary">Read reviews and ratings</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_recommendations</td><td class="py-3 text-text-secondary">Personalized recommendations</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_staff_picks</td><td class="py-3 text-text-secondary">Curated well-rated books</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_user_profile</td><td class="py-3 text-text-secondary">Look up user profiles</td></tr>
+						<tr><td class="py-3 font-mono text-accent-sage">get_user_ratings</td><td class="py-3 text-text-secondary">View user ratings</td></tr>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</section>
+
+	<!-- Setup Section -->
+	<section id="setup" class="py-24">
+		<div class="w-full max-w-7xl mx-auto px-6">
+			<h2 class="font-serif text-3xl font-bold text-text-primary mb-8">Setup</h2>
+			<div class="grid lg:grid-cols-2 gap-8">
+				<div class="bg-white rounded-2xl shadow-medium p-6">
+					<h3 class="font-serif text-xl font-bold mb-4">1. Build</h3>
+					<p class="text-text-secondary mb-4">Requires Go 1.24+</p>
+					<div class="bg-gray-800 rounded-xl p-4">
+						<code class="text-sm text-gray-200">cd mcp<br/>go build -o bookdb-mcp .</code>
+					</div>
+				</div>
+				<div class="bg-white rounded-2xl shadow-medium p-6">
+					<h3 class="font-serif text-xl font-bold mb-4">2. Authenticate</h3>
+					<p class="text-text-secondary mb-4">Get JWT token for personalized recommendations</p>
+					<div class="bg-gray-800 rounded-xl p-4">
+						<code class="text-sm text-gray-200">./bookdb-mcp login -email you@example.com</code>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Usage Section -->
+	<section id="usage" class="py-24">
+		<div class="w-full max-w-7xl mx-auto px-6">
+			<h2 class="font-serif text-3xl font-bold text-text-primary mb-8">Usage</h2>
+			<div class="bg-white rounded-2xl shadow-medium p-6 mb-8">
+				<h3 class="font-serif text-xl font-bold mb-4">CLI Flags</h3>
+				<table class="w-full">
+					<thead>
+						<tr class="border-b border-accent-beige">
+							<th class="text-left py-2 font-bold">Flag</th>
+							<th class="text-left py-2 font-bold">Env Var</th>
+							<th class="text-left py-2 font-bold">Default</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr><td class="py-2 font-mono text-accent-sage">-api-url</td><td class="py-2">BOOKDB_API_URL</td><td class="py-2">http://localhost:8000</td></tr>
+						<tr><td class="py-2 font-mono text-accent-sage">-api-key</td><td class="py-2">BOOKDB_API_KEY</td><td class="py-2">(empty)</td></tr>
+						<tr><td class="py-2 font-mono text-accent-sage">-transport</td><td class="py-2">MCP_TRANSPORT</td><td class="py-2">stdio</td></tr>
+						<tr><td class="py-2 font-mono text-accent-sage">-addr</td><td class="py-2">MCP_ADDR</td><td class="py-2">:8080</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="grid lg:grid-cols-3 gap-8">
+				<div class="bg-white rounded-2xl shadow-medium p-6">
+					<h3 class="font-serif text-xl font-bold mb-4">Claude Desktop</h3>
+					<div class="bg-gray-800 rounded-xl p-4">
+						<pre class="text-xs text-gray-200">&#123;
+  "mcpServers": &#123;
+    "bookdb": &#123;
+      "command": "/path/to/bookdb-mcp"
+    &#125;
+  &#125;
+&#125;</pre>
+					</div>
+				</div>
+				<div class="bg-white rounded-2xl shadow-medium p-6">
+					<h3 class="font-serif text-xl font-bold mb-4">HTTP</h3>
+					<div class="bg-gray-800 rounded-xl p-4">
+						<code class="text-xs text-gray-200">./bookdb-mcp -transport http -addr :9090</code>
+					</div>
+				</div>
+				<div class="bg-white rounded-2xl shadow-medium p-6">
+					<h3 class="font-serif text-xl font-bold mb-4">SSE</h3>
+					<div class="bg-gray-800 rounded-xl p-4">
+						<code class="text-xs text-gray-200">./bookdb-mcp -transport sse -addr :8080</code>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Footer -->
+	<footer class="py-16 border-t border-accent-beige">
+		<div class="w-full max-w-7xl mx-auto px-6">
+			<p class="text-center text-text-muted">2025 BookDB MCP Server. Open source under MIT License.</p>
+		</div>
+	</footer>
+</main>
