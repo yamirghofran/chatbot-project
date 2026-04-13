@@ -568,6 +568,18 @@ def _collect_book_ids(books: list[dict[str, Any]]) -> list[int]:
     return ids
 
 
+def _has_meaningful_output(output: dict[str, Any]) -> bool:
+    """True if a tool result is successful and has books or non-empty structured data."""
+    if not output.get("success", False):
+        return False
+    if output.get("books"):
+        return True
+    data = output.get("data")
+    if isinstance(data, dict):
+        return any(v not in (None, "", [], {}, ()) for v in data.values())
+    return bool(data)
+
+
 def orchestrate(
     *,
     user_message: str,
@@ -635,6 +647,7 @@ def orchestrate(
     except Exception as e:
         error_msg = f"I'm having trouble connecting to the AI service right now. Please try again shortly. ({e})"
         cb("token", {"text": error_msg})
+        cb("done", {"message_id": "", "referenced_book_ids": [], "model_used": model})
         return OrchestratorResult(content=error_msg, model_used=model)
 
     # If no tool calls, the model responded directly — stream what we got
@@ -646,6 +659,7 @@ def orchestrate(
             prefs_out = _extract_preferences(
                 client, model, user_message, content, preferences
             )
+        cb("done", {"message_id": "", "referenced_book_ids": [], "model_used": model})
         return OrchestratorResult(
             content=content, model_used=model, extracted_preferences=prefs_out
         )
@@ -711,16 +725,6 @@ def orchestrate(
             )
 
     # Check if ALL tools failed or returned no books
-def _has_meaningful_output(output: dict[str, Any]) -> bool:
-        if not output.get("success", False):
-            return False
-        if output.get("books"):
-            return True
-        data = output.get("data")
-        if isinstance(data, dict):
-            return any(v not in (None, "", [], {}, ()) for v in data.values())
-        return bool(data)
-
     all_failed = all(not _has_meaningful_output(rec.output) for rec in all_tool_records)
 
     # If every tool failed/empty, fall back to a direct answer without tool context
@@ -753,13 +757,20 @@ def _has_meaningful_output(output: dict[str, Any]) -> bool:
                     text = choice.delta.content
                     parts.append(text)
                     cb("token", {"text": text})
-fallback_content = "".join(parts)
+            fallback_content = "".join(parts)
+            fb_ids = _collect_book_ids(all_books)
+            cb("done", {"message_id": "", "referenced_book_ids": fb_ids, "model_used": model})
             return OrchestratorResult(
-                content=fallback_content, tool_calls=all_tool_records, model_used=model,
+                content=fallback_content,
+                referenced_book_ids=fb_ids,
+                tool_calls=all_tool_records,
+                books=all_books,
+                model_used=model,
             )
         except Exception:
             msg = "I wasn't able to search the book catalogue right now. Could you try again?"
             cb("token", {"text": msg})
+            cb("done", {"message_id": "", "referenced_book_ids": [], "model_used": model})
             return OrchestratorResult(content=msg, model_used=model)
 
     # Build tool result message for the second LLM call
@@ -817,10 +828,11 @@ fallback_content = "".join(parts)
             frequency_penalty=freq_penalty,
             stream=True,
         )
-    except Exception as e:
+    except Exception:
         fallback = "I found some books but had trouble generating a summary. Here are the results."
         cb("token", {"text": fallback})
         book_ids = _collect_book_ids(all_books)
+        cb("done", {"message_id": "", "referenced_book_ids": book_ids, "model_used": model})
         return OrchestratorResult(
             content=fallback,
             referenced_book_ids=book_ids,
@@ -856,6 +868,7 @@ fallback_content = "".join(parts)
             client, model, user_message, final_content, preferences
         )
 
+    cb("done", {"message_id": "", "referenced_book_ids": book_ids, "model_used": model})
     return OrchestratorResult(
         content=final_content,
         referenced_book_ids=book_ids,
