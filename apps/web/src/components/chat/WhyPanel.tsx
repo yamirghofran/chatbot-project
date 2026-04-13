@@ -1,11 +1,8 @@
 import { ChevronDown, ChevronRight, Info } from "lucide-react";
 import { useState } from "react";
 import type { ToolTrace } from "@/lib/types";
-import { cn } from "@/lib/utils";
-
 export type WhyPanelProps = {
   toolTrace: ToolTrace;
-  bookId?: string | number;
 };
 
 function extractQueryFromInput(input: unknown): string | undefined {
@@ -28,7 +25,7 @@ function extractReviewExcerpts(output: unknown): string[] {
     .filter((t) => t.length > 10);
 }
 
-export function WhyPanel({ toolTrace, bookId }: WhyPanelProps) {
+export function WhyPanel({ toolTrace }: WhyPanelProps) {
   const [open, setOpen] = useState(false);
 
   const query = extractQueryFromInput(toolTrace.input);

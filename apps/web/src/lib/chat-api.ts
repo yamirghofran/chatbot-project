@@ -1,4 +1,4 @@
-import type { Book, ChatMessage, ChatSession, ChatSessionDetail, ComparisonResult, UserPreferences } from "./types";
+import type { Book, ChatSession, ChatSessionDetail, ComparisonResult, UserPreferences } from "./types";
 
 const BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
