@@ -1,118 +1,185 @@
-# Machine Learning project template
+# BookDB
 
-The objective of this repository is to serve as a template for machine learning projects.
+> **Find your next favourite book!**
 
-## Structure
+BookDB is a full-stack book discovery platform that combines the best of collaborative filtering, semantic search, and conversational AI. Tell the chatbot what you're in the mood for, get personalised recommendations ranked by multiple ML models, and dive into community reviews... all in one place! Unlike generic recommendation engines that recycle the same bestsellers, BookDB learns from your reading history and taste profile to surface books you'll actually want to read, whether that's an obscure 1970s sci-fi novel or the latest literary fiction.
 
-- .github: CI/CD with GitHub Actions. It runs the tests every time there is a pull request to the repository.
-- docs: Documentation of the project.
-- examples: Jupyter notebooks with machine learning experiments. Here is where you would do data exploration, try different machine learning models, etc.
-- bookdb: Libraries with common functions that you use in the project.
-- tests: Python tests of the libraries.
+Built on 229 million Goodreads interactions and a catalogue of 2.3 million books, the system runs different recommendation strategies like BPR, and vector similarity, fusing their outputs with weighted scoring and RRF reranking so you always get the most relevant result. The AI chatbot understands natural language queries, rewrites them for better retrieval, and can explain *why* it's recommending a book by pulling from real user reviews.
+
+[ADD VIDEO HERE]
+
+Built on the [Goodreads dataset](https://mengtingwan.github.io/data/goodreads.html).
+
+
+## What's in this repo
+
+| Layer | What it does |
+|---|---|
+| **Data pipeline** | Marimo notebooks that clean, standardise, and aggregate raw Goodreads data |
+| **ML models** | BPR, SAR, NCF training + tuning notebooks, exported to Parquet/MLflow |
+| **`bookdb/` library** | Shared Python library — data processing, EDA utilities, models, vector DB, validation |
+| **FastAPI backend** (`apps/api/`) | REST + SSE API for books, recommendations, reviews, auth, and chat |
+| **React frontend** (`apps/web/`) | Web UI for search, recommendations, and the AI chat interface |
+| **AI chatbot** | LLM-powered chat with tool-routing (search, recommend, review RAG) via Groq |
+| **MCP server** (`mcp/`) | Go-based Model Context Protocol server — exposes tools to Claude Desktop, Cursor, etc. |
+
+## Project structure
+
+```
+BookDB/
+├── bookdb/                    # Python library
+│   ├── datasets/              # Dataset loaders
+│   ├── db/                    # SQLAlchemy models and DB utilities
+│   ├── eda/                   # Shared EDA utilities (plots, stats)
+│   ├── evaluation/            # Recommendation evaluation metrics
+│   ├── models/                # BPR, SAR, NCF, embedding inference
+│   ├── processing/            # Data processing helpers (book IDs, interactions, text)
+│   ├── tuning/                # Hyperparameter tuning
+│   ├── utils/                 # Shared utilities (paths, constants)
+│   ├── validation/            # Input validation and data quality checks
+│   └── vector_db/             # Qdrant vector database client
+├── apps/
+│   ├── api/                   # FastAPI backend
+│   │   ├── routers/           # auth, books, chat, discovery, lists, reviews, users
+│   │   ├── schemas/           # Pydantic request/response models
+│   │   └── core/              # Config, DB session, auth middleware
+│   └── web/                   # React + TypeScript frontend
+├── notebooks/
+│   └── data/
+│       ├── eda/               # EDA notebooks (books, works, authors, interactions, reviews)
+│       └── processing/        # Data pipeline notebooks
+├── mcp/                       # Go MCP server
+├── tests/                     # Python tests for bookdb library
+├── alembic/                   # Database migrations
+├── docker-compose.yml         # PostgreSQL + Qdrant services
+└── pyproject.toml
+```
 
 ## Setup
 
-    pip install -e .
-    python -c "import bookdb; print(bookdb.__version__)"
+### Prerequisites
 
-## Coding Principles
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [Docker](https://www.docker.com/) (for PostgreSQL and Qdrant)
+- [Node.js 18+](https://nodejs.org/) (for the web frontend)
+- [Go 1.24+](https://go.dev/dl/) (only if building the MCP server from source)
 
-Next there are a few coding principles that I follow when working on machine learning projects.
+### 1. Clone and install Python dependencies
 
-### Start from something that works
+```bash
+git clone https://github.com/yamirghofran/BookDB.git
+cd BookDB
+uv sync
+```
 
-Here is one of the most practical tips I know about working on machine learning. **Instead of starting from scratch, start with something that works and adapt it to your problem.**
+### 2. Configure environment variables
 
-For example, let's say you want to build a recommendation system with data from your company. What I would do is something as simple as this:
+```bash
+cp .env.example .env
+```
 
-1. Go to [Recommenders](https://github.com/recommenders-team/recommenders) and look at an example that a similar dataset structure and compute. For example, if your data is text-based and you want to use GPU, explore the examples of LSTUR or NPA.
-2. Install the dependencies and run the example. Make sure that it works.
-3. Change the data of the example to your data. If your data is different or more extensive, just forget about it and use the part of your data that is similar to the example. Make sure that it works.
-4. Change the code to adapt it to your specific data and problem.
+Edit `.env` and fill in:
 
-### Notebooks that call a library
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string, e.g. `postgresql+psycopg://user:pw@localhost:1234/bookdb` |
+| `QDRANT_URL` | Qdrant URL, e.g. `http://localhost:6333` |
+| `GROQ_API_KEY` | Groq API key for the LLM chatbot |
+| `EMBEDDING_SERVICE_URL` | URL of the sentence-transformer embedding service |
+| `HF_TOKEN` | HuggingFace token (for model downloads) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3 credentials (for DVC remote data) |
 
-One of the main differences between a professional and an amateur machine learning project is this. Don't put your functions and classes in the notebooks, instead, create libraries and call them from the notebooks. This is the only way to reuse your code and make it scalable.
+### 3. Start infrastructure services
 
-Most of the time, notebooks are not deployed, they are used for experimentation and visualization. You deploy the libraries. In addition, if you create libraries, you can test them.
+```bash
+docker-compose up -d
+```
 
-### Why tests are important?
+This starts PostgreSQL (port 5432) and Qdrant (port 6333).
 
-Tests solve one of the most expensive problems in development: maintenance. The way I see testing is like the immune system of your project. It protects your project from bugs and errors and makes sure your project is healthy.
+### 4. Run database migrations
 
-A strong test pipeline minimizes maintenance. It is one of the best investments you can do in your project, because it will avoid new buggy code in the project, and it will detect breaking changes when using dependencies.
+```bash
+uv run alembic upgrade head
+```
 
-## MCP Server
+### 5. Start the API
 
-A Go-based [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lives under `mcp/`. It exposes BookDB's book search, recommendations, and discovery tools to LLM clients like Claude Desktop, Cursor, or any MCP-compatible application.
+```bash
+uv run uvicorn apps.api.main:app --reload --port 8000
+```
 
-### Tools
+### 6. Start the web frontend
 
-| Tool | Description |
-|------|-------------|
-| `search_books` | Search books by title, author, or keyword (with AI fallback) |
-| `get_book` | Get detailed book info, stats, and description |
-| `get_related_books` | Find semantically similar books via vector embeddings |
-| `get_book_reviews` | Read reviews and ratings for a book |
-| `get_recommendations` | Personalized recommendations (BPR + vector clustering) |
-| `get_staff_picks` | Curated set of well-rated books |
-| `get_user_profile` | Look up a user's profile by username |
-| `get_user_ratings` | View a user's rated books and scores |
+```bash
+cd apps/web
+npm install
+npm run dev
+```
 
-### Install
+The app will be available at `http://localhost:5173`.
 
-One-line install (macOS, Linux, Windows):
+### 7. (Optional) Run data pipeline notebooks
+
+If you have access to the raw Goodreads data, run the processing notebooks in order:
+
+```bash
+# Books pipeline
+uv run marimo run notebooks/data/processing/books/1_clean_books.py
+uv run marimo run notebooks/data/processing/books/2_standardize_book_ids.py
+uv run marimo run notebooks/data/processing/books/3_aggregate_book_metrics.py
+
+# Interactions pipeline
+uv run marimo run notebooks/data/processing/interactions/1_merge_interactions_book_editions.py
+# ... and so on
+```
+
+Or open them for editing:
+
+```bash
+uv run marimo edit notebooks/data/eda/books-works-authors/books_eda.py
+```
+
+### 8. (Optional) MCP server
+
+One-line install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yamirghofran/BookDB/main/mcp/install.sh | bash
 ```
 
-This downloads the latest binary for your platform, installs it to `~/.local/bin`, and prints setup instructions for any AI coding assistants it detects (Claude Desktop, Claude Code, Cursor, OpenCode, Codex).
-
-### Build from Source
-
-Requires [Go 1.24+](https://go.dev/dl/).
+Or build from source:
 
 ```bash
-cd mcp
-go build -o bookdb-mcp .
+cd mcp && go build -o bookdb-mcp .
 ```
 
-### Authentication
+See the [MCP section](#mcp-server) below for configuration.
 
-Most tools work without authentication (search, staff picks, public profiles). Personalized recommendations require a JWT token. Get one using the built-in login command:
+## Running tests
 
 ```bash
-# Interactive — prompts for email and password (password is hidden)
-./bookdb-mcp login -email you@example.com
-
-# Or specify everything on the command line (for scripting)
-./bookdb-mcp login -email you@example.com -password yourpassword
-
-# New account? Register first:
-./bookdb-mcp register -email you@example.com -name "Your Name" -username yourname
+uv run pytest
 ```
 
-The command prints the JWT token to stdout. Capture it in an environment variable:
+## MCP server
 
-```bash
-export BOOKDB_API_KEY=$(./bookdb-mcp login -email you@example.com)
-```
+A Go-based [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server under `mcp/` exposes BookDB tools to LLM clients.
 
-### Usage
+### Tools
 
-#### CLI Flags & Environment Variables
+| Tool | Description |
+|---|---|
+| `search_books` | Search books by title, author, or keyword |
+| `get_book` | Get detailed book info and stats |
+| `get_related_books` | Find semantically similar books |
+| `get_book_reviews` | Read reviews for a book |
+| `get_recommendations` | Personalised recommendations (requires auth) |
+| `get_staff_picks` | Curated well-rated books |
+| `get_user_profile` | Look up a user profile |
+| `get_user_ratings` | View a user's rated books |
 
-| Flag | Env Variable | Default | Description |
-|------|-------------|---------|-------------|
-| `-api-url` | `BOOKDB_API_URL` | `http://localhost:8000` | BookDB API base URL |
-| `-api-key` | `BOOKDB_API_KEY` | _(empty)_ | JWT token for auth |
-| `-transport` | `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `sse`, `http` |
-| `-addr` | `MCP_ADDR` | `:8080` | Listen address (SSE/HTTP) |
-
-#### Claude Desktop (stdio)
-
-Add to your Claude Desktop config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### Claude Desktop config
 
 ```json
 {
@@ -128,58 +195,24 @@ Add to your Claude Desktop config file (`~/Library/Application Support/Claude/cl
 }
 ```
 
-#### Remote / HTTP
+Get a JWT token:
 
 ```bash
-./bookdb-mcp -transport http -addr :9090 -api-url http://localhost:8000 -api-key eyJ...
+./bookdb-mcp login -email you@example.com
 ```
 
-#### SSE (Server-Sent Events)
 
-```bash
-./bookdb-mcp -transport sse -addr :8080
-```
 
-### Project Structure
+## Dataset citations
 
-```
-mcp/
-├── main.go           # CLI entry point, subcommands (login, register, server)
-├── server.go         # MCP server setup and tool registration
-├── install.sh        # curl | bash one-line installer
-├── client/
-│   └── api.go        # HTTP client for the BookDB FastAPI backend
-├── tools/
-│   ├── books.go      # search_books, get_book, get_related_books, get_book_reviews
-│   ├── discovery.go  # get_recommendations, get_staff_picks
-│   └── users.go      # get_user_profile, get_user_ratings
-└── transport/
-    ├── stdio.go      # Stdio transport (Claude Desktop, local LLMs)
-    ├── sse.go        # SSE transport (browser integrations)
-    └── http.go       # Streamable HTTP transport (remote deployment)
-```
+Mengting Wan, Julian McAuley, "Item Recommendation on Monotonic Behavior Chains", in *RecSys'18*.
 
-### Releasing
+Mengting Wan, Rishabh Misra, Ndapa Nakashole, Julian McAuley, "Fine-Grained Spoiler Detection from Large-Scale Review Corpora", in *ACL'19*.
 
-Push a tag to trigger the release workflow:
+## Development principles
 
-```bash
-git tag mcp/v0.1.0
-git push origin mcp/v0.1.0
-```
+**Notebooks call a library, not the other way around.** All reusable logic lives in `bookdb/` and is tested. Notebooks are for experimentation and visualisation only.
 
-This runs [`.github/workflows/release-mcp.yml`](.github/workflows/release-mcp.yml) which cross-compiles for 5 platforms (linux amd64/arm64, macos amd64/arm64, windows amd64), packages tarballs with SHA-256 checksums, and creates a GitHub release. The install script picks up the latest release automatically.
+**Tests are the immune system.** Run `uv run pytest` before merging. The CI pipeline runs tests on every pull request.
 
-## Checklist
-
-- [ ] Create a recommender system / chatbot
-- [ ] Perform Expolratory Data Analysis (EDA)
-- [ ] Deploy the system
-- [ ] Have MLOps (versioning, testing, monitoring, etc)
-- [ ] Follow good development practices
-  - [ ] Work on branches
-  - [ ] Add code via Pull Requests
-  - [ ] Comment on issues
-  - [ ] Libraries that are called by notebooks
-  - [ ] Tests
-- [ ] Evidence of exceptional ability as a group
+**Start from something that works.** Rather than building from scratch, the project extends proven baselines from [Recommenders](https://github.com/recommenders-team/recommenders) and adapts them to the Goodreads dataset.
