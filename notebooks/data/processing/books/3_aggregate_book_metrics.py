@@ -17,9 +17,8 @@ def _():
 
 @app.cell
 def _(mo, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    )
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     books_path = os.path.join(project_root, "data", "2_goodreads_books_standardized.parquet") # replace this with cleaned remapped books dataset (standardized)
     books_df = pl.read_parquet(books_path)
 
