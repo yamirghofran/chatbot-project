@@ -28,8 +28,8 @@ def _(mo):
 
 @app.cell
 def _(mo, os, pl):
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     merged_lf = pl.scan_parquet(os.path.join(data_dir, "1_goodreads_interactions_merged.parquet"))
     raw_lf = pl.scan_parquet(os.path.join(data_dir, "raw_goodreads_interactions.parquet"))

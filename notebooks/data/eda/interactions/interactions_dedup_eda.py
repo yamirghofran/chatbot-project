@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.20.1"
 app = marimo.App()
 
 
@@ -49,14 +49,15 @@ def _(mo):
 @app.cell
 def _(mo, pl):
     import os
+    from bookdb.utils.paths import find_project_root
 
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    project_root = find_project_root()
     data_path = os.path.join(
         project_root, "data", "raw_goodreads_interactions_dedup.parquet"
     )
     _n_total = pl.scan_parquet(data_path).select(pl.len()).collect().item()
     # the notes and comments derived from the data were obtained with 100% of the data, however, due to memory limits, we recommend working with 10% 
-    _n_sample = int(_n_total * 0.1)
+    _n_sample = int(_n_total * 0.01)
     df = pl.read_parquet(data_path, n_rows=_n_sample)
     shape = df.shape
 
@@ -253,42 +254,10 @@ def _(mo):
 
 
 @app.cell
-def _(df, mo, pl, plt):
+def _(df, mo):
     """Rating Distribution Plots"""
-    rating_all = df.group_by("rating").len().sort("rating")
-    rating_nonzero = df.filter(pl.col("rating") > 0).group_by("rating").len().sort("rating")
-
-    fig_rating, axes_r = plt.subplots(1, 2, figsize=(14, 5))
-
-    axes_r[0].bar(
-        rating_all["rating"].to_list(),
-        rating_all["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-    )
-    axes_r[0].set_xlabel("Rating")
-    axes_r[0].set_ylabel("Count")
-    axes_r[0].set_title("All Ratings (0 = unrated)")
-    axes_r[0].set_xticks([0, 1, 2, 3, 4, 5])
-    for _r, _c in zip(rating_all["rating"].to_list(), rating_all["len"].to_list()):
-        axes_r[0].text(_r, _c, f"{_c / 1e6:.1f}M", ha="center", va="bottom", fontsize=8)
-
-    axes_r[1].bar(
-        rating_nonzero["rating"].to_list(),
-        rating_nonzero["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-        color="steelblue",
-    )
-    axes_r[1].set_xlabel("Rating")
-    axes_r[1].set_ylabel("Count")
-    axes_r[1].set_title("Rated Only (1-5)")
-    axes_r[1].set_xticks([1, 2, 3, 4, 5])
-    for _r, _c in zip(rating_nonzero["rating"].to_list(), rating_nonzero["len"].to_list()):
-        axes_r[1].text(_r, _c, f"{_c / 1e6:.1f}M", ha="center", va="bottom", fontsize=8)
-
-    plt.tight_layout()
-
+    from bookdb.eda.plots import plot_rating_distribution
+    fig_rating = plot_rating_distribution(df)
     mo.vstack([
         fig_rating,
         mo.md("Same J-shaped rating distribution as the integer-encoded dataset. Majority of interactions are unrated (shelved/added).")
@@ -385,24 +354,16 @@ def _(df, pl):
 
 
 @app.cell
-def _(mo, np, plt, review_lengths):
+def _(mo, review_lengths):
     """Review Length Distribution"""
-    fig_rev, axes_rev = plt.subplots(1, 2, figsize=(14, 5))
-
-    lengths = review_lengths["review_length"].to_pandas()
-
-    axes_rev[0].hist(lengths.clip(upper=2000), bins=100, edgecolor="black", alpha=0.7)
-    axes_rev[0].set_xlabel("Review Length (chars, capped at 2000)")
-    axes_rev[0].set_ylabel("Frequency")
-    axes_rev[0].set_title("Review Length Distribution (Raw)")
-
-    axes_rev[1].hist(np.log1p(lengths), bins=100, edgecolor="black", alpha=0.7, color="coral")
-    axes_rev[1].set_xlabel("Log(Review Length)")
-    axes_rev[1].set_ylabel("Frequency")
-    axes_rev[1].set_title("Review Length Distribution (Log)")
-
-    plt.tight_layout()
-
+    from bookdb.eda.plots import plot_log_histogram
+    fig_rev = plot_log_histogram(
+        review_lengths["review_length"].to_numpy(),
+        cap=2000,
+        xlabel="Review Length (chars)",
+        title="Review Length Distribution",
+        color="coral",
+    )
     mo.vstack([
         fig_rev,
         mo.md("Review text is highly variable in length with a right-skewed distribution. The field is called `review_text_incomplete`, suggesting reviews may be truncated.")
@@ -595,18 +556,17 @@ def _(mo):
 def _(df, mo, pl):
     """Date Parsing and Temporal Coverage"""
     # Parse date_added (format: "Tue Oct 17 09:40:11 -0700 2017")
-    # Polars strptime format
-    date_format = "%a %b %d %H:%M:%S %z %Y"
+    from bookdb.processing.interactions import GOODREADS_DATE_FORMAT
 
     df_dates = df.with_columns([
-        pl.col("date_added").str.to_datetime(date_format, strict=False).alias("date_added_parsed"),
-        pl.col("date_updated").str.to_datetime(date_format, strict=False).alias("date_updated_parsed"),
+        pl.col("date_added").str.to_datetime(GOODREADS_DATE_FORMAT, strict=False).alias("date_added_parsed"),
+        pl.col("date_updated").str.to_datetime(GOODREADS_DATE_FORMAT, strict=False).alias("date_updated_parsed"),
         pl.when(pl.col("read_at") != "")
-        .then(pl.col("read_at").str.to_datetime(date_format, strict=False))
+        .then(pl.col("read_at").str.to_datetime(GOODREADS_DATE_FORMAT, strict=False))
         .otherwise(None)
         .alias("read_at_parsed"),
         pl.when(pl.col("started_at") != "")
-        .then(pl.col("started_at").str.to_datetime(date_format, strict=False))
+        .then(pl.col("started_at").str.to_datetime(GOODREADS_DATE_FORMAT, strict=False))
         .otherwise(None)
         .alias("started_at_parsed"),
     ])
