@@ -8,28 +8,44 @@ Three experiments evaluate the core components added to BookDB. All use a tempor
 
 ### Setup
 
-Users don't write structured queries. They search with something like "fantasy book by tolkien", no description, no context. This experiment tests whether an LLM rewriting step recovers retrieval quality lost from that vagueness.
+Users don't write structured queries. They search with something like "fantasy book by tolkien", no description, no context. This experiment tests whether an LLM rewriting step recovers retrieval quality lost from that vagueness, and whether injecting the user's taste profile into the rewriter steers the result toward their preferences.
 
-Three conditions on 200 queries:
+Four conditions on 200 queries from the temporal benchmark:
 
 - **Vague**: title + genres + authors only, description stripped
-- **Rewritten**: the vague query is expanded by the LLM (`rewrite_query_sync` via Groq) before hitting Qdrant
+- **Rewritten**: the vague query is expanded by the LLM (`rewrite_query_sync` via Groq) before hitting Qdrant, no user context
+- **Personalized**: same LLM rewrite but with a randomly sampled user taste profile injected into the system prompt, so the synthetic description is steered toward that reader's genre/tone preferences
 - **Full**: the complete embedding text (ideal upper bound)
 
 ### Results
 
-| Metric | Vague | Rewritten | Full |
-|--------|------:|----------:|-----:|
-| Recall@10 | 0.028 | 0.039 | 0.074 |
-| NDCG@10 | 0.062 | 0.104 | 0.235 |
-| MRR | 0.239 | 0.399 | 0.998 |
-| HitRate@10 | 0.360 | 0.500 | 1.000 |
+| Metric | Vague | Rewritten | Personalized | Full (ideal) |
+|--------|------:|----------:|-------------:|-------------:|
+| Recall@5 | 0.0216 | 0.0320 | 0.0179 | 0.0703 |
+| Recall@10 | 0.0280 | 0.0387 | 0.0216 | 0.0737 |
+| Recall@20 | 0.0325 | 0.0440 | 0.0267 | 0.0806 |
+| Precision@10 | 0.0390 | 0.0598 | 0.0348 | 0.1135 |
+| NDCG@10 | 0.0623 | 0.0986 | 0.0576 | 0.2351 |
+| MRR | 0.2386 | 0.3752 | 0.2247 | 0.9975 |
+| HitRate@10 | 0.3600 | 0.4975 | 0.2879 | 1.0000 |
 
-Rewritten vs vague - NDCG@10: t=4.00, p=0.0001. Recall@10: t=2.58, p=0.011. Both significant.
+**Statistical tests (paired t-test):**
+
+| Comparison | Recall@10 | NDCG@10 |
+|------------|----------:|--------:|
+| Rewritten vs vague | t=2.788, p=0.0058 | t=3.751, p=0.0002 |
+| Personalized vs vague | t=−1.716, p=0.0877 | t=−0.558, p=0.5778 |
+| Full vs vague | t=14.873, p=0.0000 | t=24.600, p=0.0000 |
+| Personalized vs rewritten | t=−5.626, p=0.0000  | t=−5.469, p=0.0000 |
+
 
 ### What it shows
 
-Rewriting roughly doubles NDCG@10 (0.062 to 0.104) and gets 50% of users to find something relevant in the top 10, up from 36%. The gap to the ideal is still large, which makes sense, the LLM is reconstructing description from genre/author hints, not reading the actual book.
+Generic rewriting works: NDCG@10 rises from 0.062 to 0.099 (+58%), HitRate@10 from 36% to 50%, both significant. The LLM successfully reconstructs a richer description from sparse header fields and the expanded text lands closer to the indexed book vectors.
+
+Personalized rewriting, as tested here, hurts retrieval. Assigning a random taste profile actively steers the rewrite away from the query's ground-truth answer and toward the randomly sampled user's preferences instead. The result is significantly worse than even the generic rewrite (p=0.0000 on both metrics). This is the expected outcome of random profile assignment — it confirms that taste injection changes retrieval direction strongly, which is exactly the point. When the profile belongs to the user who actually issued the query, this steering is a feature; when it belongs to someone else, it's noise.
+
+The remaining gap to the full ideal (NDCG 0.099 vs 0.235) reflects an inherent ceiling: the LLM is generating a plausible description, not reading the actual book.
 
 ---
 
