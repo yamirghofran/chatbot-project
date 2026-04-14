@@ -265,7 +265,7 @@ def _(
     comparison_user_means = pl.concat([
         user_mean_spread(interactions_lf, "raw"),
         user_mean_spread(mean_shifted_lf, "mean_shift"),
-        user_mean_spread(rescaled_lf, "guassian"),
+        user_mean_spread(rescaled_lf, "gaussian"),
         user_mean_spread(decoupled_lf, "decoupling"),
     ]).collect()
 
