@@ -33,8 +33,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     # Load datasets
     dedup_path = os.path.join(data_dir, "4_goodreads_reviews_reduced.parquet")
@@ -192,40 +192,8 @@ def _(mo):
 
 
 @app.cell
-def _(re):
-    def is_non_informative(text: str) -> bool:
-        if text is None:
-            return False
-        text = text.strip()
-        if len(text) == 0:
-            return False
-
-        # Single character
-        if len(text) == 1:
-            return True
-
-        # Punctuation only
-        if re.fullmatch(r'[\W_]+', text):
-            return True
-
-        # Numbers only
-        if re.fullmatch(r'[\d\s]+', text):
-            return True
-
-        # Repeated single character (same char repeated, e.g. "aaaa")
-        if re.fullmatch(r'(.)\1+', text):
-            return True
-
-        return False
-
-    def is_short_low_variety(text: str) -> bool:
-        if text is None:
-            return False
-        text = text.strip()
-        if len(text) == 0:
-            return False
-        return len(text) <= 5 and len(set(text.replace(" ", ""))) <= 2
-
+def _():
+    from bookdb.processing.text import is_non_informative, is_short_low_variety
     return is_non_informative, is_short_low_variety
 
 
@@ -254,7 +222,6 @@ def _(df_dedup_clean, is_non_informative, pl):
         pl.col("review_text").map_elements(is_non_informative, return_dtype=pl.Boolean)
     ).select(["review_id", "review_text", "rating"]).head(50)
     return
-
 
 
 @app.cell

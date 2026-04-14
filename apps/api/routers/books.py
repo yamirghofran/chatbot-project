@@ -435,7 +435,6 @@ def post_book_review(
     )
     return serialize_review(review, current_user.id)
 
-
 # TODO: improve related books retrieval
 #   Happy path (Qdrant available):
 #   1. Fetch Book.goodreads_id from Postgres for the requested book_id

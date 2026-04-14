@@ -26,7 +26,8 @@ def _(mo):
 @app.cell
 def _(mo, pl):
     import os
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_authors.parquet")
     df = pl.read_parquet(data_path)
     df = df.with_columns(
@@ -125,11 +126,11 @@ def _(mo):
 @app.cell
 def _(df, iqr_multiplier, mo, pl):
     """Outlier Analysis"""
+    from bookdb.eda.stats import iqr_outlier_bounds
     # IQR for ratings_count
     q1 = df["ratings_count"].quantile(0.25)
     q3 = df["ratings_count"].quantile(0.75)
-    iqr = q3 - q1
-    upper_bound = q3 + iqr_multiplier.value * iqr
+    _, upper_bound = iqr_outlier_bounds(df["ratings_count"], multiplier=iqr_multiplier.value)
 
     outliers_count = df.filter(pl.col("ratings_count") > upper_bound).shape[0]
 
@@ -151,18 +152,12 @@ def _(df, iqr_multiplier, mo, pl):
 
 
 @app.cell
-def _(df, mo, plt, sns):
+def _(df, mo):
     """Correlation Analysis"""
-    numeric_df = df.select(
-        ["average_rating", "text_reviews_count", "ratings_count"]
-    ).to_pandas()
-    correlation = numeric_df.corr(method="pearson")
-
-    fig_analysis, ax_analysis = plt.subplots(figsize=(8, 6))
-    sns.heatmap(correlation, annot=True, cmap="coolwarm", center=0, fmt=".3f", ax=ax_analysis)
-    ax_analysis.set_title("Correlation Matrix")
-    plt.tight_layout()
-
+    from bookdb.eda.plots import plot_correlation_heatmap
+    fig_analysis = plot_correlation_heatmap(
+        df, ["average_rating", "text_reviews_count", "ratings_count"], title="Correlation Matrix"
+    )
     mo.vstack([
         mo.md("## Correlation Analysis"),
         fig_analysis,

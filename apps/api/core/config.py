@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     CHATBOT_TOP_K: int = Field(default=20, ge=1, le=100)
     CHATBOT_MAX_REVIEWS: int = Field(default=30, ge=0, le=200)
     CHATBOT_MAX_BOOKS: int = Field(default=6, ge=1, le=20)
+    CHATBOT_REVIEWS_TOP_K: int = Field(default=50, ge=1, le=200)
+    RERANK_WEIGHT_BOOK: float = Field(default=1.0, ge=0)
+    RERANK_WEIGHT_REVIEW_MAX: float = Field(default=0.15, ge=0)
+    RERANK_WEIGHT_REVIEW_TOP2_MEAN: float = Field(default=0.10, ge=0)
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
     BOOK_METRICS_PARQUET_URL: str | None = (
         None  # Local path or remote URL (http/https/s3/gs/az)

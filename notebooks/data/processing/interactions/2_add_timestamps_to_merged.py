@@ -33,8 +33,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     merged_path = os.path.join(data_dir, "1_goodreads_interactions_merged.parquet")
     dedup_path = os.path.join(data_dir, "1_goodreads_interactions_dedup_merged.parquet")
@@ -68,6 +68,8 @@ def _(dedup_path, merged_path, mo, pl):
 
 @app.cell
 def _(CHUNK_SIZE, dedup_path, merged_path, mo, num_chunks, os, pl, temp_dir):
+    from bookdb.processing.interactions import GOODREADS_DATE_FORMAT as _GDFMT
+
     # Prepare dedup dataset (parse timestamps once, stays lazy)
     dedup_lf = pl.scan_parquet(dedup_path)
 
@@ -86,10 +88,10 @@ def _(CHUNK_SIZE, dedup_path, merged_path, mo, num_chunks, os, pl, temp_dir):
         ])
         # Parse timestamps to Unix format
         .with_columns([
-            pl.col("date_added").str.strptime(pl.Datetime, "%a %b %d %H:%M:%S %z %Y", strict=False).dt.epoch("s").alias("ts_added"),
-            pl.col("date_updated").str.strptime(pl.Datetime, "%a %b %d %H:%M:%S %z %Y", strict=False).dt.epoch("s").alias("ts_updated"),
-            pl.col("read_at").str.strptime(pl.Datetime, "%a %b %d %H:%M:%S %z %Y", strict=False).dt.epoch("s").alias("ts_read_at"),
-            pl.col("started_at").str.strptime(pl.Datetime, "%a %b %d %H:%M:%S %z %Y", strict=False).dt.epoch("s").alias("ts_started_at"),
+            pl.col("date_added").str.strptime(pl.Datetime, _GDFMT, strict=False).dt.epoch("s").alias("ts_added"),
+            pl.col("date_updated").str.strptime(pl.Datetime, _GDFMT, strict=False).dt.epoch("s").alias("ts_updated"),
+            pl.col("read_at").str.strptime(pl.Datetime, _GDFMT, strict=False).dt.epoch("s").alias("ts_read_at"),
+            pl.col("started_at").str.strptime(pl.Datetime, _GDFMT, strict=False).dt.epoch("s").alias("ts_started_at"),
         ])
         # Find maximum timestamp
         .with_columns(

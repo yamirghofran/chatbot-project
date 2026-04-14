@@ -15,7 +15,8 @@ def _():
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     reviews_path = os.path.join(project_root, "data", "3_goodreads_reviews_dedup_clean.parquet")
     books_path = os.path.join(project_root, "data", "3_goodreads_books_with_metrics.parquet")
 
