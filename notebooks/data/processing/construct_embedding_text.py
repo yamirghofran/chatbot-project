@@ -15,9 +15,8 @@ def _():
 
 @app.cell
 def _(os):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     standardized_books_path = os.path.join(project_root, "data", "goodreads_books_standardized.parquet")
     raw_authors_path = os.path.join(
         project_root, "data", "raw_goodreads_book_authors.parquet"

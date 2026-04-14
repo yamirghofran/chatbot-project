@@ -27,8 +27,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     books_df = pl.read_parquet(
         os.path.join(data_dir, "2_goodreads_books_standardized.parquet"),
@@ -103,13 +103,15 @@ def _(books_df, data_dir, mo, os, pl):
 
 @app.cell
 def _(books_df, data_dir, mo, os, pl):
+    from bookdb.processing.book_ids import drop_unmatched_book_ids
+
     # Clean dedup reviews — drop rows with no matching book_id
     _in_path = os.path.join(data_dir, "1_goodreads_reviews_dedup_merged.parquet")
     _out_path = os.path.join(data_dir, "2_goodreads_reviews_dedup_reduced.parquet")
     _lf = pl.scan_parquet(_in_path)
     _n_before = _lf.select(pl.len()).collect().item()
 
-    _lf.join(books_df.lazy(), on="book_id", how="semi").sink_parquet(_out_path, engine="streaming")
+    drop_unmatched_book_ids(_lf, books_df).sink_parquet(_out_path, engine="streaming")
 
     _n_after = pl.scan_parquet(_out_path).select(pl.len()).collect().item()
     _dropped = _n_before - _n_after
@@ -125,13 +127,15 @@ def _(books_df, data_dir, mo, os, pl):
 
 @app.cell
 def _(books_df, data_dir, mo, os, pl):
+    from bookdb.processing.book_ids import drop_unmatched_book_ids as _drop
+
     # Clean spoiler reviews — drop rows with no matching book_id
     _in_path = os.path.join(data_dir, "1_goodreads_reviews_spoiler_merged.parquet")
     _out_path = os.path.join(data_dir, "2_goodreads_reviews_spoiler_reduced.parquet")
     _lf = pl.scan_parquet(_in_path)
     _n_before = _lf.select(pl.len()).collect().item()
 
-    _lf.join(books_df.lazy(), on="book_id", how="semi").sink_parquet(_out_path, engine="streaming")
+    _drop(_lf, books_df).sink_parquet(_out_path, engine="streaming")
 
     _n_after = pl.scan_parquet(_out_path).select(pl.len()).collect().item()
     _dropped = _n_before - _n_after

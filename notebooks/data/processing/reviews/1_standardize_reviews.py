@@ -26,67 +26,29 @@ def _(mo):
 
 
 @app.cell
-def _(json, mo, os, pl):
-    _project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(_project_root, "data")
+def _(mo, os, pl):
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     book_id_map = pl.read_parquet(os.path.join(data_dir, "raw_book_id_map.parquet"))
     user_id_map = pl.read_parquet(os.path.join(data_dir, "raw_user_id_map.parquet"))
-
-    with open(os.path.join(data_dir, "best_book_id_map.json")) as f:
-        best_book_id_map = json.load(f)
 
     mo.md(f"""
     ### Mapping files loaded
     - `book_id_map`: {book_id_map.shape[0]:,} rows
     - `user_id_map`: {user_id_map.shape[0]:,} rows
-    - `best_book_id_map`: {len(best_book_id_map):,} best books
     """)
-    return best_book_id_map, book_id_map, data_dir, user_id_map
+    return book_id_map, data_dir, user_id_map
 
 
 @app.cell
-def _(best_book_id_map, book_id_map, mo, pl):
-    # Build edition to best book lookup in CSV space
+def _(data_dir, mo):
+    from bookdb.processing.book_ids import build_book_edition_lookup
 
-    # Invert: edition_id to best_id (Goodreads IDs)
-    _edition_to_best_gr = {
-        int(eid): int(best_id)
-        for best_id, edition_ids in best_book_id_map.items()
-        for eid in edition_ids
-    }
-
-    _gr_lookup = pl.DataFrame({
-        "edition_book_id": list(_edition_to_best_gr.keys()),
-        "best_book_id": list(_edition_to_best_gr.values()),
-    })
-
-    # Translate both sides to CSV ID space
-    book_edition_lookup = (
-        _gr_lookup
-        .join(
-            book_id_map.select(
-                pl.col("book_id").alias("edition_book_id"),
-                pl.col("book_id_csv").alias("edition_csv_id"),
-            ),
-            on="edition_book_id",
-            how="inner",
-        )
-        .join(
-            book_id_map.select(
-                pl.col("book_id").alias("best_book_id"),
-                pl.col("book_id_csv").alias("best_csv_id"),
-            ),
-            on="best_book_id",
-            how="inner",
-        )
-        .select("edition_csv_id", "best_csv_id")
-        .filter(pl.col("edition_csv_id") != pl.col("best_csv_id"))
-    )
+    book_edition_lookup = build_book_edition_lookup(data_dir)
 
     mo.md(f"""
     ### Edition to Best Book lookup (CSV space)
-    - Goodreads-space mappings: {len(_edition_to_best_gr):,}
     - Translated to CSV space (excluding self-maps): {book_edition_lookup.shape[0]:,}
     """)
     return (book_edition_lookup,)
