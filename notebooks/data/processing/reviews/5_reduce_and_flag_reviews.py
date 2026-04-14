@@ -256,7 +256,6 @@ def _(df_dedup_clean, is_non_informative, pl):
     return
 
 
-
 @app.cell
 def _(df_spoiler, is_non_informative, pl):
     # Display samples

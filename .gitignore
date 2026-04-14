@@ -150,3 +150,6 @@ chroma_data/
 # claude
 .claude/
 /models
+
+# Go MCP binary
+/mcp/bookdb-mcp

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content="BookDB MCP Server - Connect your book database to AI assistants with semantic search and collaborative filtering" />
+		<title>BookDB MCP Server</title>
+		
+		<!-- Google Fonts -->
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+	</head>
+	<body class="font-sans text-text-primary antialiased">
+		<slot />
+	</body>
+</html>
+
+<style is:global>
+	@tailwind base;
+	@tailwind components;
+	@tailwind utilities;
+	
+	html {
+		scroll-behavior: smooth;
+	}
+	
+	@layer components {
+		/* Gradient background */
+		.gradient-bg {
+			background: 
+				radial-gradient(ellipse at 20% 20%, rgba(156, 175, 136, 0.15) 0%, transparent 50%),
+				radial-gradient(ellipse at 80% 80%, rgba(232, 228, 217, 0.4) 0%, transparent 50%),
+				radial-gradient(ellipse at 50% 50%, rgba(245, 241, 232, 0.3) 0%, transparent 70%),
+				linear-gradient(180deg, #FAFAF8 0%, #F5F5F0 100%);
+		}
+	}
+</style>

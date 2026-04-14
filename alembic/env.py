@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from bookdb.db.base import Base
 from bookdb.db import models  # noqa
+from bookdb.db import chat_models  # noqa
 from bookdb.db.session import DATABASE_URL
 
 config = context.config

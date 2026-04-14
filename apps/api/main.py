@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
 from .core.embeddings import COLLECTION_NAME, get_qdrant_client
-from .routers import auth, books, discovery, lists, me, reviews, users
+from .routers import auth, books, chat, discovery, lists, me, reviews, users
 
 app = FastAPI(title="BookDB API", version="0.1.0")
 
@@ -31,6 +31,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(books.router)
+app.include_router(chat.router)
 app.include_router(reviews.router)
 app.include_router(users.router)
 app.include_router(lists.router)
@@ -101,6 +102,16 @@ async def startup_event():
     else:
         app.state.book_sentiments_df = None
         print("WARNING: Book sentiments not found, chatbot will not include emotion data.")
+
+    from .core.mcp_adapter import MCPAdapter
+    app.state.mcp_adapter = MCPAdapter(
+        base_url=settings.MCP_RECOMMENDATION_URL,
+        timeout=settings.MCP_RECOMMENDATION_TIMEOUT,
+    )
+    if app.state.mcp_adapter.is_available():
+        print(f"MCP adapter configured: {settings.MCP_RECOMMENDATION_URL}")
+    else:
+        print("MCP adapter: not configured (will use local discovery fallback)")
 
 
 @app.get("/")
