@@ -8,10 +8,11 @@ import os
 from bookdb.db.models import Book, Review
 from bookdb.db.session import SessionLocal
 from bookdb.vector_db.client import get_qdrant_client
+from bookdb.vector_db.schemas import CollectionNames
 
 EMBEDDING_ENDPOINT = os.getenv("EMBEDDING_ENDPOINT", "http://127.0.0.1:8000/embed")
 MODEL_NAME = os.getenv("EMBEDDING_MODEL", "finetuned")
-COLLECTION_NAME = os.getenv("REVIEWS_COLLECTION_NAME", "reviews_collection")
+COLLECTION_NAME = os.getenv("REVIEWS_COLLECTION_NAME", CollectionNames.REVIEWS.value)
 
 def generate_embedding(text: str) -> List[float]:
     """Generate embedding for a text using the finetuned model endpoint."""
@@ -44,7 +45,8 @@ def search_similar_reviews(
     for point in results.points:
         reviews.append(
             {
-                "review_id": point.payload.get("review_id"),
+                "review_id": point.id,
+                "book_id": point.payload.get("book_id"),
                 "similarity_score": point.score,
             }
         )

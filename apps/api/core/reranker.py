@@ -90,7 +90,10 @@ def build_candidates(
             "book_score": book_score,
             "payload": {},
         }
-        candidate.update(review_features[book_id])
+        if book_id in review_features:
+            candidate.update(review_features[book_id])
+        else:
+            candidate["has_reviews"] = False
         candidates.append(candidate)
 
     return candidates
