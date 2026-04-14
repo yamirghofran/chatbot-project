@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUsernameRouteImport } from './routes/user/$username'
 import { Route as ListsListIdRouteImport } from './routes/lists/$listId'
@@ -18,6 +19,11 @@ import { Route as BooksBookIdRouteImport } from './routes/books/$bookId'
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,6 +49,7 @@ const BooksBookIdRoute = BooksBookIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
@@ -67,15 +76,23 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat'
     | '/search'
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/search' | '/books/$bookId' | '/lists/$listId' | '/user/$username'
+  to:
+    | '/'
+    | '/chat'
+    | '/search'
+    | '/books/$bookId'
+    | '/lists/$listId'
+    | '/user/$username'
   id:
     | '__root__'
     | '/'
+    | '/chat'
     | '/search'
     | '/books/$bookId'
     | '/lists/$listId'
@@ -84,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
   SearchRoute: typeof SearchRoute
   BooksBookIdRoute: typeof BooksBookIdRoute
   ListsListIdRoute: typeof ListsListIdRoute
@@ -97,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -132,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
   SearchRoute: SearchRoute,
   BooksBookIdRoute: BooksBookIdRoute,
   ListsListIdRoute: ListsListIdRoute,

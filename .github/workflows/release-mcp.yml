@@ -1,0 +1,140 @@
+name: Release MCP Server
+
+on:
+  push:
+    tags:
+      - "mcp/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: arm64
+            ext: ""
+          - target: x86_64-apple-darwin
+            runner: macos-14
+            goos: darwin
+            goarch: amd64
+            ext: ""
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            goos: darwin
+            goarch: arm64
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            goos: windows
+            goarch: amd64
+            ext: ".exe"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: mcp/go.mod
+          cache-dependency-path: mcp/go.sum
+
+      - name: Build
+        working-directory: mcp
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -trimpath -ldflags="-s -w" -o bookdb-mcp${{ matrix.ext }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bookdb-mcp-${{ matrix.target }}
+          path: mcp/bookdb-mcp${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Prepare archives and checksums
+        run: |
+          set -eo pipefail
+          mkdir -p release
+
+          for dir in artifacts/bookdb-mcp-*; do
+            target=$(basename "$dir" | sed 's/^bookdb-mcp-//')
+            echo "Packaging ${target}..."
+
+            # Detect extension (.exe for windows)
+            ext=""
+            case "$target" in
+              *windows*) ext=".exe" ;;
+            esac
+
+            binary="bookdb-mcp${ext}"
+            archive="bookdb-mcp-${target}.tar.gz"
+
+            # Create tarball with just the binary
+            (cd "$dir" && tar czf "../../release/${archive}" "${binary}")
+
+            # Compute sha256
+            (cd release && sha256sum "${archive}" > "${archive}.sha256")
+          done
+
+          echo "--- Release contents ---"
+          ls -lh release/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MCP Server ${{ github.ref_name }}
+          body: |
+            ## BookDB MCP Server
+
+            ### Install
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/yamirghofran/BookDB/main/mcp/install.sh | bash
+            ```
+
+            ### Manual download
+
+            Download the binary for your platform from the assets below.
+
+            ### What's new
+
+            See commits since the last release for changes.
+          draft: false
+          prerelease: false
+          files: release/*

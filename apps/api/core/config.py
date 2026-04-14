@@ -81,6 +81,14 @@ class Settings(BaseSettings):
         None  # Local path or remote URL (http/https/s3/gs/az)
     )
 
+    # MCP recommendation server
+    MCP_RECOMMENDATION_URL: str | None = None
+    MCP_RECOMMENDATION_TIMEOUT: float = Field(default=10.0, gt=0)
+
+    # Chat orchestrator settings
+    CHAT_MAX_HISTORY_MESSAGES: int = Field(default=10, ge=1, le=50)
+    CHAT_MAX_MESSAGE_LENGTH: int = Field(default=2000, ge=1, le=10000)
+
     # Entity extraction settings
     ENTITY_EXTRACTION_ENABLED: bool = Field(default=True)
     ENTITY_EXTRACTION_MODEL: str = Field(
