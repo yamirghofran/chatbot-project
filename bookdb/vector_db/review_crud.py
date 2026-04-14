@@ -178,7 +178,7 @@ class ReviewVectorCRUD(BaseVectorCRUD):
         if user_id is not None:
             must.append(
                 FieldCondition(
-                    key="metadata.user_id",
+                    key="user_id",
                     match=MatchValue(value=user_id),
                 )
             )
@@ -186,7 +186,7 @@ class ReviewVectorCRUD(BaseVectorCRUD):
         if book_id is not None:
             must.append(
                 FieldCondition(
-                    key="metadata.book_id",
+                    key="book_id",
                     match=MatchValue(value=book_id),
                 )
             )
