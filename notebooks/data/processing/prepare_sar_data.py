@@ -39,7 +39,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[3]
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(
         project_root, "data", "raw_goodreads_interactions_dedup_sample.parquet"
     )
@@ -72,29 +73,8 @@ def _(mo):
 
 
 @app.cell
-def _(pl):
-    def calculate_weight(df, base_weight=0.1, rating_weight=0.4, is_read_weight=0.2, review_weight=0.3):
-        return (
-            df.with_columns([
-                (pl.col("rating").fill_null(0) / 5).alias("rating_norm"),
-                pl.col("is_read").cast(pl.Float32).alias("read_val"),
-                (pl.col("review_text_incomplete").str.len_chars().fill_null(0) > 0)
-                .cast(pl.Float32)
-                .alias("has_review_val")
-            ])
-            .with_columns(
-                (
-                    base_weight +
-                    (rating_weight * pl.col("rating_norm")) +
-                    (is_read_weight * pl.col("read_val")) +
-                    (review_weight * pl.col("has_review_val"))
-                )
-                .cast(pl.Float32) # Downcast to 32-bit to save space
-                .alias("weight")
-            )
-            .drop(["rating_norm", "read_val", "has_review_val"]) # Clean up intermediate cols
-        )
-
+def _():
+    from bookdb.processing.interactions import calculate_weight_sar as calculate_weight
     return (calculate_weight,)
 
 
@@ -107,25 +87,8 @@ def _(mo):
 
 
 @app.cell
-def _(pl):
-    def convert_to_unix_timestamp(df, timestamp_col="date_updated"):
-        """
-        Convert a date string column to unix timestamp.
-
-        Parameters:
-        - df: Polars DataFrame
-        - timestamp_col: Name of the column containing date strings
-
-        Returns:
-        - Polars DataFrame with 'timestamp' column containing unix timestamps
-        """
-        return df.with_columns(
-            pl.col(timestamp_col)
-            .str.strptime(pl.Datetime, format="%a %b %d %H:%M:%S %z %Y")
-            .dt.epoch("s")
-            .alias("timestamp")
-        )
-
+def _():
+    from bookdb.processing.interactions import convert_to_unix_timestamp
     return (convert_to_unix_timestamp,)
 
 

@@ -29,59 +29,21 @@ def _(mo):
 
 
 @app.cell
-def _(json, mo, os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+def _(mo, os, pl):
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
-    with open(os.path.join(data_dir, "best_book_id_map.json")) as f:
-        best_book_id_map = json.load(f)
-
-    # invert: edition -> best (goodreads IDs)
-    edition_to_best_gr = {
-        int(eid): int(best_id)
-        for best_id, edition_ids in best_book_id_map.items()
-        for eid in edition_ids
-    }
-
-    gr_lookup = pl.DataFrame({
-        "edition_book_id": list(edition_to_best_gr.keys()),
-        "best_book_id": list(edition_to_best_gr.values()),
-    })
+    from bookdb.processing.book_ids import build_book_edition_lookup
 
     book_id_map = pl.read_parquet(os.path.join(data_dir, "raw_book_id_map.parquet"))
     user_id_map = pl.read_parquet(os.path.join(data_dir, "raw_user_id_map.parquet"))
 
-    # translate both sides to CSV ID space
-    csv_lookup = (
-        gr_lookup
-        .join(
-            book_id_map.select(
-                pl.col("book_id").alias("edition_book_id"),
-                pl.col("book_id_csv").alias("edition_csv_id"),
-            ),
-            on="edition_book_id",
-            how="inner",
-        )
-        .join(
-            book_id_map.select(
-                pl.col("book_id").alias("best_book_id"),
-                pl.col("book_id_csv").alias("best_csv_id"),
-            ),
-            on="best_book_id",
-            how="inner",
-        )
-        .select("edition_csv_id", "best_csv_id")
-    )
-
-    lookup_df = csv_lookup.filter(pl.col("edition_csv_id") != pl.col("best_csv_id"))
+    lookup_df = build_book_edition_lookup(data_dir)
 
     mo.vstack([
         mo.md(f"""
     ### Edition mapping (CSV space)
-    - Goodreads-space mappings: **{gr_lookup.shape[0]:,}**
-    - Translated to CSV space: **{csv_lookup.shape[0]:,}**
     - After removing self-maps: **{lookup_df.shape[0]:,}**
-    - Lost (no CSV ID found): **{gr_lookup.shape[0] - csv_lookup.shape[0]:,}**
     """),
         lookup_df.head(10),
     ])

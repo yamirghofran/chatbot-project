@@ -27,7 +27,8 @@ def _(mo):
 
 @app.cell
 def _(mo, os, pl):
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
     df = pl.read_parquet(data_path)
 
@@ -114,8 +115,8 @@ def _(df, json, mo, os, pl, plt):
     # Apply the same filtering and dropping logic as clean_books.py
 
     # Load best_book_id_map.json
-    _project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    best_book_map_path = os.path.join(_project_root, "data", "best_book_id_map.json")
+    from bookdb.utils.paths import find_project_root as _find_project_root
+    best_book_map_path = os.path.join(_find_project_root(), "data", "best_book_id_map.json")
 
     with open(best_book_map_path, "r") as f:
         best_book_map = json.load(f)
@@ -593,8 +594,9 @@ def _(df, mo, pl, plt):
 
 
 @app.cell
-def _(df, mo, pl, plt, sns):
+def _(df, mo, pl):
     """Correlations Heatmap"""
+    from bookdb.eda.plots import plot_correlation_heatmap
     corr_data = df.filter(
         (pl.col("average_rating").is_not_null())
         & (pl.col("ratings_count").is_not_null())
@@ -612,13 +614,12 @@ def _(df, mo, pl, plt, sns):
         "num_pages",
         "publication_year",
     )
-
-    corr_matrix = corr_data.corr()
-
-    _fig, _ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f", ax=_ax)
-    _ax.set_title("Correlation Heatmap")
-    plt.tight_layout()
+    _fig = plot_correlation_heatmap(
+        corr_data,
+        ["average_rating", "ratings_count", "text_reviews_count", "num_pages", "publication_year"],
+        title="Correlation Heatmap",
+        figsize=(10, 8),
+    )
 
     mo.vstack(
         [
