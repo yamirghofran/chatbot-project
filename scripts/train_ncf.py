@@ -416,9 +416,8 @@ def log_to_mlflow(
         if recommendations_path.exists():
             safe_log_artifact(recommendations_path, "recommendations parquet")
 
-        # Log model files
-        for artifact_file in model_dir.glob("*"):
-            safe_log_artifact(artifact_file, f"model/{artifact_file.name}")
+        # Log model directory as a single addressable artifact path for registry
+        mlflow.log_artifacts(str(model_dir), artifact_path="ncf_model")
 
         # Save config
         config_path = artifacts_dir / "model_config.json"
