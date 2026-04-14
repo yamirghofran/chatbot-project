@@ -4,7 +4,7 @@ Two offline retraining pipelines share the same design:
 
 | Script | Model | Registry name |
 |---|---|---|
-| `scripts/weekly_retrain.py` | BPR | `BPR_Recommender` |
+| `scripts/weekly_retrain_bpr.py` | BPR | `BPR_Recommender` |
 | `scripts/weekly_retrain_ncf.py` | NCF | `NCF_Recommender` |
 
 Both scripts follow an identical flow and accept the same flags (only the data-path flag is named differently). The sections below call out per-model differences where they exist.
@@ -79,14 +79,14 @@ APP_LIVE_SINCE = datetime(2026, 2, 1, tzinfo=timezone.utc)
 # --- BPR ---
 
 # Typical run (all defaults):
-python scripts/weekly_retrain.py
+python scripts/weekly_retrain_bpr.py
 
 # Dry run — runs every stage but makes no writes (good for testing):
-python scripts/weekly_retrain.py --dry-run --no-db \
+python scripts/weekly_retrain_bpr.py --dry-run --no-db \
     --bpr-data-path data/bpr_interactions_merged_tiny.parquet
 
 # Force retrain even if data threshold not met:
-python scripts/weekly_retrain.py --force
+python scripts/weekly_retrain_bpr.py --force
 
 # --- NCF ---
 
