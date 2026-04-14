@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -86,6 +87,40 @@ def _load_benchmark(path: Path) -> list[dict[str, Any]]:
     return data["queries"]
 
 
+def _load_user_taste_pool(min_ratings: int = 4, max_users: int = 500) -> list[str | None]:
+    """Load a pool of taste profiles from real users in the DB.
+
+    Returns a list of taste profile strings (or None if a user has no
+    qualifying ratings). The list is shuffled for random assignment.
+    """
+    try:
+        from bookdb.db.session import SessionLocal
+        from bookdb.db.models import BookRating
+        from sqlalchemy import select, func
+        from apps.api.core.book_queries import get_user_taste_profile
+
+        with SessionLocal() as db:
+            user_ids = db.scalars(
+                select(BookRating.user_id)
+                .group_by(BookRating.user_id)
+                .having(func.count() >= min_ratings)
+                .limit(max_users)
+            ).all()
+
+            profiles = []
+            for uid in user_ids:
+                profile = get_user_taste_profile(db, uid)
+                if profile:
+                    profiles.append(profile)
+
+        random.shuffle(profiles)
+        print(f"  Loaded {len(profiles)} taste profiles from DB")
+        return profiles
+    except Exception as e:
+        print(f"  Warning: could not load taste profiles from DB: {e}")
+        return []
+
+
 # Per-condition evaluator
 
 def evaluate_condition(
@@ -93,8 +128,18 @@ def evaluate_condition(
     condition: str,
     *,
     groq_client=None,
+    taste_pool: list[str] | None = None,
+    rng_seed: int = 42,
 ) -> list[QueryResult]:
-    """Run all queries under a given retrieval condition"""
+    """Run all queries under a given retrieval condition.
+
+    Conditions:
+        vague        – title + genres + authors only (no description)
+        rewritten    – vague query expanded by LLM (generic, no user context)
+        personalized – vague query expanded by LLM + random user taste profile
+        full         – complete embedding text (ideal upper bound)
+    """
+    rng = random.Random(rng_seed)
     results: list[QueryResult] = []
 
     for i, q in enumerate(queries):
@@ -117,6 +162,16 @@ def evaluate_condition(
                 assert groq_client is not None, "groq_client required for rewriting"
                 vague = _make_vague_query(full_query_text)
                 desc, _ = rewrite_query_sync(groq_client, vague)
+                search_text = desc or vague
+                rewritten_text = desc
+
+            elif condition == "personalized":
+                # LLM rewrites with a randomly sampled user taste profile injected
+                assert groq_client is not None, "groq_client required for rewriting"
+                pool = taste_pool or []
+                taste = rng.choice(pool) if pool else None
+                vague = _make_vague_query(full_query_text)
+                desc, _ = rewrite_query_sync(groq_client, vague, taste_profile=taste)
                 search_text = desc or vague
                 rewritten_text = desc
 
@@ -159,60 +214,84 @@ def evaluate_condition(
 def run_experiment(
     queries: list[dict[str, Any]],
     run_rewriting: bool = True,
+    run_personalized: bool = True,
 ) -> dict[str, Any]:
     """Run the query-rewriting experiment and return a structured results dict."""
 
     # Condition 1: vague query (baseline for query rewriting)
-    print("\nCondition 1/3: vague (title + genres + authors only)")
+    print("\nCondition 1/4: vague (title + genres + authors only)")
     vague_results = evaluate_condition(queries, "vague")
 
-    # Condition 2: LLM-rewritten query
+    # Condition 2: LLM-rewritten query (generic)
     rewritten_results: list[QueryResult] = []
+    groq_client = None
     if run_rewriting:
         groq_client = create_groq_client_sync()
-        print("\nCondition 2/3: rewritten (LLM expands vague query)")
+        print("\nCondition 2/4: rewritten (LLM expands vague query — no user context)")
         rewritten_results = evaluate_condition(queries, "rewritten", groq_client=groq_client)
 
-    # Condition 3: full embedding text (ideal upper bound)
-    print("\nCondition 3/3: full (complete embedding text: ideal)")
+    # Condition 3: LLM-rewritten query + user taste profile (personalized)
+    personalized_results: list[QueryResult] = []
+    if run_personalized and run_rewriting:
+        print("\nCondition 3/4: personalized (LLM rewrite + user taste profile)")
+        print("  Loading taste profiles from DB...")
+        taste_pool = _load_user_taste_pool()
+        if taste_pool:
+            personalized_results = evaluate_condition(
+                queries, "personalized",
+                groq_client=groq_client or create_groq_client_sync(),
+                taste_pool=taste_pool,
+            )
+        else:
+            print("  Skipping personalized condition: no taste profiles available")
+
+    # Condition 4: full embedding text (ideal upper bound)
+    print("\nCondition 4/4: full (complete embedding text: ideal)")
     full_results = evaluate_condition(queries, "full")
 
     # Metrics
-    vague_metrics = aggregate(vague_results,     "vague")
+    vague_metrics = aggregate(vague_results, "vague")
     rewritten_metrics = aggregate(rewritten_results, "rewritten") if rewritten_results else None
-    full_metrics = aggregate(full_results,      "full")
+    personalized_metrics = aggregate(personalized_results, "personalized") if personalized_results else None
+    full_metrics = aggregate(full_results, "full")
 
     # Statistical tests (paired t-test vs vague baseline)
     stat_tests: dict[str, Any] = {}
 
-    if rewritten_results:
+    for label, treatment_results in [
+        ("rewritten_vs_vague", rewritten_results),
+        ("personalized_vs_vague", personalized_results),
+        ("full_vs_vague", full_results),
+    ]:
+        if not treatment_results:
+            continue
         t_r, p_r = paired_ttest(
-            vague_results, rewritten_results,
+            vague_results, treatment_results,
             lambda r, g: recall_at_k(r, g, TOP_K_EVAL),
         )
         t_n, p_n = paired_ttest(
-            vague_results, rewritten_results,
+            vague_results, treatment_results,
             lambda r, g: ndcg_at_k(r, g, TOP_K_EVAL),
         )
-        stat_tests["rewritten_vs_vague"] = {
+        stat_tests[label] = {
             "recall_at_10": {"t": round(t_r, 4), "p": round(p_r, 6)},
             "ndcg_at_10": {"t": round(t_n, 4), "p": round(p_n, 6)},
         }
 
-    if full_results:
+    # Personalized vs rewritten (direct comparison)
+    if personalized_results and rewritten_results:
         t_r, p_r = paired_ttest(
-            vague_results, full_results,
+            rewritten_results, personalized_results,
             lambda r, g: recall_at_k(r, g, TOP_K_EVAL),
         )
         t_n, p_n = paired_ttest(
-            vague_results, full_results,
+            rewritten_results, personalized_results,
             lambda r, g: ndcg_at_k(r, g, TOP_K_EVAL),
         )
-        stat_tests["full_vs_vague"] = {
+        stat_tests["personalized_vs_rewritten"] = {
             "recall_at_10": {"t": round(t_r, 4), "p": round(p_r, 6)},
             "ndcg_at_10": {"t": round(t_n, 4), "p": round(p_n, 6)},
         }
-
 
     def _metrics_dict(m: AggregatedMetrics | None) -> dict:
         if m is None:
@@ -232,20 +311,22 @@ def run_experiment(
     results: dict[str, Any] = {
         "metadata": {
             "experiment": "query_rewriting",
-            "design": "vague vs rewritten vs full-ideal",
+            "design": "vague vs rewritten vs personalized vs full-ideal",
             "top_k_search": TOP_K_SEARCH,
             "top_k_eval": TOP_K_EVAL,
             "total_queries": len(queries),
         },
         "conditions": {
             "vague": _metrics_dict(vague_metrics),
-            "rewritten":_metrics_dict(rewritten_metrics),
+            "rewritten": _metrics_dict(rewritten_metrics),
+            "personalized": _metrics_dict(personalized_metrics),
             "full": _metrics_dict(full_metrics),
         },
         "statistical_tests": stat_tests,
         "per_query": {
-            "vague":vague_metrics.per_query,
+            "vague": vague_metrics.per_query,
             "rewritten": rewritten_metrics.per_query if rewritten_metrics else [],
+            "personalized": personalized_metrics.per_query if personalized_metrics else [],
             "full": full_metrics.per_query,
         },
     }
@@ -253,51 +334,54 @@ def run_experiment(
     return results
 
 
-
 def print_summary(results: dict[str, Any]) -> None:
     vague = results["conditions"].get("vague", {})
     rew = results["conditions"].get("rewritten", {})
+    pers = results["conditions"].get("personalized", {})
     full = results["conditions"].get("full", {})
 
-    print("\n" + "=" * 72)
+    print("\n" + "=" * 80)
     print("QUERY REWRITING EXPERIMENT RESULTS")
-    print("  Design: vague query  ->  LLM-rewritten  ->  full ideal")
-    print("=" * 72)
+    print("  Design: vague  ->  rewritten (generic)  ->  personalized  ->  full ideal")
+    print("=" * 80)
 
     metrics = [
-        ("Recall@5", "recall_at_5"),
-        ("Recall@10", "recall_at_10"),
-        ("Recall@20", "recall_at_20"),
-        ("Precision@10", "precision_at_10"),
-        ("NDCG@10","ndcg _at_10"),
-        ("MRR", "mrr"),
-        ("HitRate@10", "hit_rate_at_10"),
-        ("Latency(ms)", "mean_latency_ms"),
+        ("Recall@5",      "recall_at_5"),
+        ("Recall@10",     "recall_at_10"),
+        ("Recall@20",     "recall_at_20"),
+        ("Precision@10",  "precision_at_10"),
+        ("NDCG@10",       "ndcg_at_10"),
+        ("MRR",           "mrr"),
+        ("HitRate@10",    "hit_rate_at_10"),
+        ("Latency(ms)",   "mean_latency_ms"),
     ]
 
-    print(f"{'Metric':<16} {'Vague':>10} {'Rewritten':>12} {'Full(ideal)':>14}")
-    print("-" * 56)
+    print(f"{'Metric':<16} {'Vague':>10} {'Rewritten':>12} {'Personalized':>14} {'Full(ideal)':>13}")
+    print("-" * 68)
     for label, key in metrics:
         v = vague.get(key, float("nan"))
         r = rew.get(key, float("nan"))
+        p = pers.get(key, float("nan"))
         f = full.get(key, float("nan"))
-        print(f"{label:<16} {v:>10.4f} {r:>12.4f} {f:>14.4f}")
+        print(f"{label:<16} {v:>10.4f} {r:>12.4f} {p:>14.4f} {f:>13.4f}")
 
-    print("\nStatistical significance (paired t-test vs vague baseline):")
-    print("=" * 72)
+    print("\nStatistical significance (paired t-test):")
+    print("=" * 80)
     for test_name, test_res in results.get("statistical_tests", {}).items():
         print(f"  {test_name}:")
         for metric_name, vals in test_res.items():
             sig = "SIGNIFICANT" if vals["p"] < 0.05 else "not significant"
             print(f"    {metric_name}: t={vals['t']:.3f}, p={vals['p']:.4f} ({sig})")
-    print("=" * 72)
+    print("=" * 80)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Query rewriting retrieval experiment")
     parser.add_argument("--max-queries", type=int, default=-1)
     parser.add_argument("--no-rewriting", action="store_true",
-                        help="Skip the LLM rewriting condition (only vague vs full)")
+                        help="Skip the LLM rewriting conditions (only vague vs full)")
+    parser.add_argument("--no-personalized", action="store_true",
+                        help="Skip the personalized condition")
     parser.add_argument("--benchmark", default=None)
     parser.add_argument("--output", default=str(RESULTS_PATH))
     args = parser.parse_args()
@@ -321,7 +405,11 @@ def main() -> None:
     print(f"\nRunning query-rewriting experiment on {len(queries)} queries")
     print("=" * 60)
 
-    results = run_experiment(queries, run_rewriting=not args.no_rewriting)
+    results = run_experiment(
+        queries,
+        run_rewriting=not args.no_rewriting,
+        run_personalized=not args.no_personalized,
+    )
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
