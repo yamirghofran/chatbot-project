@@ -121,7 +121,19 @@ def _diversify_books_by_author(
     return diversified
 
 
-def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
+def _format_sentiment(sentiment_row) -> str:
+    """Format sentiment data for LLM context."""
+    if sentiment_row is None:
+        return ""
+    dominant = sentiment_row.get("dominant_emotion", "")
+    pct = sentiment_row.get("dominant_emotion_pct", 0)
+    total = sentiment_row.get("total_reviews", 0)
+    if not dominant or total == 0:
+        return ""
+    return f"READER SENTIMENT: Readers primarily feel {dominant} ({pct*100:.0f}%) based on {total:,} reviews\n"
+
+
+def _payload_to_book_context(book: Book, payload: dict[str, Any], sentiment_row=None) -> str:
     metadata = payload.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     document = payload.get("document")
@@ -133,12 +145,14 @@ def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
     shelves = str(metadata.get("shelves") or ", ".join(tags[:5]) or "unspecified")
     description = document or (book.description or "")
     description = description.strip() or "No description available."
+    sentiment = _format_sentiment(sentiment_row)
 
     return (
         f"TITLE: {title}\n"
         f"AUTHOR: {author}\n"
         f"SHELVES: {shelves}\n"
         f"DESCRIPTION: {description}\n"
+        f"{sentiment}"
     )
 
 
@@ -271,6 +285,9 @@ def _run_chatbot_search_pipeline(
     ranked_books: list[Book] = []
     llm_books: list[dict[str, Any]] = []
 
+    # Get sentiments DataFrame if available
+    sentiments_df = getattr(request.app.state, "book_sentiments_df", None) if request else None
+
     for hit in qdrant_hits:
         try:
             gid = int(hit["id"])
@@ -280,10 +297,19 @@ def _run_chatbot_search_pipeline(
         if book is None:
             continue
         ranked_books.append(book)
+
+        # Look up sentiment by goodreads_id
+        sentiment_row = None
+        if sentiments_df is not None:
+            try:
+                sentiment_row = sentiments_df.loc[gid].to_dict() if gid in sentiments_df.index else None
+            except (KeyError, TypeError):
+                sentiment_row = None
+
         llm_books.append(
             {
                 "book_id": int(book.id),
-                "description": _payload_to_book_context(book, hit.get("payload", {})),
+                "description": _payload_to_book_context(book, hit.get("payload", {}), sentiment_row),
             }
         )
 

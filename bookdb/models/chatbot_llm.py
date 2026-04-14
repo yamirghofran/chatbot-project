@@ -415,10 +415,15 @@ and reader reviews retrieved from a database that are relevant to the user's que
 Generate a friendly, conversational, yet brief response that recommends or discusses the most \
 relevant books, citing specific books and reviews to support your points.
 
+Some books include READER SENTIMENT data showing the dominant emotion readers feel \
+(joy, sadness, anger, fear, etc.) based on review analysis. Use this to help users \
+understand the emotional impact of books when relevant.
+
 Rules:
 1) Talk about the most relevant books first.
 2) `referenced_book_ids` must be in the exact order the books are first mentioned in `response`.
 3) Include each referenced book ID at most once.
+4) When sentiment data is available and relevant, mention how the book makes readers feel.
 """
 
 # 4) Only include book IDs that appear in the provided relevant books list and are actually discussed.\
