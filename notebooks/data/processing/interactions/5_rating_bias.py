@@ -345,6 +345,19 @@ def _(interactions_lf, joined_df, pl):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Justification for Choosing Decoupling Normalization
+
+    - Decoupling has the lowest spread of user means: 0.0132 showing that it reduced the user bias most.
+    - Decoupling kept the spread closest to the original at 1.243
+
+    Decoupling normalization is the most suitable method as it achieves the strongest reduction in user bias while maintaining a realistic rating distribution.
+    """)
+    return
+
+
 @app.cell
 def _(data_dir, decoupled_lf, os):
     output_path = os.path.join(data_dir, "5_goodreads_reviews_reduced.parquet")
