@@ -187,7 +187,7 @@ A Go-based [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) serv
     "bookdb": {
       "command": "/path/to/bookdb-mcp",
       "env": {
-        "BOOKDB_API_URL": "http://localhost:8000",
+        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
         "BOOKDB_API_KEY": "your-jwt-token"
       }
     }

@@ -43,7 +43,7 @@ Usage:
 Server flags:
   -transport string   Transport protocol: stdio (default), sse, http
   -addr string        Listen address for SSE/HTTP transports (default ":8080")
-  -api-url string     BookDB API base URL (env: BOOKDB_API_URL, default: http://localhost:8000)
+  -api-url string     BookDB API base URL (env: BOOKDB_API_URL, default: https://bookdb.up.railway.app)
   -api-key string     BookDB API JWT token (env: BOOKDB_API_KEY)
 
 Login flags:
@@ -59,7 +59,7 @@ Register flags:
   -api-url string     BookDB API base URL
 
 Environment variables:
-  BOOKDB_API_URL      API base URL (default: http://localhost:8000)
+  BOOKDB_API_URL      API base URL (default: https://bookdb.up.railway.app)
   BOOKDB_API_KEY      JWT token for authenticated endpoints
   MCP_TRANSPORT       Transport: stdio, sse, http (default: stdio)
   MCP_ADDR            Listen address for SSE/HTTP (default: :8080)
@@ -89,7 +89,7 @@ func runServer() {
 	// Resolve configuration: CLI flags > env vars > defaults.
 	transportMode := envOrFlag("MCP_TRANSPORT", *transportFlag, "stdio")
 	addr := envOrFlag("MCP_ADDR", *addrFlag, ":8080")
-	apiURL := envOrFlag("BOOKDB_API_URL", *apiURLFlag, "http://localhost:8000")
+	apiURL := envOrFlag("BOOKDB_API_URL", *apiURLFlag, "https://bookdb.up.railway.app")
 	apiKey := envOrFlag("BOOKDB_API_KEY", *apiKeyFlag, "")
 
 	// Build the API client.
@@ -127,7 +127,7 @@ func runLogin(args []string) {
 	apiURL := fs.String("api-url", "", "BookDB API base URL")
 	fs.Parse(args)
 
-	baseURL := envOrFlag("BOOKDB_API_URL", *apiURL, "http://localhost:8000")
+	baseURL := envOrFlag("BOOKDB_API_URL", *apiURL, "https://bookdb.up.railway.app")
 
 	if *email == "" {
 		*email = prompt("Email: ")
@@ -162,7 +162,7 @@ func runRegister(args []string) {
 	apiURL := fs.String("api-url", "", "BookDB API base URL")
 	fs.Parse(args)
 
-	baseURL := envOrFlag("BOOKDB_API_URL", *apiURL, "http://localhost:8000")
+	baseURL := envOrFlag("BOOKDB_API_URL", *apiURL, "https://bookdb.up.railway.app")
 
 	if *email == "" {
 		*email = prompt("Email: ")
