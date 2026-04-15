@@ -4,19 +4,31 @@
 
 <main class="min-h-screen bg-bg-primary">
 	<!-- Hero Section -->
-	<section class="min-h-screen flex items-center py-24">
-		<div class="w-full max-w-7xl mx-auto px-6">
-			<div class="grid lg:grid-cols-2 gap-12 items-center">
-				<div class="flex flex-col gap-6">
-					<div class="inline-flex items-center px-4 py-2 bg-accent-sage text-white text-xs font-semibold tracking-wider uppercase rounded-full w-fit">
-						MCP Server
+	<section class="min-h-screen flex items-center justify-center py-24 px-6">
+		<div class="w-full max-w-4xl mx-auto text-center">
+			<div class="flex flex-col items-center gap-6">
+				<div class="inline-flex items-center px-4 py-2 bg-accent-sage text-white text-xs font-semibold tracking-wider uppercase rounded-full">
+					MCP Server
+				</div>
+				<h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary leading-tight">
+					Connect Your Book Database to <span class="text-accent-sage italic">AI Assistants</span>
+				</h1>
+				<p class="text-lg text-text-secondary max-w-2xl leading-relaxed">
+					BookDB MCP Server enables semantic search, personalized recommendations, and collaborative filtering through the Model Context Protocol.
+				</p>
+				<div class="mt-4 w-full max-w-3xl">
+					<p class="text-sm text-text-secondary mb-2">Install with one command:</p>
+					<div class="bg-gray-800 rounded-xl p-4 flex items-center gap-3">
+						<code id="install-command" class="font-mono text-sm text-gray-200 overflow-x-auto flex-1 text-left">curl -fsSL https://raw.githubusercontent.com/yamirghofran/BookDB/main/mcp/install.sh | bash</code>
+						<button 
+							onclick="copyInstallCommand()" 
+							class="px-3 py-1.5 bg-accent-sage hover:bg-accent-sage/90 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="copy-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="check-icon hidden"><path d="M20 6 9 17l-5-5"/></svg>
+							<span class="copy-text">Copy</span>
+						</button>
 					</div>
-					<h1 class="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary leading-tight">
-						Connect Your Book Database to <span class="text-accent-sage italic">AI Assistants</span>
-					</h1>
-					<p class="text-lg text-text-secondary max-w-lg leading-relaxed">
-						BookDB MCP Server enables semantic search, personalized recommendations, and collaborative filtering through the Model Context Protocol.
-					</p>
 				</div>
 			</div>
 		</div>
@@ -130,3 +142,25 @@
 		</div>
 	</footer>
 </main>
+
+<script>
+	function copyInstallCommand() {
+		const command = document.getElementById('install-command').textContent;
+		navigator.clipboard.writeText(command).then(() => {
+			const button = document.querySelector('button[onclick="copyInstallCommand()"]');
+			const copyIcon = button.querySelector('.copy-icon');
+			const checkIcon = button.querySelector('.check-icon');
+			const copyText = button.querySelector('.copy-text');
+			
+			copyIcon.classList.add('hidden');
+			checkIcon.classList.remove('hidden');
+			copyText.textContent = 'Copied!';
+			
+			setTimeout(() => {
+				copyIcon.classList.remove('hidden');
+				checkIcon.classList.add('hidden');
+				copyText.textContent = 'Copy';
+			}, 2000);
+		});
+	}
+</script>
