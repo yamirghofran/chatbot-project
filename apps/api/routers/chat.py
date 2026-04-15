@@ -126,6 +126,12 @@ def _serialize_message(
     if ref_ids and books_by_id:
         ref_books = [books_by_id[bid] for bid in ref_ids if bid in books_by_id]
 
+    if comparison_data is not None:
+        comparison_data.setdefault("dimensions", [])
+        comparison_data.setdefault("verdict", "")
+        if "bookIds" not in comparison_data:
+            comparison_data["bookIds"] = comparison_data.pop("book_ids", ref_ids)
+
     primary_trace = tool_traces[0] if tool_traces else None
 
     result: dict[str, Any] = {

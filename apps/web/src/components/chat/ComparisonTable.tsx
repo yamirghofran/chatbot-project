@@ -7,10 +7,12 @@ export type ComparisonTableProps = {
 };
 
 export function ComparisonTable({ comparison, books = [] }: ComparisonTableProps) {
-  const bookCount = comparison.dimensions[0]?.values.length ?? 0;
+  const dimensions = comparison.dimensions ?? [];
+  const bookIds = comparison.bookIds ?? [];
+  const bookCount = dimensions[0]?.values.length ?? 0;
   if (bookCount === 0) return null;
 
-  const bookHeaders = comparison.bookIds.map((id, i) => {
+  const bookHeaders = bookIds.map((id, i) => {
     const book = books.find((b) => String(b.id) === String(id));
     return {
       id,
@@ -48,7 +50,7 @@ export function ComparisonTable({ comparison, books = [] }: ComparisonTableProps
           </tr>
         </thead>
         <tbody>
-          {comparison.dimensions.map((dim, i) => (
+          {dimensions.map((dim, i) => (
             <tr
               key={dim.name}
               className={cn(
@@ -59,7 +61,7 @@ export function ComparisonTable({ comparison, books = [] }: ComparisonTableProps
               <td className="px-3 py-2 font-medium text-muted-foreground align-top">
                 {dim.name}
               </td>
-              {dim.values.map((val, vi) => (
+              {(dim.values ?? []).map((val, vi) => (
                 <td key={vi} className="px-3 py-2 align-top">
                   {val}
                 </td>

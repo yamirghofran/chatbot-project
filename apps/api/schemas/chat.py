@@ -46,6 +46,7 @@ class ComparisonDimensionOut(BaseModel):
 class ComparisonOut(BaseModel):
     dimensions: list[ComparisonDimensionOut] = []
     verdict: str = ""
+    bookIds: list[int] = []
 
 
 class MessageOut(BaseModel):
