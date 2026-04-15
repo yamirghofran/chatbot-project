@@ -65,8 +65,11 @@ Environment variables:
   MCP_ADDR            Listen address for SSE/HTTP (default: :8080)
 
 Examples:
-  # Start MCP server for Claude Desktop (stdio)
-  BOOKDB_API_KEY=eyJ... bookdb-mcp
+  # Add to Claude Code (stores env vars in server config)
+  claude mcp add -s user \
+    -e BOOKDB_API_URL=https://bookdb.up.railway.app \
+    -e BOOKDB_API_KEY=eyJ... \
+    bookdb -- bookdb-mcp
 
   # Log in to get a token
   bookdb-mcp login -email user@example.com
