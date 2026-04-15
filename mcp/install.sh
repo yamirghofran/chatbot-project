@@ -221,8 +221,11 @@ print_setup_instructions() {
         echo ""
         echo "  claude mcp add -s user bookdb -- ${binary_path}"
         echo ""
-        echo "Or set the API URL and key:"
-        echo "  BOOKDB_API_URL=https://bookdb.up.railway.app BOOKDB_API_KEY=eyJ... claude mcp add -s user bookdb -- ${binary_path}"
+        echo "To set the API URL and key (persisted in server config):"
+        echo "  claude mcp add -s user \\"
+        echo "    -e BOOKDB_API_URL=https://bookdb.up.railway.app \\"
+        echo "    -e BOOKDB_API_KEY=eyJ... \\"
+        echo "    bookdb -- ${binary_path}"
         echo ""
     fi
 
@@ -282,8 +285,11 @@ print_setup_instructions() {
         echo ""
         echo "  codex mcp add bookdb -- ${binary_path}"
         echo ""
-        echo "Or set the API URL and key:"
-        echo "  BOOKDB_API_URL=https://bookdb.up.railway.app BOOKDB_API_KEY=eyJ... codex mcp add bookdb -- ${binary_path}"
+        echo "To set the API URL and key (persisted in server config):"
+        echo "  codex mcp add bookdb \\"
+        echo "    -e BOOKDB_API_URL=https://bookdb.up.railway.app \\"
+        echo "    -e BOOKDB_API_KEY=eyJ... \\"
+        echo "    -- ${binary_path}"
         echo ""
     fi
 
