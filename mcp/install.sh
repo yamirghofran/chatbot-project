@@ -205,7 +205,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
+        \"BOOKDB_API_URL\": \"https://bookdb.up.railway.app\",
         \"BOOKDB_API_KEY\": \"\"
       }
     }
@@ -243,7 +243,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
+        \"BOOKDB_API_URL\": \"https://bookdb.up.railway.app\",
         \"BOOKDB_API_KEY\": \"\"
       }
     }
@@ -300,7 +300,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
+        \"BOOKDB_API_URL\": \"https://bookdb.up.railway.app\",
         \"BOOKDB_API_KEY\": \"\"
       }
     }
@@ -354,8 +354,8 @@ main() {
         echo ""
     else
         check_path
-        print_setup_instructions
     fi
+    print_setup_instructions
 }
 
 main
