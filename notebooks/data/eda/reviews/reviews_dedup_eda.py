@@ -42,7 +42,8 @@ def _(mo):
 @app.cell
 def _(pl):
     import os
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(project_root, "data", "raw_goodreads_reviews_dedup.parquet")
     df = pl.read_parquet(data_path)
     df.head()
@@ -278,45 +279,9 @@ def _(df, pl):
 
 
 @app.cell
-def _(df, plt):
-    _fig, _axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    _rating_counts = df.group_by("rating").len().sort("rating")
-
-    # All ratings
-    _axes[0].bar(
-        _rating_counts["rating"].to_list(),
-        _rating_counts["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-    )
-    _axes[0].set_xlabel("Rating")
-    _axes[0].set_ylabel("Count")
-    _axes[0].set_title("Rating Distribution (0 = unrated)")
-    _axes[0].set_xticks([0, 1, 2, 3, 4, 5])
-
-    for _r, _c in zip(_rating_counts["rating"].to_list(), _rating_counts["len"].to_list()):
-        _axes[0].text(_r, _c, f"{_c/1e6:.2f}M", ha="center", va="bottom", fontsize=9)
-
-    # Excluding 0
-    _rated_only = _rating_counts.filter(_rating_counts["rating"] > 0)
-    _axes[1].bar(
-        _rated_only["rating"].to_list(),
-        _rated_only["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-        color="steelblue",
-    )
-    _axes[1].set_xlabel("Rating")
-    _axes[1].set_ylabel("Count")
-    _axes[1].set_title("Rating Distribution (Excluding Unrated)")
-    _axes[1].set_xticks([1, 2, 3, 4, 5])
-
-    for _r, _c in zip(_rated_only["rating"].to_list(), _rated_only["len"].to_list()):
-        _axes[1].text(_r, _c, f"{_c/1e6:.2f}M", ha="center", va="bottom", fontsize=9)
-
-    plt.tight_layout()
-    _fig
+def _(df):
+    from bookdb.eda.plots import plot_rating_distribution
+    plot_rating_distribution(df)
     return
 
 
@@ -460,27 +425,12 @@ def _(mo):
 
 
 @app.cell
-def _(df, np, pl, plt):
-    _df_text = df.with_columns([
-        pl.col("review_text").str.split(" ").list.len().alias("word_count"),
-    ])
-
-    _word_counts = _df_text["word_count"].to_numpy()
-
-    _fig, _axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    _axes[0].hist(np.clip(_word_counts, 0, 500), bins=100, edgecolor="black", alpha=0.7)
-    _axes[0].set_xlabel("Word Count (capped at 500)")
-    _axes[0].set_ylabel("Number of Reviews")
-    _axes[0].set_title("Review Length Distribution")
-
-    _axes[1].hist(np.log1p(_word_counts), bins=100, edgecolor="black", alpha=0.7, color="coral")
-    _axes[1].set_xlabel("Log(Word Count + 1)")
-    _axes[1].set_ylabel("Number of Reviews")
-    _axes[1].set_title("Review Length Distribution (Log Scale)")
-
-    plt.tight_layout()
-    _fig
+def _(df, pl):
+    from bookdb.eda.plots import plot_log_histogram
+    _word_counts = df.with_columns(
+        pl.col("review_text").str.split(" ").list.len().alias("word_count")
+    )["word_count"].to_numpy()
+    plot_log_histogram(_word_counts, cap=500, xlabel="Word Count", title="Review Length Distribution", color="coral")
     return
 
 
@@ -616,26 +566,17 @@ def _(df, mo, pl):
 
 
 @app.cell
-def _(df, np, plt):
+def _(df):
+    from bookdb.eda.plots import plot_log_histogram
     _votes = df["n_votes"].to_numpy()
-
-    _fig, _axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    _axes[0].hist(np.clip(_votes, 0, 50), bins=50, edgecolor="black", alpha=0.7)
-    _axes[0].set_xlabel("Number of Votes (capped at 50)")
-    _axes[0].set_ylabel("Number of Reviews")
-    _axes[0].set_title("Vote Distribution")
-    _axes[0].set_yscale("log")
-
     _votes_nonzero = _votes[_votes > 0]
-    if len(_votes_nonzero) > 0:
-        _axes[1].hist(np.log1p(_votes_nonzero), bins=50, edgecolor="black", alpha=0.7, color="green")
-        _axes[1].set_xlabel("Log(Votes + 1)")
-        _axes[1].set_ylabel("Number of Reviews")
-        _axes[1].set_title("Vote Distribution (Reviews with votes, Log)")
-
-    plt.tight_layout()
-    _fig
+    plot_log_histogram(
+        _votes_nonzero,
+        cap=50,
+        xlabel="Number of Votes",
+        title="Vote Distribution (Reviews with votes)",
+        color="green",
+    )
     return
 
 
@@ -702,10 +643,10 @@ def _(mo):
 def _(df, mo, pl):
     _reviews_per_user = df.group_by("user_id").len().rename({"len": "review_count"})
 
+    from bookdb.eda.stats import iqr_outlier_bounds
     _q1 = _reviews_per_user["review_count"].quantile(0.25)
     _q3 = _reviews_per_user["review_count"].quantile(0.75)
-    _iqr = _q3 - _q1
-    _upper_bound = _q3 + 1.5 * _iqr
+    _, _upper_bound = iqr_outlier_bounds(_reviews_per_user["review_count"], multiplier=1.5)
 
     _upper_outliers = _reviews_per_user.filter(pl.col("review_count") > _upper_bound)
 
@@ -760,10 +701,10 @@ def _(mo):
 def _(df, pl):
     _reviews_per_book = df.group_by("book_id").len().rename({"len": "review_count"})
 
+    from bookdb.eda.stats import iqr_outlier_bounds
     _q1 = _reviews_per_book["review_count"].quantile(0.25)
     _q3 = _reviews_per_book["review_count"].quantile(0.75)
-    _iqr = _q3 - _q1
-    _upper_bound = _q3 + 1.5 * _iqr
+    _, _upper_bound = iqr_outlier_bounds(_reviews_per_book["review_count"], multiplier=1.5)
 
     _upper_outliers = _reviews_per_book.filter(pl.col("review_count") > _upper_bound)
 
@@ -852,23 +793,22 @@ def _(mo):
 
 
 @app.cell
-def _(df, mo, mod, pl, plt, sns):
+def _(df, mo, pl):
+    from bookdb.eda.plots import plot_correlation_heatmap
     _numeric_df = df.select([
         pl.col("rating"),
         pl.col("n_votes"),
         pl.col("review_text").str.split(" ").list.len().alias("word_count"),
     ])
-
-    _corr_matrix = _numeric_df.to_pandas().corr()
-
-    _fig, _ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(_corr_matrix, annot=True, cmap="coolwarm", center=0,
-                fmt=".3f", square=True, ax=_ax)
-    _ax.set_title("Correlation Heatmap: Rating, Votes, Review Length")
+    _fig = plot_correlation_heatmap(
+        _numeric_df,
+        _numeric_df.columns,
+        title="Correlation Heatmap: Rating, Votes, Review Length",
+    )
 
     mo.vstack([
         _fig,
-        mod.md("Weak correlations.")
+        mo.md("Weak correlations."),
     ])
     return
 

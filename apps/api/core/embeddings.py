@@ -48,6 +48,7 @@ def most_similar_by_vector(
     client: QdrantClient,
     query_vector: list[float],
     top_k: int = 20,
+    exclude_ids: set[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Return top-k Qdrant hits for a query embedding vector.
 
@@ -56,11 +57,16 @@ def most_similar_by_vector(
       - payload: optional payload document/metadata
       - score: vector similarity score
     """
+    query_filter = None
+    if exclude_ids:
+        query_filter = Filter(must_not=[HasIdCondition(has_id=list(exclude_ids))])
+
     results = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
         with_payload=True,
         limit=top_k,
+        query_filter=query_filter,
     )
     points = getattr(results, "points", results)
     hits: list[dict[str, Any]] = []
@@ -74,3 +80,92 @@ def most_similar_by_vector(
             "score": float(getattr(hit, "score", 0.0) or 0.0),
         })
     return hits
+
+
+REVIEWS_COLLECTION_NAME = "reviews"
+
+
+def most_similar_reviews_by_vector(
+    client: QdrantClient,
+    query_vector: list[float],
+    top_k: int = 50,
+) -> list[dict[str, Any]]:
+    """Return review_id, book_id and score for top_k review hits.
+    """
+    results = client.query_points(
+        collection_name=REVIEWS_COLLECTION_NAME,
+        query=query_vector,
+        with_payload=True,
+        limit=top_k,
+    )
+    points = getattr(results, "points", results)
+    hits: list[dict[str, Any]] = []
+    for hit in points:
+        point_id = getattr(hit, "id", None)
+        if point_id is None:
+            continue
+        payload = getattr(hit, "payload", {}) or {}
+        book_id = payload.get("book_id")
+        if book_id is None:
+            continue
+        hits.append({
+            "review_id": point_id,
+            "book_id": int(book_id),
+            "score": float(getattr(hit, "score", 0.0) or 0.0),
+        })
+    return hits
+
+
+def get_book_scores_by_ids(
+    client: QdrantClient,
+    book_ids: set[int],
+    query_vector: list[float],
+) -> dict[int, float]:
+    """Get similarity scores for specific book IDs using Qdrant search.
+    """
+    if not book_ids:
+        return {}
+
+    results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_vector,
+        query_filter=Filter(must=[HasIdCondition(has_id=list(book_ids))]),
+        limit=len(book_ids),
+        with_payload=False,
+    )
+
+    points = getattr(results, "points", results)
+    scores: dict[int, float] = {}
+    for hit in points:
+        point_id = getattr(hit, "id", None)
+        if point_id is None:
+            continue
+        scores[int(point_id)] = float(getattr(hit, "score", 0.0) or 0.0)
+
+    return scores
+
+def get_vectors_by_ids(
+    client: QdrantClient,
+    ids: list[int],
+) -> dict[int, list[float]]:
+    """Fetch embedding vectors for a list of goodreads_ids from Qdrant.
+
+    Returns a dict mapping goodreads_id -> vector. IDs not found in the
+    collection are silently omitted.
+    """
+    if not ids:
+        return {}
+    records = client.retrieve(
+        collection_name=COLLECTION_NAME,
+        ids=ids,
+        with_payload=False,
+        with_vectors=True,
+    )
+    result: dict[int, list[float]] = {}
+    for record in records:
+        vector = record.vector
+        if isinstance(vector, dict):
+            vector = next(iter(vector.values()), None)
+        if vector is not None:
+            result[int(record.id)] = vector
+    return result

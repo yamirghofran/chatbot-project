@@ -199,10 +199,10 @@ class BookVectorCRUD(BaseVectorCRUD):
             data = response.json()
             query_embedding = data["embeddings"][0]
 
-        # Search Qdrant
-        search_results = self.client.search(
+        # Search Qdrant 
+        response = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=n_results,
             with_payload=True,
             with_vectors=False,
@@ -210,12 +210,12 @@ class BookVectorCRUD(BaseVectorCRUD):
 
         # Map results to expected format
         results = []
-        for hit in search_results:
+        for hit in response.points:
             results.append(
                 {
                     "book_id": hit.id,
-                    "similarity_score": hit.score,  # similarity score
-                    "distance": 1.0 - hit.score,  # convert similarity to distance
+                    "similarity_score": hit.score,
+                    "distance": 1.0 - hit.score,
                     "document": hit.payload.get("document"),
                 }
             )

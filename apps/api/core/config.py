@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, EnvSettingsSource, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
@@ -23,7 +28,9 @@ class _ExcludedCorsEnvSettingsSource(EnvSettingsSource):
             return None, field_name, False
         return super().get_field_value(field, field_name)
 
-    def _get_resolved_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+    def _get_resolved_field_value(
+        self, field: Any, field_name: str
+    ) -> tuple[Any, str, bool]:
         if field_name == "CORS_ORIGINS":
             return None, field_name, False
         return super()._get_resolved_field_value(field, field_name)
@@ -65,8 +72,35 @@ class Settings(BaseSettings):
     CHATBOT_TOP_K: int = Field(default=20, ge=1, le=100)
     CHATBOT_MAX_REVIEWS: int = Field(default=30, ge=0, le=200)
     CHATBOT_MAX_BOOKS: int = Field(default=6, ge=1, le=20)
+    CHATBOT_REVIEWS_TOP_K: int = Field(default=50, ge=1, le=200)
+    RERANK_WEIGHT_BOOK: float = Field(default=1.0, ge=0)
+    RERANK_WEIGHT_REVIEW_MAX: float = Field(default=0.15, ge=0)
+    RERANK_WEIGHT_REVIEW_TOP2_MEAN: float = Field(default=0.10, ge=0)
     BPR_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
-    BOOK_METRICS_PARQUET_URL: str | None = None  # Local path or remote URL (http/https/s3/gs/az)
+    BOOK_METRICS_PARQUET_URL: str | None = (
+        None  # Local path or remote URL (http/https/s3/gs/az)
+    )
+
+    # MCP recommendation server
+    MCP_RECOMMENDATION_URL: str | None = None
+    MCP_RECOMMENDATION_TIMEOUT: float = Field(default=10.0, gt=0)
+
+    # Chat orchestrator settings
+    CHAT_MAX_HISTORY_MESSAGES: int = Field(default=10, ge=1, le=50)
+    CHAT_MAX_MESSAGE_LENGTH: int = Field(default=2000, ge=1, le=10000)
+
+    # Entity extraction settings
+    ENTITY_EXTRACTION_ENABLED: bool = Field(default=True)
+    ENTITY_EXTRACTION_MODEL: str = Field(
+        default=os.environ.get(
+            "DEFAULT_QUERY_REWRITER_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+        )
+    )
+    ENTITY_SIMILARITY_THRESHOLD: float = Field(default=0.3, ge=0.0, le=1.0)
+    ENTITY_CONFIDENCE_THRESHOLD: float = Field(default=0.7, ge=0.0, le=1.0)
+    ENTITY_MAX_BOOKS_PER_QUERY: int = Field(default=2, ge=1, le=5)
+    ENTITY_MAX_AUTHORS_PER_QUERY: int = Field(default=2, ge=1, le=5)
+    ENTITY_CACHE_TTL: int = Field(default=3600, ge=0)  # 1 hour default
 
     @classmethod
     def settings_customise_sources(
@@ -105,7 +139,7 @@ class Settings(BaseSettings):
         for origin in value:
             if not isinstance(origin, str):
                 raise ValueError("CORS_ORIGINS entries must be strings.")
-            cleaned = origin.strip().strip('[]"\'').rstrip("/")
+            cleaned = origin.strip().strip("[]\"'").rstrip("/")
             if cleaned:
                 normalized.append(cleaned)
 

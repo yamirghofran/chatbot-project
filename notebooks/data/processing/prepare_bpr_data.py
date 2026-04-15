@@ -38,9 +38,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(
         project_root, "data", "3_goodreads_interactions_reduced.parquet"
     )
@@ -79,42 +78,8 @@ def _(mo):
 
 
 @app.cell
-def _(pl):
-    def calculate_weight(df):
-        """
-        Calculate confidence weight for user-book interactions.
-
-        Higher weight = stronger signal the user liked this book.
-
-        Formula:
-            weight = 1.0 (base interaction)
-                   + 2.0 * is_read
-                   + (rating - 1) if rating exists, else 0
-                   + 3.0 * is_reviewed
-        """
-        return df.with_columns(
-            [
-                # rating contribution: (rating - 1) for 1-5 scale, or 0 if no rating
-                pl.when(pl.col("rating") > 0)
-                .then(pl.col("rating") - 1)
-                .otherwise(0.0)
-                .alias("rating_contrib"),
-            ]
-        ).with_columns(
-            (
-                # Base interaction (viewed/clicked) - weak signal
-                1.0
-                # Actually read it - strong engagement signal
-                + 2.0 * pl.col("is_read").cast(pl.Float32)
-                # Rating - explicit preference signal (0-4 contribution)
-                + pl.col("rating_contrib")
-                # Wrote a review - highest engagement
-                + 3.0 * pl.col("is_reviewed").cast(pl.Float32)
-            )
-            .cast(pl.Float32)  # Downcast to 32-bit to save space
-            .alias("weight")
-        ).drop(["rating_contrib"])  # Clean up intermediate cols
-
+def _():
+    from bookdb.processing.interactions import calculate_weight_bpr as calculate_weight
     return (calculate_weight,)
 
 

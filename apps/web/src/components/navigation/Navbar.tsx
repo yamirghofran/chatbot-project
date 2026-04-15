@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { MessageSquare } from "lucide-react";
 import type { User } from "@/lib/types";
 import { SearchBar } from "@/components/search/SearchBar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -55,6 +56,13 @@ export function Navbar({
               </div>
             )}
             <div className="flex items-center gap-2">
+              <Link
+                to="/chat"
+                aria-label="Chat assistant"
+                className="inline-flex items-center justify-center size-9 rounded-full hover:bg-accent transition-colors"
+              >
+                <MessageSquare className="size-5 text-muted-foreground" />
+              </Link>
               {user ? (
                 <Link
                   to="/user/$username"

@@ -2,24 +2,41 @@ from __future__ import annotations
 
 import math
 import threading
+from collections import defaultdict
 from typing import Any
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-import requests
 from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from bookdb.db.crud import ReviewCRUD
-from bookdb.db.models import Author, Book, BookAuthor, BookRating, Review, ReviewComment, ReviewLike, User
-from bookdb.models.chatbot_llm import create_groq_client_sync, generate_response_sync, rewrite_query_sync
+from bookdb.db.models import (
+    Author,
+    Book,
+    BookAuthor,
+    BookRating,
+    Review,
+    ReviewComment,
+    ReviewLike,
+    User,
+)
+from bookdb.models.chatbot_llm import (
+    create_groq_client_sync,
+    generate_response_sync,
+)
 
 from ..core.book_engagement import build_book_engagement_map
 from ..core.book_metrics import get_metrics_for_goodreads_ids
-from ..core.book_queries import BOOK_LOAD_OPTIONS, load_books_by_ids, load_books_by_goodreads_ids, serialize_books_with_engagement
+from ..core.book_queries import (
+    BOOK_LOAD_OPTIONS,
+    load_books_by_ids,
+    load_books_by_goodreads_ids,
+    serialize_books_with_engagement,
+)
 from ..core.config import settings
 from ..core.deps import get_current_user, get_db, get_optional_user
-from ..core.embeddings import most_similar, most_similar_by_vector
+from ..core.embeddings import most_similar
 from ..core.serialize import serialize_book, serialize_review
 from ..schemas.review import CreateReviewRequest
 
@@ -28,6 +45,11 @@ router = APIRouter(prefix="/books", tags=["books"])
 _qdrant_cache: TTLCache = TTLCache(maxsize=500, ttl=1800)
 _qdrant_failure_cache: TTLCache = TTLCache(maxsize=500, ttl=60)
 _qdrant_lock = threading.Lock()
+
+# Configuration for book diversification
+_MAX_BOOKS_PER_AUTHOR = 2
+# When requesting similar books, fetch this multiple of candidates to apply diversification
+_CANDIDATE_MULTIPLIER = 3
 
 
 def _empty_search_response() -> dict[str, Any]:
@@ -39,7 +61,9 @@ def _empty_search_response() -> dict[str, Any]:
     }
 
 
-def _search_response_from_ranked_books(db: Session, books: list[Book]) -> dict[str, Any]:
+def _search_response_from_ranked_books(
+    db: Session, books: list[Book]
+) -> dict[str, Any]:
     serialized = serialize_books_with_engagement(db, books)
     return {
         "directHit": serialized[0] if serialized else None,
@@ -49,75 +73,44 @@ def _search_response_from_ranked_books(db: Session, books: list[Book]) -> dict[s
     }
 
 
-def _book_author_names(book: Book) -> str:
-    names = [ba.author.name for ba in book.authors if ba.author]
-    return ", ".join(names) if names else "Unknown"
+def _diversify_books_by_author(
+    books: list[Book], limit: int, max_per_author: int = _MAX_BOOKS_PER_AUTHOR
+) -> list[Book]:
+    """Diversify books by limiting the number of books from the same author.
 
+    Args:
+        books: List of books to diversify (ordered by relevance/similarity)
+        limit: Maximum number of books to return
+        max_per_author: Maximum number of books to include per author
 
-def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
-    metadata = payload.get("metadata")
-    metadata = metadata if isinstance(metadata, dict) else {}
-    document = payload.get("document")
-    document = document.strip() if isinstance(document, str) else ""
-    tags = [bt.tag.name for bt in book.tags if bt.tag]
-
-    title = str(metadata.get("title") or book.title)
-    author = str(metadata.get("author") or _book_author_names(book))
-    shelves = str(metadata.get("shelves") or ", ".join(tags[:5]) or "unspecified")
-    description = document or (book.description or "")
-    description = description.strip() or "No description available."
-
-    return (
-        f"TITLE: {title}\n"
-        f"AUTHOR: {author}\n"
-        f"SHELVES: {shelves}\n"
-        f"DESCRIPTION: {description}\n"
-    )
-
-
-def _embed_text_via_service(text: str) -> list[float]:
-    service_url = settings.EMBEDDING_SERVICE_URL
-    if not service_url:
+    Returns:
+        Diversified list of books with at most max_per_author books per author
+    """
+    if not books or limit <= 0:
         return []
 
-    endpoint = service_url.rstrip("/") + "/embed"
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    if settings.EMBEDDING_SERVICE_API_KEY:
-        headers["Authorization"] = f"Bearer {settings.EMBEDDING_SERVICE_API_KEY}"
+    # Track how many books we've included per author
+    author_count: dict[int, int] = defaultdict(int)
 
-    body = {
-        "texts": [text],
-        "model": settings.EMBEDDING_SERVICE_MODEL,
-        "normalize_embeddings": True,
-    }
+    diversified: list[Book] = []
+    for book in books:
+        # Get all author IDs for this book
+        author_ids = {ba.author_id for ba in book.authors if ba.author_id is not None}
 
-    try:
-        response = requests.post(
-            endpoint,
-            json=body,
-            headers=headers,
-            timeout=settings.EMBEDDING_SERVICE_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        print(f"Embedding request failed: {e}")
-        return []
+        # Check if we've already included too many books from these authors
+        if any(author_count[author_id] >= max_per_author for author_id in author_ids):
+            continue
 
-    embeddings = data.get("embeddings")
-    if not isinstance(embeddings, list) or not embeddings:
-        return []
-    first = embeddings[0]
-    if not isinstance(first, list) or not first:
-        return []
+        # Include this book
+        diversified.append(book)
+        for author_id in author_ids:
+            author_count[author_id] += 1
 
-    vector: list[float] = []
-    for value in first:
-        try:
-            vector.append(float(value))
-        except (TypeError, ValueError):
-            return []
-    return vector
+        # Stop if we've reached the limit
+        if len(diversified) >= limit:
+            break
+
+    return diversified
 
 
 def _run_chatbot_search_pipeline(
@@ -126,107 +119,31 @@ def _run_chatbot_search_pipeline(
     request: Request | None,
     db: Session,
 ) -> tuple[str | None, list[dict[str, Any]]]:
+    from ..core.chat_tools import tool_search_books
+
     qdrant = getattr(request.app.state, "qdrant", None) if request is not None else None
-    if qdrant is None:
+    sentiments_df = getattr(request.app.state, "book_sentiments_df", None) if request is not None else None
+    result = tool_search_books(query, db=db, qdrant=qdrant, groq_client=create_groq_client_sync(), sentiments_df=sentiments_df)
+
+    if not result["success"] or not result["books"]:
         return None, []
+
+    # For the search endpoint, we still generate a narrative via the old
+    # generate_response_sync path so behaviour is unchanged.
+    llm_context_books = result["data"].get("llm_context_books", [])
+    reviews = result["data"].get("reviews", [])
+    if not llm_context_books:
+        return None, result["books"]
 
     try:
         groq_client = create_groq_client_sync()
-        rewritten_description, rewritten_review = rewrite_query_sync(groq_client, query)
-    except Exception as e:
-        print(f"Query rewrite failed: {e}")
-        return None, []
-
-    rewritten_text = "\n\n".join(
-        part.strip() for part in [rewritten_description, rewritten_review] if part and part.strip()
-    )
-    if not rewritten_text:
-        return None, []
-
-    query_embedding = _embed_text_via_service(rewritten_text)
-    if not query_embedding:
-        return None, []
-
-    try:
-        qdrant_hits = most_similar_by_vector(
-            qdrant,
-            query_embedding,
-            top_k=settings.CHATBOT_TOP_K,
-        )
-    except Exception as e:
-        print(f"Qdrant vector search failed: {e}")
-        return None, []
-
-    if not qdrant_hits:
-        return None, []
-
-    goodreads_ids: list[int] = []
-    for hit in qdrant_hits:
-        try:
-            goodreads_ids.append(int(hit["id"]))
-        except (KeyError, TypeError, ValueError):
-            continue
-    if not goodreads_ids:
-        return None, []
-
-    qdrant_books = load_books_by_goodreads_ids(db, goodreads_ids)
-    if not qdrant_books:
-        return None, []
-
-    books_by_goodreads_id = {int(book.goodreads_id): book for book in qdrant_books}
-    ranked_books: list[Book] = []
-    llm_books: list[dict[str, Any]] = []
-
-    for hit in qdrant_hits:
-        try:
-            gid = int(hit["id"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        book = books_by_goodreads_id.get(gid)
-        if book is None:
-            continue
-        ranked_books.append(book)
-        llm_books.append({
-            "book_id": int(book.id),
-            "description": _payload_to_book_context(book, hit.get("payload", {})),
-        })
-
-    if not ranked_books:
-        return None, []
-
-    ranked_book_ids = [book.id for book in ranked_books]
-    reviews: list[dict[str, Any]] = []
-    if settings.CHATBOT_MAX_REVIEWS > 0:
-        review_rows = db.execute(
-            select(
-                Review.id,
-                Review.review_text,
-                Book.title.label("book_title"),
-            )
-            .join(Book, Book.id == Review.book_id)
-            .where(Review.book_id.in_(ranked_book_ids))
-            .order_by(Review.created_at.desc())
-            .limit(settings.CHATBOT_MAX_REVIEWS)
-        ).all()
-        reviews = [
-            {
-                "review_id": int(row.id),
-                "book_title": str(row.book_title or ""),
-                "review": str(row.review_text or ""),
-            }
-            for row in review_rows
-        ]
-
-    try:
-        llm_response = generate_response_sync(groq_client, query, llm_books, reviews)
+        llm_response = generate_response_sync(groq_client, query, llm_context_books, reviews)
     except Exception as e:
         print(f"Chatbot response generation failed: {e}")
-        llm_response = {
-            "response": "",
-            "referenced_book_ids": [],
-        }
+        llm_response = {"response": "", "referenced_book_ids": []}
 
     ai_narrative = str(llm_response.get("response", "")).strip() or None
+
     referenced_ids: list[int] = []
     for raw_id in llm_response.get("referenced_book_ids", []):
         try:
@@ -234,39 +151,38 @@ def _run_chatbot_search_pipeline(
         except (TypeError, ValueError):
             continue
 
+    # Reorder books to match LLM references when possible
     max_books = settings.CHATBOT_MAX_BOOKS
-    ai_books: list[Book] = []
-    ranked_ids = {book.id for book in ranked_books}
-
+    all_books = result["books"]
     if referenced_ids:
-        ordered_referenced_ids: list[int] = []
-        seen_ids: set[int] = set()
+        books_by_id = {int(b["id"]): b for b in all_books}
+        ordered = []
+        seen: set[int] = set()
         for rid in referenced_ids:
-            if rid in ranked_ids and rid not in seen_ids:
-                ordered_referenced_ids.append(rid)
-                seen_ids.add(rid)
+            if rid in books_by_id and rid not in seen:
+                ordered.append(books_by_id[rid])
+                seen.add(rid)
+        if not ordered:
+            ordered = all_books[:max_books]
+        return ai_narrative, ordered[:max_books]
 
-        ai_books = load_books_by_ids(db, ordered_referenced_ids[:max_books])
-    if not ai_books:
-        ai_books = ranked_books[:max_books]
-
-    return ai_narrative, serialize_books_with_engagement(db, ai_books)
+    return ai_narrative, all_books[:max_books]
 
 
 def _load_book(db: Session, book_id: int) -> Book:
-    book = db.scalar(
-        select(Book)
-        .where(Book.id == book_id)
-        .options(*BOOK_LOAD_OPTIONS)
-    )
+    book = db.scalar(select(Book).where(Book.id == book_id).options(*BOOK_LOAD_OPTIONS))
     if book is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Book not found"
+        )
     return book
 
 
 def _check_book_exists(db: Session, book_id: int) -> None:
     if db.scalar(select(Book.id).where(Book.id == book_id).limit(1)) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Book not found"
+        )
 
 
 @router.get("/search")
@@ -350,12 +266,18 @@ def search_books(
     candidate_ids = [int(row.id) for row in rows]
     metrics_parquet_path: str | None = None
     if request is not None:
-        metrics_parquet_path = getattr(request.app.state, "book_metrics_parquet_path", None)
+        metrics_parquet_path = getattr(
+            request.app.state, "book_metrics_parquet_path", None
+        )
     popularity_by_goodreads_id: dict[int, int] = {}
 
     if metrics_parquet_path is not None:
-        goodreads_ids = [int(row.goodreads_id) for row in rows if row.goodreads_id is not None]
-        metrics_by_id = get_metrics_for_goodreads_ids(metrics_parquet_path, goodreads_ids)
+        goodreads_ids = [
+            int(row.goodreads_id) for row in rows if row.goodreads_id is not None
+        ]
+        metrics_by_id = get_metrics_for_goodreads_ids(
+            metrics_parquet_path, goodreads_ids
+        )
         popularity_by_goodreads_id = {
             gid: int(metrics.get("num_ratings", 0) or 0)
             for gid, metrics in metrics_by_id.items()
@@ -369,7 +291,9 @@ def search_books(
             .where(BookRating.book_id.in_(candidate_ids))
             .group_by(BookRating.book_id)
         ).all()
-        rating_count_by_book_id = {int(row.book_id): int(row.rating_count or 0) for row in rating_rows}
+        rating_count_by_book_id = {
+            int(row.book_id): int(row.rating_count or 0) for row in rating_rows
+        }
         popularity_by_goodreads_id = {
             int(row.goodreads_id): rating_count_by_book_id.get(int(row.id), 0)
             for row in rows
@@ -378,8 +302,14 @@ def search_books(
 
     scored = []
     for row in rows:
-        popularity = popularity_by_goodreads_id.get(int(row.goodreads_id), 0) if row.goodreads_id is not None else 0
-        combined_score = float(row.rank_score or 0) + math.log(max(popularity, 1)) * 50.0
+        popularity = (
+            popularity_by_goodreads_id.get(int(row.goodreads_id), 0)
+            if row.goodreads_id is not None
+            else 0
+        )
+        combined_score = (
+            float(row.rank_score or 0) + math.log(max(popularity, 1)) * 50.0
+        )
         scored.append((combined_score, int(row.title_len or 0), int(row.id)))
 
     scored.sort(key=lambda x: (-x[0], x[1], x[2]))
@@ -411,9 +341,12 @@ def get_book_reviews(
     current_user: User | None = Depends(get_optional_user),
 ):
     _check_book_exists(db, book_id)
-    total: int = db.scalar(
-        select(func.count()).select_from(Review).where(Review.book_id == book_id)
-    ) or 0
+    total: int = (
+        db.scalar(
+            select(func.count()).select_from(Review).where(Review.book_id == book_id)
+        )
+        or 0
+    )
     uid = current_user.id if current_user else None
 
     # Own review always surfaces at the top of page 0 so the user always sees it.
@@ -456,7 +389,9 @@ def get_book_reviews(
             .subquery()
         )
         stmt = stmt.add_columns(
-            case((my_likes_sq.c.review_id.is_not(None), 1), else_=0).label("is_liked_by_me")
+            case((my_likes_sq.c.review_id.is_not(None), 1), else_=0).label(
+                "is_liked_by_me"
+            )
         ).outerjoin(my_likes_sq, my_likes_sq.c.review_id == Review.id)
     else:
         stmt = stmt.add_columns(literal(0).label("is_liked_by_me"))
@@ -501,7 +436,6 @@ def post_book_review(
     )
     return serialize_review(review, current_user.id)
 
-
 # TODO: improve related books retrieval
 #   Happy path (Qdrant available):
 #   1. Fetch Book.goodreads_id from Postgres for the requested book_id
@@ -519,9 +453,13 @@ def get_related_books(
     request: Request = None,
     db: Session = Depends(get_db),
 ):
-    row = db.execute(select(Book.id, Book.goodreads_id).where(Book.id == book_id)).first()
+    row = db.execute(
+        select(Book.id, Book.goodreads_id).where(Book.id == book_id)
+    ).first()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Book not found"
+        )
     goodreads_id = row.goodreads_id
 
     qdrant = getattr(request.app.state, "qdrant", None)
@@ -531,27 +469,50 @@ def get_related_books(
             cached_ids = _qdrant_cache.get(goodreads_id)
             recent_failure = _qdrant_failure_cache.get(goodreads_id, False)
 
-        if cached_ids is not None:
-            related = load_books_by_goodreads_ids(db, cached_ids)
-            return serialize_books_with_engagement(db, related)
-
+        # Skip cached results - they don't have diversification applied
+        # Let them naturally expire (30 min TTL)
         if recent_failure:
             qdrant = None
 
         try:
             if qdrant is not None:
-                similar_goodreads_ids = most_similar(qdrant, goodreads_id, top_k=limit)
+                # Fetch more candidates to apply diversification
+                candidate_top_k = min(limit * _CANDIDATE_MULTIPLIER, 100)
+                similar_goodreads_ids = most_similar(
+                    qdrant, goodreads_id, top_k=candidate_top_k
+                )
                 if similar_goodreads_ids:
+                    # Cache the larger candidate set (not the diversified final result)
+                    # This allows us to diversify differently if limits change, while still
+                    # reducing Qdrant load
                     with _qdrant_lock:
                         _qdrant_cache[goodreads_id] = similar_goodreads_ids
-                    related = load_books_by_goodreads_ids(db, similar_goodreads_ids)
-                    return serialize_books_with_engagement(db, related)
+
+                    # Load all candidate books with author information
+                    candidates = load_books_by_goodreads_ids(db, similar_goodreads_ids)
+
+                    # Apply author diversification
+                    diversified = _diversify_books_by_author(
+                        candidates, limit, max_per_author=_MAX_BOOKS_PER_AUTHOR
+                    )
+
+                    # If we couldn't get enough diversified books, fill in with more from the original list
+                    if len(diversified) < limit and len(candidates) > len(diversified):
+                        # Find books not already in the diversified list
+                        seen_ids = {book.id for book in diversified}
+                        for book in candidates:
+                            if len(diversified) >= limit:
+                                break
+                            if book.id not in seen_ids:
+                                diversified.append(book)
+
+                    return serialize_books_with_engagement(db, diversified[:limit])
         except Exception as e:
             with _qdrant_lock:
                 _qdrant_failure_cache[goodreads_id] = True
             print(f"Qdrant recommend failed for book {book_id}: {e}")
 
-    # Fallback: popular books.
+    # Fallback: popular books (diversified by author)
     fallback = db.scalars(
         select(Book)
         .outerjoin(BookRating, Book.id == BookRating.book_id)
@@ -559,6 +520,10 @@ def get_related_books(
         .group_by(Book.id)
         .order_by(func.count(BookRating.user_id).desc(), Book.id.asc())
         .options(*BOOK_LOAD_OPTIONS)
-        .limit(limit)
+        .limit(limit * _CANDIDATE_MULTIPLIER)  # Fetch more candidates
     ).all()
-    return serialize_books_with_engagement(db, fallback)
+    fallback_list = fallback
+    diversified_fallback = _diversify_books_by_author(
+        fallback_list, limit, max_per_author=_MAX_BOOKS_PER_AUTHOR
+    )
+    return serialize_books_with_engagement(db, diversified_fallback)

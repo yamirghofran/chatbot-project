@@ -28,9 +28,10 @@ def _(mo):
 @app.cell
 def _(pl):
     import os
+    from bookdb.utils.paths import find_project_root
 
     # Use absolute path from project root
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    project_root = find_project_root()
     data_path = os.path.join(project_root, "data", "raw_goodreads_book_works.parquet")
     df = pl.read_parquet(data_path)
 
@@ -107,7 +108,7 @@ def _(df, mo):
             mo.md(f"{missing_month_pct:.1f}% of works missing publication month"),
             mo.md(f"{missing_day_pct:.1f}% of works missing publication day"),
             mo.md("### Missing values per column:"),
-            null_counts,
+            mo.ui.table(__import__('polars').from_dicts([null_counts])),
             mo.md(r"""
         Original publication dates have a lot of missing values, will need imputation or filtering strategies
         """),
@@ -271,11 +272,8 @@ def _(df, mo, np, plt):
 @app.cell
 def _(df, mo, pl):
     """Outlier Analysis"""
-    # Calculate IQR for ratings_count
-    q1 = df["ratings_count"].quantile(0.25)
-    q3 = df["ratings_count"].quantile(0.75)
-    iqr = q3 - q1
-    upper_bound = q3 + 3 * iqr
+    from bookdb.eda.stats import iqr_outlier_bounds
+    _, upper_bound = iqr_outlier_bounds(df["ratings_count"], multiplier=3.0)
 
     outliers_count = df.filter(pl.col("ratings_count") > upper_bound).shape[0]
 
@@ -354,28 +352,15 @@ def _(df, mo, pl):
 
 
 @app.cell
-def _(df, mo, plt, sns):
+def _(df, mo):
     """Correlation Analysis"""
-    # Convert to pandas for correlation heatmap
-    numeric_df = df.select(
-        [
-            "books_count",
-            "reviews_count",
-            "text_reviews_count",
-            "ratings_count",
-            "ratings_sum",
-        ]
-    ).to_pandas()
-
-    correlation = numeric_df.corr(method="pearson")
-
-    fig_corr, ax_corr = plt.subplots(figsize=(10, 8))
-    sns.heatmap(
-        correlation, annot=True, cmap="coolwarm", center=0, fmt=".3f", ax=ax_corr
+    from bookdb.eda.plots import plot_correlation_heatmap
+    fig_corr = plot_correlation_heatmap(
+        df,
+        ["books_count", "reviews_count", "text_reviews_count", "ratings_count", "ratings_sum"],
+        title="Correlation Matrix",
+        figsize=(10, 8),
     )
-    ax_corr.set_title("Correlation Matrix")
-    plt.tight_layout()
-
     mo.vstack(
         [
             fig_corr,

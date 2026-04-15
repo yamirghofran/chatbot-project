@@ -16,9 +16,8 @@ def _():
 
 @app.cell
 def _(mo, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    )
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     data_path = os.path.join(project_root, "data", "raw_goodreads_books.parquet")
     df = pl.read_parquet(data_path)
 
@@ -166,17 +165,11 @@ def _(df_cleaned, mo, os, pl, project_root):
     )
 
     # Map similar_books list
-    def map_similar_books(book_ids_list):
-        """Map list of book ID strings to CSV integers, removing unmapped IDs"""
-        mapped_ids = []
-        for bid in book_ids_list:
-            if bid in book_id_lookup:
-                mapped_ids.append(book_id_lookup[bid])
-        return mapped_ids
+    from bookdb.processing.book_ids import map_similar_books
 
     df_mapped = df_mapped.with_columns(
         pl.col("similar_books")
-        .map_elements(map_similar_books, return_dtype=pl.List(pl.Int64))
+        .map_elements(lambda ids: map_similar_books(ids, book_id_lookup), return_dtype=pl.List(pl.Int64))
         .alias("similar_books")
     )
 

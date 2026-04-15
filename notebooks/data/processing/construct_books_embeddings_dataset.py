@@ -16,9 +16,8 @@ def _():
 
 @app.cell
 def _(duckdb, os, pl):
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
+    from bookdb.utils.paths import find_project_root
+    project_root = find_project_root()
     book_texts = os.path.join(project_root, "data", "books_embedding_texts.parquet")
     book_embeddings = os.path.join(
         project_root, "data", "books_finetuned_embeddings.parquet"

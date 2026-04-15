@@ -7,7 +7,9 @@ from typing import Any, Optional
 
 # QUERY REWRITING TO BOOK DESCRIPTIONS AND REVIEWS
 
-DEFAULT_QUERY_REWRITER_MODEL = os.environ.get("DEFAULT_QUERY_REWRITER_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+DEFAULT_QUERY_REWRITER_MODEL = os.environ.get(
+    "DEFAULT_QUERY_REWRITER_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+)
 
 _STRICT_STRUCTURED_OUTPUT_MODELS = {
     "openai/gpt-oss-20b",
@@ -18,6 +20,26 @@ _STRUCTURED_OUTPUT_RETRIES = int(os.environ.get("STRUCTURED_OUTPUT_RETRIES", "2"
 BOOK_DESCRIPTION_PROMPT = """You're a prompt re-writer. Your job is to rewrite \
  user's queries to look like a book description. Make up the title, author, shelves, \
  and description that would fit best the user's query."""
+
+BOOK_DESCRIPTION_WITH_CONTEXT_PROMPT = """You're a prompt re-writer. Your job is to rewrite \
+ user's queries to look like a book description.
+
+You have been provided with context about books/authors the user mentioned. Analyze these:
+- What themes/genres do they represent?
+- What writing style/tone do they have?
+- What makes them compelling to readers?
+
+Create a NEW book description that captures the essence of what the user likes about these books,
+WITHOUT directly copying them. The description should represent a SIMILAR but DIFFERENT book
+that would appeal to someone who enjoyed the mentioned books.
+
+The description should include:
+- A compelling title and author (invented, not from the context)
+- Genre/shelves that match the themes
+- A description that captures similar mood, style, or themes
+
+{entity_context}
+"""
 
 BOOK_REVIEW_PROMPT = """You're a prompt re-writer. Your job is to rewrite user's queries \
  to look like a book review. Make up a human review that would fit best the user's query, \
@@ -165,7 +187,31 @@ def _create_structured_completion_with_retries_sync(
             time.sleep(0.2 * (attempt + 1))
 
 
-async def _rewrite_description(client: AsyncGroq, query: str) -> str:
+async def _rewrite_description(
+    client: AsyncGroq, query: str, entity_context: Optional[str] = None
+) -> str:
+    """Rewrite user query to book description, optionally using entity context.
+
+    Args:
+        client: Groq async client
+        query: User's original query
+        entity_context: Optional context string with recognized books/authors
+
+    Returns:
+        Formatted book description string
+    """
+    # Choose prompt based on whether we have entity context
+    prompt = (
+        BOOK_DESCRIPTION_WITH_CONTEXT_PROMPT
+        if entity_context
+        else BOOK_DESCRIPTION_PROMPT
+    )
+
+    # Build system message
+    system_content = prompt
+    if entity_context:
+        system_content = system_content.format(entity_context=entity_context)
+
     response_format = _json_schema_with_strict_mode(
         name="book_description",
         model=DEFAULT_QUERY_REWRITER_MODEL,
@@ -175,8 +221,11 @@ async def _rewrite_description(client: AsyncGroq, query: str) -> str:
         client,
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
-            {"role": "system", "content": BOOK_DESCRIPTION_PROMPT},
-            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###",
+            },
         ],
         temperature=1,
         max_completion_tokens=int(os.environ.get("MAX_DESCRIPTION_TOKENS", 1024)),
@@ -189,7 +238,9 @@ async def _rewrite_description(client: AsyncGroq, query: str) -> str:
     author = data.get("author")
     shelves = data.get("shelves")
     description = data.get("description")
-    if not all(isinstance(value, str) for value in [title, author, shelves, description]):
+    if not all(
+        isinstance(value, str) for value in [title, author, shelves, description]
+    ):
         print("Invalid field types in description response")
         return ""
     return f"TITLE: {title}\nAUTHOR: {author}\nSHELVES: {shelves}\nDESCRIPTION: {description}\n"
@@ -206,7 +257,10 @@ async def _rewrite_review(client: AsyncGroq, query: str) -> str:
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
             {"role": "system", "content": BOOK_REVIEW_PROMPT},
-            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+            {
+                "role": "user",
+                "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###",
+            },
         ],
         temperature=1,
         max_completion_tokens=int(os.environ.get("MAX_REVIEW_TOKENS", 150)),
@@ -222,15 +276,51 @@ async def _rewrite_review(client: AsyncGroq, query: str) -> str:
     return review
 
 
-async def rewrite_query(client: AsyncGroq, query: str) -> tuple[str, str]:
+async def rewrite_query(
+    client: AsyncGroq, query: str, entity_context: Optional[str] = None
+) -> tuple[str, str]:
+    """Rewrite user query to book description and review.
+
+    Args:
+        client: Groq async client
+        query: User's original query
+        entity_context: Optional context string with recognized books/authors
+
+    Returns:
+        Tuple of (book_description, book_review)
+    """
     description, review = await asyncio.gather(
-        _rewrite_description(client, query),
+        _rewrite_description(client, query, entity_context),
         _rewrite_review(client, query),
     )
     return description, review
 
 
-def _rewrite_description_sync(client: Groq, query: str) -> str:
+def _rewrite_description_sync(
+    client: Groq, query: str, entity_context: Optional[str] = None
+) -> str:
+    """Rewrite user query to book description, optionally using entity context (sync version).
+
+    Args:
+        client: Groq sync client
+        query: User's original query
+        entity_context: Optional context string with recognized books/authors
+
+    Returns:
+        Formatted book description string
+    """
+    # Choose prompt based on whether we have entity context
+    prompt = (
+        BOOK_DESCRIPTION_WITH_CONTEXT_PROMPT
+        if entity_context
+        else BOOK_DESCRIPTION_PROMPT
+    )
+
+    # Build system message
+    system_content = prompt
+    if entity_context:
+        system_content = system_content.format(entity_context=entity_context)
+
     response_format = _json_schema_with_strict_mode(
         name="book_description",
         model=DEFAULT_QUERY_REWRITER_MODEL,
@@ -240,8 +330,11 @@ def _rewrite_description_sync(client: Groq, query: str) -> str:
         client,
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
-            {"role": "system", "content": BOOK_DESCRIPTION_PROMPT},
-            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+            {"role": "system", "content": system_content},
+            {
+                "role": "user",
+                "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###",
+            },
         ],
         temperature=1,
         max_completion_tokens=int(os.environ.get("MAX_DESCRIPTION_TOKENS", 1024)),
@@ -254,7 +347,9 @@ def _rewrite_description_sync(client: Groq, query: str) -> str:
     author = data.get("author")
     shelves = data.get("shelves")
     description = data.get("description")
-    if not all(isinstance(value, str) for value in [title, author, shelves, description]):
+    if not all(
+        isinstance(value, str) for value in [title, author, shelves, description]
+    ):
         print("Invalid field types in description response")
         return ""
     return f"TITLE: {title}\nAUTHOR: {author}\nSHELVES: {shelves}\nDESCRIPTION: {description}\n"
@@ -271,7 +366,10 @@ def _rewrite_review_sync(client: Groq, query: str) -> str:
         model=DEFAULT_QUERY_REWRITER_MODEL,
         messages=[
             {"role": "system", "content": BOOK_REVIEW_PROMPT},
-            {"role": "user", "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###"},
+            {
+                "role": "user",
+                "content": f"### USER QUERY ###\n{query}\n### END USER QUERY ###",
+            },
         ],
         temperature=1,
         max_completion_tokens=int(os.environ.get("MAX_REVIEW_TOKENS", 150)),
@@ -287,14 +385,29 @@ def _rewrite_review_sync(client: Groq, query: str) -> str:
     return review
 
 
-def rewrite_query_sync(client: Groq, query: str) -> tuple[str, str]:
-    description = _rewrite_description_sync(client, query)
+def rewrite_query_sync(
+    client: Groq, query: str, entity_context: Optional[str] = None
+) -> tuple[str, str]:
+    """Rewrite user query to book description and review (sync version).
+
+    Args:
+        client: Groq sync client
+        query: User's original query
+        entity_context: Optional context string with recognized books/authors
+
+    Returns:
+        Tuple of (book_description, book_review)
+    """
+    description = _rewrite_description_sync(client, query, entity_context)
     review = _rewrite_review_sync(client, query)
     return description, review
 
+
 # ANSWERING USER QUERIES WITH A CHATBOT LLM
 
-DEFAULT_CHATBOT_MODEL = os.environ.get("DEFAULT_CHATBOT_MODEL", "moonshotai/kimi-k2-instruct-0905")
+DEFAULT_CHATBOT_MODEL = os.environ.get(
+    "DEFAULT_CHATBOT_MODEL", "moonshotai/kimi-k2-instruct-0905"
+)
 
 _CHATBOT_SYSTEM_PROMPT = """\
 You are a helpful book recommendation assistant. You are given a list of books \
@@ -302,13 +415,18 @@ and reader reviews retrieved from a database that are relevant to the user's que
 Generate a friendly, conversational, yet brief response that recommends or discusses the most \
 relevant books, citing specific books and reviews to support your points.
 
+Some books include READER SENTIMENT data showing the dominant emotion readers feel \
+(joy, sadness, anger, fear, etc.) based on review analysis. Use this to help users \
+understand the emotional impact of books when relevant.
+
 Rules:
 1) Talk about the most relevant books first.
 2) `referenced_book_ids` must be in the exact order the books are first mentioned in `response`.
 3) Include each referenced book ID at most once.
+4) When sentiment data is available and relevant, mention how the book makes readers feel.
 """
 
-#4) Only include book IDs that appear in the provided relevant books list and are actually discussed.\
+# 4) Only include book IDs that appear in the provided relevant books list and are actually discussed.\
 
 _CHATBOT_RESPONSE_SCHEMA = {
     "type": "json_schema",
@@ -337,7 +455,7 @@ _CHATBOT_RESPONSE_SCHEMA = {
 async def generate_response(
     client: AsyncGroq,
     query: str,
-    books: list[dict],    # each: {"book_id": int, "description": str}
+    books: list[dict],  # each: {"book_id": int, "description": str}
     reviews: list[dict],  # each: {"review_id": int, "book_title": str, "review": str}
 ) -> dict[str, Any]:
     """
@@ -347,7 +465,7 @@ async def generate_response(
         f"[book_id: {b['book_id']}]\n{b['description']}" for b in books
     )
     reviews_text = "\n\n".join(
-        f"[review_id: {r['review_id']}] (book: \"{r['book_title']}\")\n{r['review']}"
+        f'[review_id: {r["review_id"]}] (book: "{r["book_title"]}")\n{r["review"]}'
         for r in reviews
     )
     user_message = (
@@ -418,7 +536,7 @@ async def generate_response(
 def generate_response_sync(
     client: Groq,
     query: str,
-    books: list[dict],    # each: {"book_id": int, "description": str}
+    books: list[dict],  # each: {"book_id": int, "description": str}
     reviews: list[dict],  # each: {"review_id": int, "book_title": str, "review": str}
 ) -> dict[str, Any]:
     """
@@ -428,7 +546,7 @@ def generate_response_sync(
         f"[book_id: {b['book_id']}]\n{b['description']}" for b in books
     )
     reviews_text = "\n\n".join(
-        f"[review_id: {r['review_id']}] (book: \"{r['book_title']}\")\n{r['review']}"
+        f'[review_id: {r["review_id"]}] (book: "{r["book_title"]}")\n{r["review"]}'
         for r in reviews
     )
     user_message = (

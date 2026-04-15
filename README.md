@@ -42,6 +42,134 @@ Tests solve one of the most expensive problems in development: maintenance. The 
 
 A strong test pipeline minimizes maintenance. It is one of the best investments you can do in your project, because it will avoid new buggy code in the project, and it will detect breaking changes when using dependencies.
 
+## MCP Server
+
+A Go-based [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server lives under `mcp/`. It exposes BookDB's book search, recommendations, and discovery tools to LLM clients like Claude Desktop, Cursor, or any MCP-compatible application.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_books` | Search books by title, author, or keyword (with AI fallback) |
+| `get_book` | Get detailed book info, stats, and description |
+| `get_related_books` | Find semantically similar books via vector embeddings |
+| `get_book_reviews` | Read reviews and ratings for a book |
+| `get_recommendations` | Personalized recommendations (BPR + vector clustering) |
+| `get_staff_picks` | Curated set of well-rated books |
+| `get_user_profile` | Look up a user's profile by username |
+| `get_user_ratings` | View a user's rated books and scores |
+
+### Install
+
+One-line install (macOS, Linux, Windows):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yamirghofran/BookDB/main/mcp/install.sh | bash
+```
+
+This downloads the latest binary for your platform, installs it to `~/.local/bin`, and prints setup instructions for any AI coding assistants it detects (Claude Desktop, Claude Code, Cursor, OpenCode, Codex).
+
+### Build from Source
+
+Requires [Go 1.24+](https://go.dev/dl/).
+
+```bash
+cd mcp
+go build -o bookdb-mcp .
+```
+
+### Authentication
+
+Most tools work without authentication (search, staff picks, public profiles). Personalized recommendations require a JWT token. Get one using the built-in login command:
+
+```bash
+# Interactive — prompts for email and password (password is hidden)
+./bookdb-mcp login -email you@example.com
+
+# Or specify everything on the command line (for scripting)
+./bookdb-mcp login -email you@example.com -password yourpassword
+
+# New account? Register first:
+./bookdb-mcp register -email you@example.com -name "Your Name" -username yourname
+```
+
+The command prints the JWT token to stdout. Capture it in an environment variable:
+
+```bash
+export BOOKDB_API_KEY=$(./bookdb-mcp login -email you@example.com)
+```
+
+### Usage
+
+#### CLI Flags & Environment Variables
+
+| Flag | Env Variable | Default | Description |
+|------|-------------|---------|-------------|
+| `-api-url` | `BOOKDB_API_URL` | `http://localhost:8000` | BookDB API base URL |
+| `-api-key` | `BOOKDB_API_KEY` | _(empty)_ | JWT token for auth |
+| `-transport` | `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `sse`, `http` |
+| `-addr` | `MCP_ADDR` | `:8080` | Listen address (SSE/HTTP) |
+
+#### Claude Desktop (stdio)
+
+Add to your Claude Desktop config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "bookdb": {
+      "command": "/path/to/bookdb-mcp",
+      "env": {
+        "BOOKDB_API_URL": "http://localhost:8000",
+        "BOOKDB_API_KEY": "your-jwt-token"
+      }
+    }
+  }
+}
+```
+
+#### Remote / HTTP
+
+```bash
+./bookdb-mcp -transport http -addr :9090 -api-url http://localhost:8000 -api-key eyJ...
+```
+
+#### SSE (Server-Sent Events)
+
+```bash
+./bookdb-mcp -transport sse -addr :8080
+```
+
+### Project Structure
+
+```
+mcp/
+├── main.go           # CLI entry point, subcommands (login, register, server)
+├── server.go         # MCP server setup and tool registration
+├── install.sh        # curl | bash one-line installer
+├── client/
+│   └── api.go        # HTTP client for the BookDB FastAPI backend
+├── tools/
+│   ├── books.go      # search_books, get_book, get_related_books, get_book_reviews
+│   ├── discovery.go  # get_recommendations, get_staff_picks
+│   └── users.go      # get_user_profile, get_user_ratings
+└── transport/
+    ├── stdio.go      # Stdio transport (Claude Desktop, local LLMs)
+    ├── sse.go        # SSE transport (browser integrations)
+    └── http.go       # Streamable HTTP transport (remote deployment)
+```
+
+### Releasing
+
+Push a tag to trigger the release workflow:
+
+```bash
+git tag mcp/v0.1.0
+git push origin mcp/v0.1.0
+```
+
+This runs [`.github/workflows/release-mcp.yml`](.github/workflows/release-mcp.yml) which cross-compiles for 5 platforms (linux amd64/arm64, macos amd64/arm64, windows amd64), packages tarballs with SHA-256 checksums, and creates a GitHub release. The install script picks up the latest release automatically.
+
 ## Checklist
 
 - [ ] Create a recommender system / chatbot
