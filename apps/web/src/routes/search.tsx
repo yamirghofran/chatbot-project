@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchPage } from "@/components/search/SearchPage";
 import { Spinner } from "@/components/ui/Spinner";
@@ -39,6 +39,8 @@ function SearchRoute() {
     queryKey: ["bookSearch", query],
     queryFn: () => api.searchBooks(query, 15),
     enabled: query.length > 0,
+    staleTime: Infinity, // same query = same results; only refetch on new query
+    placeholderData: keepPreviousData, // keep showing old results while new ones load
   });
 
   if (!query) {

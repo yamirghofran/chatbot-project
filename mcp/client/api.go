@@ -250,6 +250,21 @@ func (c *APIClient) GetUserRatings(ctx context.Context, username string, limit i
 	return result, nil
 }
 
+// GetShell calls GET /me/shell and returns the authenticated user's shell books.
+func (c *APIClient) GetShell(ctx context.Context) ([]Book, error) {
+	var result []Book
+	if err := c.doJSON(ctx, http.MethodGet, "/me/shell", &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// AddToShell calls POST /me/shell/{bookID} to add a book to the authenticated user's shell.
+func (c *APIClient) AddToShell(ctx context.Context, bookID int) error {
+	path := fmt.Sprintf("/me/shell/%d", bookID)
+	return c.doJSON(ctx, http.MethodPost, path, nil)
+}
+
 // Login calls POST /auth/login with email + password and returns a JWT token.
 func (c *APIClient) Login(ctx context.Context, email, password string) (*TokenResponse, error) {
 	var result TokenResponse
