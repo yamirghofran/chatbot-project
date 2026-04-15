@@ -279,6 +279,9 @@ func (c *APIClient) Register(ctx context.Context, email, name, username, passwor
 // FormatBookDetail produces a human-readable summary of a BookDetail.
 func FormatBookDetail(b BookDetail) string {
 	text := fmt.Sprintf("**%s** by %s", b.Title, b.Author)
+	if b.ID != "" {
+		text += fmt.Sprintf(" [ID: %s]", b.ID)
+	}
 	if b.PublicationYear != nil {
 		text += fmt.Sprintf(" (%d)", *b.PublicationYear)
 	}

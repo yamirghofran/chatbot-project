@@ -96,6 +96,9 @@ func makeGetUserRatings(api *client.APIClient) ToolHandler {
 		for _, r := range ratings {
 			stars := strings.Repeat("⭐", r.Rating)
 			sb.WriteString(fmt.Sprintf("- %s **%s**", stars, r.Book.Title))
+			if r.Book.ID != "" {
+				sb.WriteString(fmt.Sprintf(" [ID: %s]", r.Book.ID))
+			}
 			if r.Book.Author != "" {
 				sb.WriteString(fmt.Sprintf(" by %s", r.Book.Author))
 			}
