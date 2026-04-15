@@ -1,0 +1,49 @@
+name: Monthly Emotions Update
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 1st of every month at 03:00 UTC
+    - cron: "0 3 1 * *"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    # Prevent overlapping runs
+    concurrency:
+      group: monthly-emotions-update
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run monthly emotions update
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+        run: |
+          python scripts/monthly_update_emotions.py
+
+      - name: Upload run outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-emotions-update-artifacts
+          path: |
+            data/emotions_manifest.json
+            data/emotions_runs.jsonl
+            data/book_sentiments.parquet
+          if-no-files-found: ignore

@@ -205,7 +205,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        \"BOOKDB_API_URL\": \"http://localhost:8000\",
+        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
         \"BOOKDB_API_KEY\": \"\"
       }
     }
@@ -222,7 +222,7 @@ print_setup_instructions() {
         echo "  claude mcp add -s user bookdb -- ${binary_path}"
         echo ""
         echo "Or set the API URL and key:"
-        echo "  BOOKDB_API_URL=http://localhost:8000 BOOKDB_API_KEY=eyJ... claude mcp add -s user bookdb -- ${binary_path}"
+        echo "  BOOKDB_API_URL=https://bookdb.up.railway.app BOOKDB_API_KEY=eyJ... claude mcp add -s user bookdb -- ${binary_path}"
         echo ""
     fi
 
@@ -243,7 +243,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        \"BOOKDB_API_URL\": \"http://localhost:8000\",
+        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
         \"BOOKDB_API_KEY\": \"\"
       }
     }
@@ -264,6 +264,10 @@ print_setup_instructions() {
     \"bookdb\": {
       \"type\": \"local\",
       \"command\": [\"${binary_path}\"],
+      \"env\": {
+        \"BOOKDB_API_URL\": \"https://bookdb.up.railway.app\",
+        \"BOOKDB_API_KEY\": \"\"
+      },
       \"enabled\": true
     }
   }
@@ -277,6 +281,9 @@ print_setup_instructions() {
         success "[Codex] detected"
         echo ""
         echo "  codex mcp add bookdb -- ${binary_path}"
+        echo ""
+        echo "Or set the API URL and key:"
+        echo "  BOOKDB_API_URL=https://bookdb.up.railway.app BOOKDB_API_KEY=eyJ... codex mcp add bookdb -- ${binary_path}"
         echo ""
     fi
 
@@ -293,7 +300,7 @@ print_setup_instructions() {
     \"bookdb\": {
       \"command\": \"${binary_path}\",
       \"env\": {
-        \"BOOKDB_API_URL\": \"http://localhost:8000\",
+        "BOOKDB_API_URL": "https://bookdb.up.railway.app",
         \"BOOKDB_API_KEY\": \"\"
       }
     }

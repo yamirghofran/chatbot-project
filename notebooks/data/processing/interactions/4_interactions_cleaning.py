@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.23.1"
 app = marimo.App()
 
 
@@ -27,8 +27,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     interactions_path = os.path.join(data_dir, "3_goodreads_interactions_reduced.parquet")
     interactions_lf = pl.scan_parquet(interactions_path)
@@ -239,6 +239,11 @@ def _(data_dir, interactions_lf, mo, os, pl):
     - **Clipped to**: {_now_ts}
     - **Remaining future timestamps**: {_clipped_count:,}
     """)
+    return
+
+
+@app.cell
+def _():
     return
 
 

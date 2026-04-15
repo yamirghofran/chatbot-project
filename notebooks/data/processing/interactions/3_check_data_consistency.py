@@ -27,8 +27,8 @@ def _(mo):
 
 @app.cell
 def _(os, pl):
-    project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
-    data_dir = os.path.join(project_root, "data")
+    from bookdb.utils.paths import find_project_root
+    data_dir = os.path.join(find_project_root(), "data")
 
     books_df = pl.read_parquet(
         os.path.join(data_dir, "2_goodreads_books_standardized.parquet"),
@@ -105,19 +105,15 @@ def _(data_dir, mo, os, pl):
 
 @app.cell
 def _(books_df, data_dir, mo, os, pl):
+    from bookdb.processing.book_ids import drop_unmatched_book_ids
+
     # Drop interactions with no matching book_id
     _int_path = os.path.join(data_dir, "2_goodreads_interactions_merged_timestamps.parquet")
     _int_out = os.path.join(data_dir, "3_goodreads_interactions_reduced.parquet")
     _int_lf = pl.scan_parquet(_int_path)
     _n_before = _int_lf.select(pl.len()).collect().item()
 
-    # Keep only interactions with a matching book_id
-    _cleaned = _int_lf.join(
-        books_df.lazy(),
-        on="book_id",
-        how="semi",  # Keep rows from left that have a match in right
-    )
-
+    _cleaned = drop_unmatched_book_ids(_int_lf, books_df)
     _cleaned.sink_parquet(_int_out, engine="streaming")
 
     _n_after = pl.scan_parquet(_int_out).select(pl.len()).collect().item()

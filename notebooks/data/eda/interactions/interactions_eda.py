@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.19.8"
+__generated_with = "0.20.1"
 app = marimo.App()
 
 
@@ -43,14 +43,15 @@ def _(mo):
 @app.cell
 def _(mo, pl):
     import os
+    from bookdb.utils.paths import find_project_root
 
-    project_root = project_root = __import__("pathlib").Path(__file__).resolve().parents[4]
+    project_root = find_project_root()
     data_path = os.path.join(
         project_root, "data", "raw_goodreads_interactions.parquet"
     )
     _n_total = pl.scan_parquet(data_path).select(pl.len()).collect().item()
     # the comments on this notebook are derived from the analysis of 100% data, however, we recommend sampling 20% due to memory limits
-    _n_sample = int(_n_total * 0.2)
+    _n_sample = int(_n_total * 0.002)
     df = pl.read_parquet(data_path, n_rows=_n_sample)
     shape = df.shape
 
@@ -193,88 +194,10 @@ def _(df, pl):
 
 
 @app.cell
-def _(df, plt):
-    """Rating Distribution Plot"""
-    rating_counts_plot = (
-        df.group_by("rating").len().sort("rating")
-    )
-
-    fig_rating, ax_rating = plt.subplots(figsize=(10, 6))
-    ax_rating.bar(
-        rating_counts_plot["rating"].to_list(),
-        rating_counts_plot["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-    )
-    ax_rating.set_xlabel("Rating")
-    ax_rating.set_ylabel("Count")
-    ax_rating.set_title("Distribution of Ratings (0 = unrated)")
-    ax_rating.set_xticks([0, 1, 2, 3, 4, 5])
-
-    for _, (_r, _c) in enumerate(
-        zip(
-            rating_counts_plot["rating"].to_list(),
-            rating_counts_plot["len"].to_list(),
-        )
-    ):
-        ax_rating.text(_r, _c, f"{_c / 1e6:.1f}M", ha="center", va="bottom", fontsize=9)
-
-    plt.tight_layout()
-    fig_rating
-    return
-
-
-@app.cell
-def _(df, plt):
-    # Rating distribution - histogram + boxplot
-    _fig, _axes = plt.subplots(1, 2, figsize=(12, 4))
-
-    _ratings = df["rating"].to_numpy()
-
-    # Histogram
-    _axes[0].hist(_ratings, bins=range(0, 7), edgecolor='black', align='left')
-    _axes[0].set_xlabel("Rating")
-    _axes[0].set_ylabel("Frequency")
-    _axes[0].set_title("Rating Distribution (Histogram)")
-    _axes[0].set_xticks(range(0, 6))
-
-    # Boxplot
-    _axes[1].boxplot(_ratings, vert=True)
-    _axes[1].set_ylabel("Rating")
-    _axes[1].set_title("Rating Distribution (Boxplot)")
-
-    plt.tight_layout()
-    _fig
-    return
-
-
-@app.cell
-def _(df, pl, plt):
-    """Rating Distribution (Excluding Unrated)"""
-    rated_only = df.filter(pl.col("rating") > 0)
-    rating_counts_rated = rated_only.group_by("rating").len().sort("rating")
-
-    fig_rated, ax_rated = plt.subplots(figsize=(10, 6))
-    ax_rated.bar(
-        rating_counts_rated["rating"].to_list(),
-        rating_counts_rated["len"].to_list(),
-        edgecolor="black",
-        alpha=0.7,
-        color="steelblue",
-    )
-    ax_rated.set_xlabel("Rating")
-    ax_rated.set_ylabel("Count")
-    ax_rated.set_title("Distribution of Ratings (Excluding Unrated)")
-    ax_rated.set_xticks([1, 2, 3, 4, 5])
-
-    for _r, _c in zip(
-        rating_counts_rated["rating"].to_list(),
-        rating_counts_rated["len"].to_list(),
-    ):
-        ax_rated.text(_r, _c, f"{_c / 1e6:.1f}M", ha="center", va="bottom", fontsize=9)
-
-    plt.tight_layout()
-    fig_rated
+def _(df):
+    """Rating Distribution Plots"""
+    from bookdb.eda.plots import plot_rating_distribution
+    plot_rating_distribution(df)
     return
 
 
@@ -399,21 +322,15 @@ def _(mo):
 
 
 @app.cell
-def _(df, pl, plt, sns):
+def _(df, pl):
     # Correlation matrix (numeric columns only)
-    _numeric_df = df.select([
+    from bookdb.eda.plots import plot_correlation_heatmap
+    _df_numeric = df.select([
         pl.col("rating"),
         pl.col("is_read").cast(pl.Int8).alias("is_read"),
         pl.col("is_reviewed").cast(pl.Int8).alias("is_reviewed"),
     ])
-
-    _corr_matrix = _numeric_df.to_pandas().corr()
-
-    _fig, _ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(_corr_matrix, annot=True, cmap="coolwarm", center=0,
-                fmt=".3f", square=True, ax=_ax)
-    _ax.set_title("Correlation Heatmap")
-    _fig
+    plot_correlation_heatmap(_df_numeric, _df_numeric.columns, title="Correlation Heatmap")
     return
 
 

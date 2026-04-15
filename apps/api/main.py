@@ -89,6 +89,20 @@ async def startup_event():
         app.state.book_metrics_parquet_path = None
         print("WARNING: Book metrics parquet not found, popularity/ranking fallbacks will use Postgres.")
 
+    # Load book sentiments for chatbot
+    sentiments_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data", "book_sentiments.parquet",
+    )
+    if os.path.exists(sentiments_path):
+        import pandas as pd
+        app.state.book_sentiments_df = pd.read_parquet(sentiments_path)
+        app.state.book_sentiments_df.set_index("book_id", inplace=True)
+        print(f"Book sentiments loaded: {len(app.state.book_sentiments_df):,} books")
+    else:
+        app.state.book_sentiments_df = None
+        print("WARNING: Book sentiments not found, chatbot will not include emotion data.")
+
     from .core.mcp_adapter import MCPAdapter
     app.state.mcp_adapter = MCPAdapter(
         base_url=settings.MCP_RECOMMENDATION_URL,

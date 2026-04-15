@@ -1,0 +1,55 @@
+name: Weekly BPR Retrain
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Monday at 03:00 UTC
+    - cron: "0 3 * * 1"
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+
+    # Prevent overlapping runs
+    concurrency:
+      group: weekly-bpr-retrain
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run weekly retrain
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          MLFLOW_S3_ENDPOINT_URL: ${{ secrets.MLFLOW_S3_ENDPOINT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+        run: |
+          python scripts/weekly_retrain_bpr.py
+
+      - name: Upload run outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-bpr-retrain-artifacts
+          path: |
+            data/retrain_manifest.json
+            data/retrain_runs.jsonl
+            data/bpr_interactions_retrain.parquet
+            predictions/bpr_recommendations.parquet
+          if-no-files-found: ignore

@@ -32,7 +32,13 @@ from .book_queries import (
     serialize_books_with_engagement,
 )
 from .config import settings
-from .embeddings import most_similar, most_similar_by_vector
+from .embeddings import (
+    get_book_scores_by_ids,
+    most_similar,
+    most_similar_by_vector,
+    most_similar_reviews_by_vector,
+)
+from .reranker import build_candidates, compute_review_features, rerank_candidates
 from .entity_extraction import find_books_by_title, resolve_entities
 
 
@@ -285,7 +291,19 @@ def _book_author_names(book: Book) -> str:
     return ", ".join(names) if names else "Unknown"
 
 
-def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
+def _format_sentiment(sentiment_row) -> str:
+    """Format sentiment data for LLM context."""
+    if sentiment_row is None:
+        return ""
+    dominant = sentiment_row.get("dominant_emotion", "")
+    pct = sentiment_row.get("dominant_emotion_pct", 0)
+    total = sentiment_row.get("total_reviews", 0)
+    if not dominant or total == 0:
+        return ""
+    return f"READER SENTIMENT: Readers primarily feel {dominant} ({pct*100:.0f}%) based on {total:,} reviews\n"
+
+
+def _payload_to_book_context(book: Book, payload: dict[str, Any], sentiment_row=None) -> str:
     metadata = payload.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     document = payload.get("document")
@@ -297,12 +315,14 @@ def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
     shelves = str(metadata.get("shelves") or ", ".join(tags[:5]) or "unspecified")
     description = document or (book.description or "")
     description = description.strip() or "No description available."
+    sentiment = _format_sentiment(sentiment_row)
 
     return (
         f"TITLE: {title}\n"
         f"AUTHOR: {author}\n"
         f"SHELVES: {shelves}\n"
         f"DESCRIPTION: {description}\n"
+        f"{sentiment}"
     )
 
 
@@ -331,6 +351,7 @@ def tool_search_books(
     qdrant: QdrantClient | None,
     groq_client: Groq | None = None,
     preferences: dict[str, Any] | None = None,
+    sentiments_df=None,
 ) -> dict[str, Any]:
     """Semantic book search via entity extraction → query rewriting → Qdrant."""
     if qdrant is None:
@@ -367,47 +388,82 @@ def tool_search_books(
         _log.warning("Query rewrite failed: %s", e)
         return _tool_result(success=False, error="Query rewrite failed")
 
-    rewritten_text = "\n\n".join(
-        part.strip()
-        for part in [rewritten_description, rewritten_review]
-        if part and part.strip()
-    )
-    if not rewritten_text:
-        return _tool_result(success=False, error="Empty rewrite")
+    # Generate separate embeddings for books and reviews
+    book_embedding = _embed_text_via_service(rewritten_description) if rewritten_description else []
+    review_embedding = _embed_text_via_service(rewritten_review) if rewritten_review else []
 
-    # Embed
-    query_embedding = _embed_text_via_service(rewritten_text)
-    if not query_embedding:
+    # Fallback: if one is empty, use the other
+    if not book_embedding and not review_embedding:
         return _tool_result(success=False, error="Embedding failed")
+    if not book_embedding:
+        book_embedding = review_embedding
+    if not review_embedding:
+        review_embedding = book_embedding
 
-    # Vector search
+    # Search books
     try:
-        qdrant_hits = most_similar_by_vector(
+        book_hits = most_similar_by_vector(
             qdrant,
-            query_embedding,
+            book_embedding,
             top_k=settings.CHATBOT_TOP_K,
         )
     except Exception as e:
-        _log.warning("Qdrant vector search failed: %s", e)
+        _log.warning("Qdrant book search failed: %s", e)
         return _tool_result(success=False, error="Vector search failed")
 
-    if not qdrant_hits:
+    # Search reviews semantically
+    review_hits: list[dict[str, Any]] = []
+    try:
+        review_hits = most_similar_reviews_by_vector(
+            qdrant,
+            review_embedding,
+            top_k=settings.CHATBOT_REVIEWS_TOP_K,
+        )
+    except Exception as e:
+        _log.warning("Qdrant review search failed (continuing without reviews): %s", e)
+
+    # Compute review features grouped by book_id
+    review_features = compute_review_features(review_hits)
+
+    # Find books that came only from reviews (not in book search)
+    book_ids_from_books = {hit["id"] for hit in book_hits}
+    book_ids_from_reviews = set(review_features.keys())
+    review_only_ids = book_ids_from_reviews - book_ids_from_books
+
+    # Get book scores for review-only books
+    additional_book_scores: dict[int, float] = {}
+    if review_only_ids:
+        try:
+            additional_book_scores = get_book_scores_by_ids(
+                qdrant,
+                review_only_ids,
+                book_embedding,
+            )
+        except Exception as e:
+            _log.warning("Failed to get scores for review-only books: %s", e)
+
+    # Build candidates and rerank
+    candidates = build_candidates(book_hits, review_features, additional_book_scores)
+    if not candidates:
         return _tool_result(
             success=True, data={"narrative": None}, source="vector_search"
         )
 
-    goodreads_ids: list[int] = []
-    for hit in qdrant_hits:
-        try:
-            goodreads_ids.append(int(hit["id"]))
-        except (KeyError, TypeError, ValueError):
-            continue
+    weights = {
+        "book": settings.RERANK_WEIGHT_BOOK,
+        "review_max": settings.RERANK_WEIGHT_REVIEW_MAX,
+        "review_top2_mean": settings.RERANK_WEIGHT_REVIEW_TOP2_MEAN,
+    }
+    ranked_candidates = rerank_candidates(candidates, weights)
 
+    # Extract goodreads_ids in reranked order
+    goodreads_ids = [c["book_id"] for c in ranked_candidates]
     if not goodreads_ids:
         return _tool_result(
             success=True, data={"narrative": None}, source="vector_search"
         )
 
+    # Load books from PostgreSQL
     qdrant_books = load_books_by_goodreads_ids(db, goodreads_ids)
     if not qdrant_books:
         return _tool_result(
@@ -415,49 +471,126 @@ def tool_search_books(
         )
 
     books_by_gid = {int(book.goodreads_id): book for book in qdrant_books}
-    llm_context_books: list[dict[str, Any]] = []
-    ranked_books: list[Book] = []
 
-    for hit in qdrant_hits:
-        try:
-            gid = int(hit["id"])
-        except (KeyError, TypeError, ValueError):
-            continue
+    # Build ranked books list and LLM context
+    ranked_books: list[Book] = []
+    llm_context_books: list[dict[str, Any]] = []
+    for candidate in ranked_candidates:
+        gid = candidate["book_id"]
         book = books_by_gid.get(gid)
         if book is None:
             continue
         ranked_books.append(book)
-        llm_context_books.append(
-            {
-                "book_id": int(book.id),
-                "description": _payload_to_book_context(book, hit.get("payload", {})),
-            }
-        )
+
+        # Look up sentiment by goodreads_id
+        sentiment_row = None
+        if sentiments_df is not None:
+            try:
+                sentiment_row = sentiments_df.loc[gid].to_dict() if gid in sentiments_df.index else None
+            except (KeyError, TypeError):
+                sentiment_row = None
+
+        llm_context_books.append({
+            "book_id": int(book.id),
+            "description": _payload_to_book_context(book, candidate.get("payload", {}), sentiment_row),
+        })
 
     if not ranked_books:
         return _tool_result(
             success=True, data={"narrative": None}, source="vector_search"
         )
 
-    # Fetch reviews for grounding
+    # Get semantically relevant reviews for LLM
+    # Group by book to ensure coverage across recommended books (top 2 per book)
     reviews: list[dict[str, Any]] = []
-    if settings.CHATBOT_MAX_REVIEWS > 0:
-        ranked_book_ids = [book.id for book in ranked_books]
-        review_rows = db.execute(
-            select(Review.id, Review.review_text, Book.title.label("book_title"))
-            .join(Book, Book.id == Review.book_id)
-            .where(Review.book_id.in_(ranked_book_ids))
-            .order_by(Review.created_at.desc())
-            .limit(settings.CHATBOT_MAX_REVIEWS)
-        ).all()
-        reviews = [
-            {
-                "review_id": int(row.id),
-                "book_title": str(row.book_title or ""),
-                "review": str(row.review_text or ""),
-            }
-            for row in review_rows
+    reviews_per_book: dict[int, list[str]] = {}
+    if settings.CHATBOT_MAX_REVIEWS > 0 and review_hits:
+        ranked_book_ids = {book.id for book in ranked_books}
+        max_reviews_per_book = 2
+
+        for hit in review_hits:
+            book_goodreads_id = hit.get("book_id")
+            book = books_by_gid.get(book_goodreads_id)
+            if book and book.id in ranked_book_ids:
+                if book.id not in reviews_per_book:
+                    reviews_per_book[book.id] = []
+                if len(reviews_per_book[book.id]) < max_reviews_per_book:
+                    reviews_per_book[book.id].append(str(hit["review_id"]))
+
+        # Flatten: prioritize books in ranked order, take their reviews
+        relevant_review_ids: list[str] = []
+        for book in ranked_books:
+            if book.id in reviews_per_book:
+                for rid in reviews_per_book[book.id]:
+                    if len(relevant_review_ids) >= settings.CHATBOT_MAX_REVIEWS:
+                        break
+                    relevant_review_ids.append(rid)
+            if len(relevant_review_ids) >= settings.CHATBOT_MAX_REVIEWS:
+                break
+
+        # Normalize UUIDs: Qdrant returns with dashes, PostgreSQL stores without
+        relevant_review_ids = [rid.replace('-', '') for rid in relevant_review_ids]
+
+        if relevant_review_ids:
+            review_rows = db.execute(
+                select(
+                    Review.goodreads_id,
+                    Review.review_text,
+                    Book.title.label("book_title"),
+                )
+                .join(Book, Book.id == Review.book_id)
+                .where(Review.goodreads_id.in_(relevant_review_ids))
+            ).all()
+
+            # Preserve semantic order from relevant_review_ids
+            rows_by_id = {str(row.goodreads_id): row for row in review_rows}
+            reviews = [
+                {
+                    "review_id": rid,
+                    "book_title": str(rows_by_id[rid].book_title or ""),
+                    "review": str(rows_by_id[rid].review_text or ""),
+                }
+                for rid in relevant_review_ids
+                if rid in rows_by_id
+            ]
+
+    # Per-book fallback: for books without semantic reviews, get their latest reviews
+    if settings.CHATBOT_MAX_REVIEWS > 0 and len(reviews) < settings.CHATBOT_MAX_REVIEWS:
+        books_with_semantic = set(reviews_per_book.keys()) if review_hits else set()
+        books_needing_fallback = [
+            book for book in ranked_books
+            if book.id not in books_with_semantic
         ]
+
+        if books_needing_fallback:
+            fallback_book_ids = [book.id for book in books_needing_fallback]
+
+            fallback_rows = db.execute(
+                select(
+                    Review.id,
+                    Review.book_id,
+                    Review.review_text,
+                    Book.title.label("book_title"),
+                )
+                .join(Book, Book.id == Review.book_id)
+                .where(Review.book_id.in_(fallback_book_ids))
+                .order_by(Review.book_id, Review.created_at.desc())
+            ).all()
+
+            fallback_per_book: dict[int, int] = {}
+            max_fallback_per_book = 2
+            for row in fallback_rows:
+                if len(reviews) >= settings.CHATBOT_MAX_REVIEWS:
+                    break
+                book_id = int(row.book_id)
+                if fallback_per_book.get(book_id, 0) >= max_fallback_per_book:
+                    continue
+                fallback_per_book[book_id] = fallback_per_book.get(book_id, 0) + 1
+                reviews.append({
+                    "review_id": int(row.id),
+                    "book_title": str(row.book_title or ""),
+                    "review": str(row.review_text or ""),
+                })
 
     max_books = settings.CHATBOT_MAX_BOOKS
     serialized = serialize_books_with_engagement(db, ranked_books[:max_books])

@@ -507,12 +507,14 @@ def _execute_tool(
 
     if tool_name == "search_books":
         query = _enrich_search_query(tool_args.get("query", ""), history or [])
+        sentiments_df = getattr(request_app_state, "book_sentiments_df", None) if request_app_state else None
         return func(
             query,
             db=db,
             qdrant=qdrant,
             groq_client=groq_client,
             preferences=preferences,
+            sentiments_df=sentiments_df,
         )
     elif tool_name == "get_book_details":
         return func(tool_args.get("book_id", 0), db=db)
