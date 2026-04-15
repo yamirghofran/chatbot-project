@@ -26,7 +26,7 @@ func RegisterShellTools(register func(tool mcp.Tool, handler ToolHandler), api *
 			mcp.WithDescription("Add a book to the authenticated user's shell (reading list) by searching for it. If multiple books match, returns the top candidates and asks for clarification."),
 			mcp.WithString("book_query",
 				mcp.Required(),
-				mcp.Description("Book title, author, or keyword to search for (e.g. 'The Hobbit' or 'Dune by Frank Herbert')"),
+				mcp.Description("Book title, author, keyword, or numeric book ID. IMPORTANT: when a book ID is known (e.g. from search results showing [ID: 123]), always pass the ID as a number string like '123' — it is faster and avoids ambiguity."),
 			),
 		),
 		makeAddBookToShell(api),
@@ -67,69 +67,23 @@ func makeAddBookToShell(api *client.APIClient) ToolHandler {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		// If the query is a pure number, treat it as a book ID directly.
-		if bookID, err := strconv.Atoi(query); err == nil {
-			book, err := api.GetBook(ctx, bookID)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Book with ID %d not found: %v", bookID, err)), nil
-			}
-			if err := api.AddToShell(ctx, bookID); err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to add book to shell: %v", err)), nil
-			}
-			return mcp.NewToolResultText(
-				fmt.Sprintf("✅ Added **%s** by %s to your shell!", book.Title, book.Author),
-			), nil
+		resolved, result := resolveBookQuery(ctx, api, query)
+		if result != nil {
+			return result, nil
 		}
 
-		// Text search — search for the book (top 3 candidates for disambiguation)
-		result, err := api.SearchBooks(ctx, query, 3)
+		bookID, err := strconv.Atoi(resolved.ID)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Search failed: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid book ID: %s", resolved.ID)), nil
 		}
 
-		// Collect all candidates from the search result
-		var candidates []client.BookDetail
-		if result.DirectHit != nil {
-			candidates = append(candidates, *result.DirectHit)
-		}
-		candidates = append(candidates, result.KeywordResults...)
-		candidates = append(candidates, result.AIBooks...)
-
-		// Deduplicate by ID
-		candidates = dedupByID(candidates)
-
-		if len(candidates) == 0 {
-			return mcp.NewToolResultError(
-				fmt.Sprintf("No books found matching \"%s\". Try a different title, author, or keyword.", query),
-			), nil
+		if err := api.AddToShell(ctx, bookID); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to add book to shell: %v", err)), nil
 		}
 
-		// Single unambiguous result — add it
-		if len(candidates) == 1 {
-			bookID, err := strconv.Atoi(candidates[0].ID)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Invalid book ID: %s", candidates[0].ID)), nil
-			}
-
-			if err := api.AddToShell(ctx, bookID); err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to add book to shell: %v", err)), nil
-			}
-
-			book := candidates[0]
-			return mcp.NewToolResultText(
-				fmt.Sprintf("✅ Added **%s** by %s to your shell!", book.Title, book.Author),
-			), nil
-		}
-
-		// Multiple matches — ask for clarification
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Multiple books found matching \"%s\":\n\n", query))
-		for i, b := range candidates {
-			sb.WriteString(fmt.Sprintf("%d. %s\n---\n", i+1, client.FormatBookDetail(b)))
-		}
-		sb.WriteString("\nPlease specify which book by providing the exact title, author, or book ID.")
-
-		return mcp.NewToolResultText(sb.String()), nil
+		return mcp.NewToolResultText(
+			fmt.Sprintf("✅ Added **%s** by %s to your shell!", resolved.Title, resolved.Author),
+		), nil
 	}
 }
 
@@ -142,21 +96,4 @@ func formatShellBook(b client.Book) string {
 		text += fmt.Sprintf(" [ID: %s]", b.ID)
 	}
 	return text
-}
-
-// dedupByID removes duplicate BookDetail entries by ID, preserving order.
-func dedupByID(books []client.BookDetail) []client.BookDetail {
-	seen := make(map[string]struct{}, len(books))
-	result := make([]client.BookDetail, 0, len(books))
-	for _, b := range books {
-		if b.ID == "" {
-			continue
-		}
-		if _, ok := seen[b.ID]; ok {
-			continue
-		}
-		seen[b.ID] = struct{}{}
-		result = append(result, b)
-	}
-	return result
 }
