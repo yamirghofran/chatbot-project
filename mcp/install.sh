@@ -354,8 +354,8 @@ main() {
         echo ""
     else
         check_path
-        print_setup_instructions
     fi
+    print_setup_instructions
 }
 
 main
