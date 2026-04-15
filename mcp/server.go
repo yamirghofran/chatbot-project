@@ -25,6 +25,7 @@ This server provides tools to:
 - Get personalized recommendations (collaborative filtering + semantic)
 - Browse curated staff picks
 - Look up user profiles and their reading history
+- Manage the user's shell (reading list) — view and add books
 
 All data comes from the BookDB API which combines PostgreSQL, Qdrant vector search,
 and a BPR recommendation model to provide rich book discovery.`
@@ -50,6 +51,7 @@ func NewBookDBServer(apiClient *client.APIClient) *server.MCPServer {
 	tools.RegisterBookTools(register, apiClient)
 	tools.RegisterDiscoveryTools(register, apiClient)
 	tools.RegisterUserTools(register, apiClient)
+	tools.RegisterShellTools(register, apiClient)
 
 	return s
 }
