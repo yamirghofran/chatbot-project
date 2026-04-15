@@ -291,7 +291,19 @@ def _book_author_names(book: Book) -> str:
     return ", ".join(names) if names else "Unknown"
 
 
-def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
+def _format_sentiment(sentiment_row) -> str:
+    """Format sentiment data for LLM context."""
+    if sentiment_row is None:
+        return ""
+    dominant = sentiment_row.get("dominant_emotion", "")
+    pct = sentiment_row.get("dominant_emotion_pct", 0)
+    total = sentiment_row.get("total_reviews", 0)
+    if not dominant or total == 0:
+        return ""
+    return f"READER SENTIMENT: Readers primarily feel {dominant} ({pct*100:.0f}%) based on {total:,} reviews\n"
+
+
+def _payload_to_book_context(book: Book, payload: dict[str, Any], sentiment_row=None) -> str:
     metadata = payload.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     document = payload.get("document")
@@ -303,12 +315,14 @@ def _payload_to_book_context(book: Book, payload: dict[str, Any]) -> str:
     shelves = str(metadata.get("shelves") or ", ".join(tags[:5]) or "unspecified")
     description = document or (book.description or "")
     description = description.strip() or "No description available."
+    sentiment = _format_sentiment(sentiment_row)
 
     return (
         f"TITLE: {title}\n"
         f"AUTHOR: {author}\n"
         f"SHELVES: {shelves}\n"
         f"DESCRIPTION: {description}\n"
+        f"{sentiment}"
     )
 
 
@@ -337,6 +351,7 @@ def tool_search_books(
     qdrant: QdrantClient | None,
     groq_client: Groq | None = None,
     preferences: dict[str, Any] | None = None,
+    sentiments_df=None,
 ) -> dict[str, Any]:
     """Semantic book search via entity extraction → query rewriting → Qdrant."""
     if qdrant is None:
@@ -466,9 +481,18 @@ def tool_search_books(
         if book is None:
             continue
         ranked_books.append(book)
+
+        # Look up sentiment by goodreads_id
+        sentiment_row = None
+        if sentiments_df is not None:
+            try:
+                sentiment_row = sentiments_df.loc[gid].to_dict() if gid in sentiments_df.index else None
+            except (KeyError, TypeError):
+                sentiment_row = None
+
         llm_context_books.append({
             "book_id": int(book.id),
-            "description": _payload_to_book_context(book, candidate.get("payload", {})),
+            "description": _payload_to_book_context(book, candidate.get("payload", {}), sentiment_row),
         })
 
     if not ranked_books:

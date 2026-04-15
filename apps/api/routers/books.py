@@ -122,7 +122,8 @@ def _run_chatbot_search_pipeline(
     from ..core.chat_tools import tool_search_books
 
     qdrant = getattr(request.app.state, "qdrant", None) if request is not None else None
-    result = tool_search_books(query, db=db, qdrant=qdrant, groq_client=create_groq_client_sync())
+    sentiments_df = getattr(request.app.state, "book_sentiments_df", None) if request is not None else None
+    result = tool_search_books(query, db=db, qdrant=qdrant, groq_client=create_groq_client_sync(), sentiments_df=sentiments_df)
 
     if not result["success"] or not result["books"]:
         return None, []
