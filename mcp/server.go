@@ -26,9 +26,14 @@ This server provides tools to:
 - Browse curated staff picks
 - Look up user profiles and their reading history
 - Manage the user's shell (reading list) — view and add books
+- Rate books (1-5 stars) and write text reviews
 
 All data comes from the BookDB API which combines PostgreSQL, Qdrant vector search,
-and a BPR recommendation model to provide rich book discovery.`
+and a BPR recommendation model to provide rich book discovery.
+
+When a book's ID is already known (from search results, recommendations, etc.),
+always pass it as the book_query parameter rather than re-searching by title.
+For example, if a search showed [ID: 42], use book_query='42' in subsequent calls.`
 
 // NewBookDBServer creates a fully-configured MCP server backed by the BookDB API.
 func NewBookDBServer(apiClient *client.APIClient) *server.MCPServer {
@@ -52,6 +57,7 @@ func NewBookDBServer(apiClient *client.APIClient) *server.MCPServer {
 	tools.RegisterDiscoveryTools(register, apiClient)
 	tools.RegisterUserTools(register, apiClient)
 	tools.RegisterShellTools(register, apiClient)
+	tools.RegisterInteractionTools(register, apiClient)
 
 	return s
 }

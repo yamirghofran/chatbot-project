@@ -265,6 +265,22 @@ func (c *APIClient) AddToShell(ctx context.Context, bookID int) error {
 	return c.doJSON(ctx, http.MethodPost, path, nil)
 }
 
+// RateBook calls POST /me/ratings?book_id=...&rating=... to rate a book (1-5).
+func (c *APIClient) RateBook(ctx context.Context, bookID, rating int) error {
+	path := fmt.Sprintf("/me/ratings?book_id=%d&rating=%d", bookID, rating)
+	return c.doJSON(ctx, http.MethodPost, path, nil)
+}
+
+// ReviewBook calls POST /books/{bookID}/reviews with a JSON body to create a review.
+func (c *APIClient) ReviewBook(ctx context.Context, bookID int, text string) (*Review, error) {
+	path := fmt.Sprintf("/books/%d/reviews", bookID)
+	var result Review
+	if err := c.doJSONBody(ctx, http.MethodPost, path, map[string]string{"text": text}, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Login calls POST /auth/login with email + password and returns a JWT token.
 func (c *APIClient) Login(ctx context.Context, email, password string) (*TokenResponse, error) {
 	var result TokenResponse
