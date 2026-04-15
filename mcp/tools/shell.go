@@ -67,7 +67,21 @@ func makeAddBookToShell(api *client.APIClient) ToolHandler {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		// Search for the book (top 3 candidates for disambiguation)
+		// If the query is a pure number, treat it as a book ID directly.
+		if bookID, err := strconv.Atoi(query); err == nil {
+			book, err := api.GetBook(ctx, bookID)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Book with ID %d not found: %v", bookID, err)), nil
+			}
+			if err := api.AddToShell(ctx, bookID); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to add book to shell: %v", err)), nil
+			}
+			return mcp.NewToolResultText(
+				fmt.Sprintf("✅ Added **%s** by %s to your shell!", book.Title, book.Author),
+			), nil
+		}
+
+		// Text search — search for the book (top 3 candidates for disambiguation)
 		result, err := api.SearchBooks(ctx, query, 3)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Search failed: %v", err)), nil
