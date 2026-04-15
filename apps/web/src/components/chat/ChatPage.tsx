@@ -47,7 +47,7 @@ export function ChatPage() {
     const currentId = activeSessionId;
     chatApi.getSession(currentId).then((detail) => {
       if (stale || currentId !== activeSessionId) return;
-      setMessages(detail.messages);
+      setMessages(detail.messages ?? []);
       setSessionPreferences(detail.preferences ?? undefined);
     }).catch(() => {
       if (stale || currentId !== activeSessionId) return;
