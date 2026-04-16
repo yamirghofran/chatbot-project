@@ -1,9 +1,42 @@
-from groq import AsyncGroq, Groq
+from openai import AsyncOpenAI, OpenAI
 import os
 import asyncio
 import json
 import time
 from typing import Any, Optional
+
+# LLM Client Configuration
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "")
+
+
+def create_llm_client(api_key: Optional[str] = None, base_url: Optional[str] = None) -> OpenAI:
+    """Create a synchronous OpenAI-compatible client.
+    
+    Args:
+        api_key: API key (defaults to OPENAI_API_KEY env var)
+        base_url: Base URL for the API (defaults to OPENAI_BASE_URL env var, e.g., 
+                  "https://api.groq.com" for Groq, "https://api.together.xyz" for Together, etc.)
+    """
+    return OpenAI(
+        api_key=api_key or OPENAI_API_KEY,
+        base_url=base_url or OPENAI_BASE_URL or None,
+    )
+
+
+def create_async_llm_client(api_key: Optional[str] = None, base_url: Optional[str] = None) -> AsyncOpenAI:
+    """Create an async OpenAI-compatible client.
+    
+    Args:
+        api_key: API key (defaults to OPENAI_API_KEY env var)
+        base_url: Base URL for the API (defaults to OPENAI_BASE_URL env var, e.g.,
+                  "https://api.groq.com" for Groq, "https://api.together.xyz" for Together, etc.)
+    """
+    return AsyncOpenAI(
+        api_key=api_key or OPENAI_API_KEY,
+        base_url=base_url or OPENAI_BASE_URL or None,
+    )
+
 
 # QUERY REWRITING TO BOOK DESCRIPTIONS AND REVIEWS
 
@@ -128,7 +161,7 @@ def _parse_structured_content(response: Any, *, label: str) -> dict[str, Any] | 
 
 
 async def _create_structured_completion_with_retries(
-    client: AsyncGroq,
+    client: AsyncOpenAI,
     *,
     model: str,
     messages: list[dict[str, str]],
@@ -153,16 +186,8 @@ async def _create_structured_completion_with_retries(
             await asyncio.sleep(0.2 * (attempt + 1))
 
 
-def create_groq_client(api_key: Optional[str] = None) -> AsyncGroq:
-    return AsyncGroq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
-
-
-def create_groq_client_sync(api_key: Optional[str] = None) -> Groq:
-    return Groq(api_key=api_key or os.environ.get("GROQ_API_KEY"))
-
-
 def _create_structured_completion_with_retries_sync(
-    client: Groq,
+    client: OpenAI,
     *,
     model: str,
     messages: list[dict[str, str]],
@@ -188,12 +213,12 @@ def _create_structured_completion_with_retries_sync(
 
 
 async def _rewrite_description(
-    client: AsyncGroq, query: str, entity_context: Optional[str] = None
+    client: AsyncOpenAI, query: str, entity_context: Optional[str] = None
 ) -> str:
     """Rewrite user query to book description, optionally using entity context.
 
     Args:
-        client: Groq async client
+        client: OpenAI-compatible async client
         query: User's original query
         entity_context: Optional context string with recognized books/authors
 
@@ -246,7 +271,7 @@ async def _rewrite_description(
     return f"TITLE: {title}\nAUTHOR: {author}\nSHELVES: {shelves}\nDESCRIPTION: {description}\n"
 
 
-async def _rewrite_review(client: AsyncGroq, query: str) -> str:
+async def _rewrite_review(client: AsyncOpenAI, query: str) -> str:
     response_format = _json_schema_with_strict_mode(
         name="book_review",
         model=DEFAULT_QUERY_REWRITER_MODEL,
@@ -277,12 +302,12 @@ async def _rewrite_review(client: AsyncGroq, query: str) -> str:
 
 
 async def rewrite_query(
-    client: AsyncGroq, query: str, entity_context: Optional[str] = None
+    client: AsyncOpenAI, query: str, entity_context: Optional[str] = None
 ) -> tuple[str, str]:
     """Rewrite user query to book description and review.
 
     Args:
-        client: Groq async client
+        client: OpenAI-compatible async client
         query: User's original query
         entity_context: Optional context string with recognized books/authors
 
@@ -297,12 +322,12 @@ async def rewrite_query(
 
 
 def _rewrite_description_sync(
-    client: Groq, query: str, entity_context: Optional[str] = None
+    client: OpenAI, query: str, entity_context: Optional[str] = None
 ) -> str:
     """Rewrite user query to book description, optionally using entity context (sync version).
 
     Args:
-        client: Groq sync client
+        client: OpenAI-compatible sync client
         query: User's original query
         entity_context: Optional context string with recognized books/authors
 
@@ -355,7 +380,7 @@ def _rewrite_description_sync(
     return f"TITLE: {title}\nAUTHOR: {author}\nSHELVES: {shelves}\nDESCRIPTION: {description}\n"
 
 
-def _rewrite_review_sync(client: Groq, query: str) -> str:
+def _rewrite_review_sync(client: OpenAI, query: str) -> str:
     response_format = _json_schema_with_strict_mode(
         name="book_review",
         model=DEFAULT_QUERY_REWRITER_MODEL,
@@ -386,12 +411,12 @@ def _rewrite_review_sync(client: Groq, query: str) -> str:
 
 
 def rewrite_query_sync(
-    client: Groq, query: str, entity_context: Optional[str] = None
+    client: OpenAI, query: str, entity_context: Optional[str] = None
 ) -> tuple[str, str]:
     """Rewrite user query to book description and review (sync version).
 
     Args:
-        client: Groq sync client
+        client: OpenAI-compatible sync client
         query: User's original query
         entity_context: Optional context string with recognized books/authors
 
@@ -453,7 +478,7 @@ _CHATBOT_RESPONSE_SCHEMA = {
 
 
 async def generate_response(
-    client: AsyncGroq,
+    client: AsyncOpenAI,
     query: str,
     books: list[dict],  # each: {"book_id": int, "description": str}
     reviews: list[dict],  # each: {"review_id": int, "book_title": str, "review": str}
@@ -534,7 +559,7 @@ async def generate_response(
 
 
 def generate_response_sync(
-    client: Groq,
+    client: OpenAI,
     query: str,
     books: list[dict],  # each: {"book_id": int, "description": str}
     reviews: list[dict],  # each: {"review_id": int, "book_title": str, "review": str}

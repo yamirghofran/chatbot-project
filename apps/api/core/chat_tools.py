@@ -1,9 +1,9 @@
 """Chat tool implementations for the orchestrator.
 
 Each tool is a plain function that accepts typed arguments plus injected
-dependencies (db, qdrant, groq_client, etc.) and returns a standardized
+dependencies (db, qdrant, llm_client, etc.) and returns a standardized
 result dict.  Alongside the functions, TOOL_DEFINITIONS provides the
-JSON-schema descriptors that Groq's function-calling API requires.
+JSON-schema descriptors that the LLM's function-calling API requires.
 """
 
 from __future__ import annotations
@@ -12,14 +12,14 @@ import json
 import logging
 from typing import Any
 
-from groq import Groq
+from openai import OpenAI
 from qdrant_client import QdrantClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from bookdb.db.models import Book, Review
 from bookdb.models.chatbot_llm import (
-    create_groq_client_sync,
+    create_llm_client,
     rewrite_query_sync,
 )
 
@@ -43,7 +43,7 @@ from .entity_extraction import find_books_by_title, resolve_entities
 
 
 # ---------------------------------------------------------------------------
-# Groq function-calling tool definitions
+# LLM function-calling tool definitions
 # ---------------------------------------------------------------------------
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -349,7 +349,7 @@ def tool_search_books(
     *,
     db: Session,
     qdrant: QdrantClient | None,
-    groq_client: Groq | None = None,
+    llm_client: OpenAI | None = None,
     preferences: dict[str, Any] | None = None,
     sentiments_df=None,
 ) -> dict[str, Any]:
@@ -359,7 +359,7 @@ def tool_search_books(
 
     query = _apply_preferences_to_query(query, preferences)
 
-    groq_client = groq_client or create_groq_client_sync()
+    llm_client = llm_client or create_llm_client()
 
     # Entity extraction
     entity_context = None
@@ -380,7 +380,7 @@ def tool_search_books(
     # Query rewriting
     try:
         rewritten_description, rewritten_review = rewrite_query_sync(
-            groq_client,
+            llm_client,
             query,
             entity_context=entity_context,
         )
@@ -861,7 +861,7 @@ def tool_compare_books(
     titles: list[str] | None = None,
     *,
     db: Session,
-    groq_client: Groq | None = None,
+    llm_client: OpenAI | None = None,
 ) -> dict[str, Any]:
     """Side-by-side comparison of 2-3 books by ID or title."""
     total = len(book_ids or []) + len(titles or [])
@@ -879,7 +879,7 @@ def tool_compare_books(
             msg += " " + " ".join(warnings)
         return _tool_result(success=False, error=msg)
 
-    groq_client = groq_client or create_groq_client_sync()
+    llm_client = llm_client or create_llm_client()
 
     book_descriptions = []
     for book in books:
@@ -906,7 +906,7 @@ def tool_compare_books(
         )
 
         response = _create_structured_completion_with_retries_sync(
-            groq_client,
+            llm_client,
             model=DEFAULT_CHATBOT_MODEL,
             messages=[
                 {"role": "system", "content": _COMPARE_SYSTEM_PROMPT},

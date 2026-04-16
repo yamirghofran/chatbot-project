@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from bookdb.db.chat_models import ChatMessage, ChatSession
 from bookdb.db.models import Book, User
-from bookdb.models.chatbot_llm import create_groq_client_sync
+from bookdb.models.chatbot_llm import create_llm_client
 
 from ..core.serialize import serialize_book
 
@@ -338,7 +338,7 @@ def send_message(
     # Resolve dependencies
     qdrant = getattr(request.app.state, "qdrant", None)
     mcp: MCPAdapter | None = getattr(request.app.state, "mcp_adapter", None)
-    groq_client = create_groq_client_sync()
+    llm_client = create_llm_client()
 
     def event_stream():
         q: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
@@ -356,7 +356,7 @@ def send_message(
                     db=db,
                     qdrant_client=qdrant,
                     mcp_adapter=mcp,
-                    groq_client=groq_client,
+                    llm_client=llm_client,
                     request_app_state=request.app.state,
                     user_id=current_user.id if current_user else None,
                     stream_callback=stream_event,
