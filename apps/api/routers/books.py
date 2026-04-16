@@ -22,7 +22,7 @@ from bookdb.db.models import (
     User,
 )
 from bookdb.models.chatbot_llm import (
-    create_groq_client_sync,
+    create_llm_client,
     generate_response_sync,
 )
 
@@ -123,7 +123,7 @@ def _run_chatbot_search_pipeline(
 
     qdrant = getattr(request.app.state, "qdrant", None) if request is not None else None
     sentiments_df = getattr(request.app.state, "book_sentiments_df", None) if request is not None else None
-    result = tool_search_books(query, db=db, qdrant=qdrant, groq_client=create_groq_client_sync(), sentiments_df=sentiments_df)
+    result = tool_search_books(query, db=db, qdrant=qdrant, llm_client=create_llm_client(), sentiments_df=sentiments_df)
 
     if not result["success"] or not result["books"]:
         return None, []
@@ -136,8 +136,8 @@ def _run_chatbot_search_pipeline(
         return None, result["books"]
 
     try:
-        groq_client = create_groq_client_sync()
-        llm_response = generate_response_sync(groq_client, query, llm_context_books, reviews)
+        llm_client = create_llm_client()
+        llm_response = generate_response_sync(llm_client, query, llm_context_books, reviews)
     except Exception as e:
         print(f"Chatbot response generation failed: {e}")
         llm_response = {"response": "", "referenced_book_ids": []}

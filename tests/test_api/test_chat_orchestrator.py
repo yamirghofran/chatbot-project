@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from groq import APIError
+from openai import APIError
 
 from apps.api.core import chat_orchestrator, chat_tools
 
@@ -16,8 +16,8 @@ def _mock_settings(monkeypatch):
     monkeypatch.setattr(chat_orchestrator, "settings", fake_settings)
 
 
-def _mock_groq_stream_direct(content: str):
-    """Create a mock Groq streaming response that returns content directly."""
+def _mock_llm_stream_direct(content: str):
+    """Create a mock LLM streaming response that returns content directly."""
     chunk = SimpleNamespace(
         choices=[
             SimpleNamespace(
@@ -28,8 +28,8 @@ def _mock_groq_stream_direct(content: str):
     return [chunk]
 
 
-def _mock_groq_stream_tool_call(tool_name: str, arguments: str):
-    """Create a mock Groq streaming response with a tool call."""
+def _mock_llm_stream_tool_call(tool_name: str, arguments: str):
+    """Create a mock LLM streaming response with a tool call."""
     tc = SimpleNamespace(
         index=0,
         id="call_1",
@@ -48,14 +48,14 @@ def _mock_groq_stream_tool_call(tool_name: str, arguments: str):
 def test_orchestrate_direct_response():
     """When the LLM responds without a tool call, content is returned directly."""
     client = MagicMock()
-    client.chat.completions.create.return_value = _mock_groq_stream_direct("Hello! How can I help?")
+    client.chat.completions.create.return_value = _mock_llm_stream_direct("Hello! How can I help?")
 
     events = []
     result = chat_orchestrator.orchestrate(
         user_message="Hi",
         history=[],
         db=MagicMock(),
-        groq_client=client,
+        llm_client=client,
         stream_callback=lambda evt, data: events.append((evt, data)),
     )
 
@@ -71,8 +71,8 @@ def test_orchestrate_tool_call_flow():
 
     # First call returns a tool call, second returns content
     client.chat.completions.create.side_effect = [
-        _mock_groq_stream_tool_call("search_books", '{"query": "fantasy books"}'),
-        _mock_groq_stream_direct("Based on my search, I recommend..."),
+        _mock_llm_stream_tool_call("search_books", '{"query": "fantasy books"}'),
+        _mock_llm_stream_direct("Based on my search, I recommend..."),
     ]
 
     mock_tool_result = {
@@ -92,7 +92,7 @@ def test_orchestrate_tool_call_flow():
             user_message="recommend fantasy books",
             history=[],
             db=MagicMock(),
-            groq_client=client,
+            llm_client=client,
             stream_callback=lambda evt, data: events.append((evt, data)),
         )
 
@@ -107,7 +107,7 @@ def test_orchestrate_tool_call_flow():
 
 
 def test_first_turn_stream_api_error_falls_back_to_buffered():
-    """Groq can raise APIError while consuming a tool stream; we retry non-streaming."""
+    """LLM providers can raise APIError while consuming a tool stream; we retry non-streaming."""
     req = MagicMock()
 
     class FailingStream:
@@ -152,7 +152,7 @@ def test_first_turn_stream_api_error_falls_back_to_buffered():
 
 
 def test_first_turn_recovers_tool_from_failed_generation():
-    """When Groq's error body contains a failed_generation, we parse the tool call from it."""
+    """When the LLM's error body contains a failed_generation, we parse the tool call from it."""
     req = MagicMock()
     error_body = {
         "error": {
@@ -193,7 +193,7 @@ def test_orchestrate_handles_llm_error():
         user_message="hello",
         history=[],
         db=MagicMock(),
-        groq_client=client,
+        llm_client=client,
         stream_callback=lambda evt, data: events.append((evt, data)),
     )
 
@@ -207,8 +207,8 @@ def test_orchestrate_all_tools_fail_fallback():
 
     # First call triggers a tool, fallback call returns direct content
     client.chat.completions.create.side_effect = [
-        _mock_groq_stream_tool_call("search_books", '{"query": "harry potter"}'),
-        _mock_groq_stream_direct("The Harry Potter series has 7 books."),
+        _mock_llm_stream_tool_call("search_books", '{"query": "harry potter"}'),
+        _mock_llm_stream_direct("The Harry Potter series has 7 books."),
     ]
 
     empty_result = {
@@ -226,7 +226,7 @@ def test_orchestrate_all_tools_fail_fallback():
             user_message="How many Harry Potter books are there?",
             history=[],
             db=MagicMock(),
-            groq_client=client,
+            llm_client=client,
             stream_callback=lambda evt, data: events.append((evt, data)),
         )
 
@@ -249,7 +249,7 @@ def test_degenerate_detection():
 def test_degenerate_history_filtered():
     """Degenerate assistant messages are stripped from history before sending to LLM."""
     client = MagicMock()
-    client.chat.completions.create.return_value = _mock_groq_stream_direct("Seven books total.")
+    client.chat.completions.create.return_value = _mock_llm_stream_direct("Seven books total.")
 
     garbage_history = [
         {"role": "user", "content": "How many HP books?"},
@@ -260,7 +260,7 @@ def test_degenerate_history_filtered():
         user_message="How many books?",
         history=garbage_history,
         db=MagicMock(),
-        groq_client=client,
+        llm_client=client,
         stream_callback=lambda _e, _d: None,
     )
 
@@ -282,8 +282,8 @@ def test_text_function_call_parsed():
     )
     # First call returns function-as-text, second returns grounded response
     client.chat.completions.create.side_effect = [
-        _mock_groq_stream_direct(text_with_func),
-        _mock_groq_stream_direct("Here are some great sci-fi picks!"),
+        _mock_llm_stream_direct(text_with_func),
+        _mock_llm_stream_direct("Here are some great sci-fi picks!"),
     ]
 
     mock_result = {
@@ -300,7 +300,7 @@ def test_text_function_call_parsed():
             user_message="I like sci-fi books",
             history=[],
             db=MagicMock(),
-            groq_client=client,
+            llm_client=client,
             stream_callback=lambda evt, data: events.append((evt, data)),
         )
 
