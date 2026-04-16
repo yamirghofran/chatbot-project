@@ -89,11 +89,28 @@ func makeAddBookToShell(api *client.APIClient) ToolHandler {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// formatShellBook formats a compact Book for shell listing.
+// formatShellBook formats a compact Book for shell listing, including engagement data when available.
 func formatShellBook(b client.Book) string {
 	text := fmt.Sprintf("**%s** by %s", b.Title, b.Author)
 	if b.ID != "" {
 		text += fmt.Sprintf(" [ID: %s]", b.ID)
 	}
+	if b.RatingCount > 0 {
+		text += fmt.Sprintf("\n  ⭐ %s/5 (%d ratings)", float64ToStr(b.AverageRating), b.RatingCount)
+	}
+	if b.CommentCount > 0 {
+		text += fmt.Sprintf(" | 💬 %d comments", b.CommentCount)
+	}
+	if b.ShellCount > 0 {
+		text += fmt.Sprintf(" | 🐚 %d shells", b.ShellCount)
+	}
 	return text
+}
+
+// float64ToStr formats a *float64 for display.
+func float64ToStr(v *float64) string {
+	if v == nil {
+		return "N/A"
+	}
+	return strconv.FormatFloat(*v, 'f', 1, 64)
 }

@@ -36,12 +36,19 @@ func NewAPIClient(baseURL, apiKey string) *APIClient {
 
 // Book represents a serialised book returned by the API.
 type Book struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Author      string   `json:"author"`
-	CoverURL    *string  `json:"coverUrl"`
-	Description *string  `json:"description"`
-	Tags        []string `json:"tags"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Author          string   `json:"author"`
+	CoverURL        *string  `json:"coverUrl"`
+	Description     *string  `json:"description"`
+	Tags            []string `json:"tags"`
+	PublicationYear *int     `json:"publicationYear"`
+	ISBN13          *string  `json:"isbn13"`
+	// Engagement fields (present when endpoint includes engagement data).
+	AverageRating *float64 `json:"averageRating"`
+	RatingCount   int      `json:"ratingCount"`
+	CommentCount  int      `json:"commentCount"`
+	ShellCount    int      `json:"shellCount"`
 }
 
 // BookStats holds engagement metrics for a book.

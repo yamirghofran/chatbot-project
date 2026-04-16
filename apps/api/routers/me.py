@@ -20,6 +20,7 @@ from bookdb.db.models import (
     User,
 )
 
+from ..core.book_engagement import build_book_engagement_map
 from ..core.deps import get_current_user, get_db
 from ..core.favorites import get_or_create_favorites_list, is_favorites_list
 from ..core.serialize import serialize_book, serialize_list
@@ -57,7 +58,8 @@ def get_shell(
         )
         .order_by(ShellBook.added_at.desc())
     ).all()
-    return [serialize_book(sb.book) for sb in shell_books]
+    engagement_by_id = build_book_engagement_map(db, [sb.book.id for sb in shell_books if sb.book is not None])
+    return [serialize_book(sb.book, engagement=engagement_by_id.get(sb.book.id)) for sb in shell_books if sb.book is not None]
 
 
 @router.post("/shell/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
