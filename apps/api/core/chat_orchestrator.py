@@ -13,11 +13,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from groq import APIError, Groq
+from openai import APIError, OpenAI
 from qdrant_client import QdrantClient
 from sqlalchemy.orm import Session
 
-from bookdb.models.chatbot_llm import DEFAULT_CHATBOT_MODEL, create_groq_client_sync
+from bookdb.models.chatbot_llm import DEFAULT_CHATBOT_MODEL, create_llm_client
 
 from .chat_tools import TOOL_DEFINITIONS, TOOL_FUNCTIONS
 from .config import settings
@@ -180,7 +180,7 @@ def _merge_preferences(
 
 
 def _extract_preferences(
-    client: Groq,
+    client: OpenAI,
     model: str,
     user_message: str,
     assistant_content: str,
@@ -245,7 +245,7 @@ def _is_degenerate(text: str, *, threshold: float = 0.4) -> bool:
 
 
 def _extract_tool_calls_from_stream(stream) -> tuple[str, list[dict[str, Any]]]:
-    """Consume a Groq streaming response, accumulating content and tool calls."""
+    """Consume an LLM streaming response, accumulating content and tool calls."""
     content_parts: list[str] = []
     tool_calls_accum: dict[int, dict[str, Any]] = {}
 
@@ -313,7 +313,7 @@ def _message_to_content_and_tool_calls(
 
 
 def _parse_failed_generation(err: APIError) -> tuple[str, list[dict[str, Any]]]:
-    """Try to salvage a tool call from Groq's failed_generation error body."""
+    """Try to salvage a tool call from the LLM's failed_generation error body."""
     body = getattr(err, "body", None)
     if not body or not isinstance(body, dict):
         return "", []
@@ -348,7 +348,7 @@ _log = logging.getLogger(__name__)
 
 
 def _first_turn_with_tools(
-    client: Groq,
+    client: OpenAI,
     *,
     model: str,
     messages: list[dict[str, Any]],
@@ -356,7 +356,7 @@ def _first_turn_with_tools(
     max_tokens: int,
     freq_penalty: float,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """First model turn with tools: prefer streaming, fall back on Groq tool errors.
+    """First model turn with tools: prefer streaming, fall back on tool errors.
 
     Fallback order:
     1. Streaming + tools
@@ -380,13 +380,13 @@ def _first_turn_with_tools(
         try:
             return _extract_tool_calls_from_stream(stream)
         except APIError as e:
-            _log.warning("Groq stream tool error: %s — trying to recover", e)
+            _log.warning("LLM stream tool error: %s — trying to recover", e)
             content, tool_calls = _parse_failed_generation(e)
             if tool_calls:
                 _log.info("Recovered tool call from failed_generation")
                 return content, tool_calls
     except APIError as e:
-        _log.warning("Groq stream create error: %s — falling back to non-streaming", e)
+        _log.warning("LLM stream create error: %s — falling back to non-streaming", e)
         content, tool_calls = _parse_failed_generation(e)
         if tool_calls:
             return content, tool_calls
@@ -398,7 +398,7 @@ def _first_turn_with_tools(
         msg = completion.choices[0].message if completion.choices else None
         return _message_to_content_and_tool_calls(msg)
     except APIError as e:
-        _log.warning("Groq non-streaming tool error: %s — dropping tools", e)
+        _log.warning("LLM non-streaming tool error: %s — dropping tools", e)
         content, tool_calls = _parse_failed_generation(e)
         if tool_calls:
             return content, tool_calls
@@ -487,7 +487,7 @@ def _execute_tool(
     *,
     db: Session,
     qdrant: QdrantClient | None,
-    groq_client: Groq,
+    llm_client: OpenAI,
     mcp_adapter: MCPAdapter | None,
     request_app_state: Any | None,
     user_id: int | None,
@@ -512,7 +512,7 @@ def _execute_tool(
             query,
             db=db,
             qdrant=qdrant,
-            groq_client=groq_client,
+            llm_client=llm_client,
             preferences=preferences,
             sentiments_df=sentiments_df,
         )
@@ -538,7 +538,7 @@ def _execute_tool(
             book_ids=tool_args.get("book_ids"),
             titles=tool_args.get("titles"),
             db=db,
-            groq_client=groq_client,
+            llm_client=llm_client,
         )
     elif tool_name == "recommend_via_mcp":
         return func(
@@ -590,7 +590,7 @@ def orchestrate(
     db: Session,
     qdrant_client: QdrantClient | None = None,
     mcp_adapter: MCPAdapter | None = None,
-    groq_client: Groq | None = None,
+    llm_client: OpenAI | None = None,
     request_app_state: Any | None = None,
     user_id: int | None = None,
     stream_callback: StreamCallback | None = None,
@@ -604,7 +604,7 @@ def orchestrate(
         db: SQLAlchemy session.
         qdrant_client: Qdrant client (optional).
         mcp_adapter: MCP adapter (optional).
-        groq_client: Groq client (created if not provided).
+        llm_client: OpenAI-compatible client (created if not provided).
         request_app_state: FastAPI app.state for accessing BPR/metrics paths.
         user_id: Authenticated user ID (optional).
         stream_callback: ``(event_type, data_dict)`` called for each SSE event.
@@ -614,7 +614,7 @@ def orchestrate(
     """
 
     model = DEFAULT_ORCHESTRATOR_MODEL or DEFAULT_CHATBOT_MODEL
-    client = groq_client or create_groq_client_sync()
+    client = llm_client or create_llm_client()
     cb = stream_callback or (lambda _evt, _data: None)
 
     system_msg = _build_system_message(preferences)
@@ -635,7 +635,7 @@ def orchestrate(
     freq_penalty = float(os.environ.get("CHATBOT_FREQUENCY_PENALTY", "0.3"))
 
     # First LLM call — may produce a tool call or a direct response.
-    # Groq sometimes raises APIError mid-stream ("Failed to call a function");
+    # LLM providers sometimes raise APIError mid-stream ("Failed to call a function");
     # _first_turn_with_tools retries buffered then tool-less completion.
     try:
         content, tool_calls = _first_turn_with_tools(
@@ -687,7 +687,7 @@ def orchestrate(
             tool_args,
             db=db,
             qdrant=qdrant_client,
-            groq_client=client,
+            llm_client=client,
             mcp_adapter=mcp_adapter,
             request_app_state=request_app_state,
             user_id=user_id,

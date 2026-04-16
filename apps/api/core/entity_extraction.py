@@ -1,6 +1,6 @@
 """Entity extraction for book titles and author names from user queries.
 
-This module uses Groq LLM to extract book titles and author names from natural language,
+This module uses an LLM to extract book titles and author names from natural language,
 then performs fuzzy matching against the database to find corresponding books/authors.
 """
 
@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Any, Optional
 
 from cachetools import TTLCache
-from groq import Groq
+from openai import OpenAI
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from bookdb.models.chatbot_llm import (
     _create_structured_completion_with_retries_sync,
     _json_schema_with_strict_mode,
     _parse_structured_content,
-    create_groq_client_sync,
+    create_llm_client,
 )
 
 # ============================================================================
@@ -79,12 +79,12 @@ _ENTITY_SCHEMA = {
 }
 
 
-def extract_book_entities(query: str, client: Optional[Groq] = None) -> dict[str, Any]:
+def extract_book_entities(query: str, client: Optional[OpenAI] = None) -> dict[str, Any]:
     """Extract book titles and author names from user query using LLM.
 
     Args:
         query: User's search query
-        client: Optional Groq client (will create one if not provided)
+        client: Optional OpenAI-compatible client (will create one if not provided)
 
     Returns:
         Dictionary with keys:
@@ -100,7 +100,7 @@ def extract_book_entities(query: str, client: Optional[Groq] = None) -> dict[str
         return {"book_titles": [], "author_names": [], "confidence": 0.0}
 
     if client is None:
-        client = create_groq_client_sync()
+        client = create_llm_client()
 
     response_format = _json_schema_with_strict_mode(
         name="book_entities",

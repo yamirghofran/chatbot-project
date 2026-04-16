@@ -20,7 +20,7 @@ Built on the [Goodreads dataset](https://mengtingwan.github.io/data/goodreads.ht
 | **`bookdb/` library** | Shared Python library — data processing, EDA utilities, models, vector DB, validation |
 | **FastAPI backend** (`apps/api/`) | REST + SSE API for books, recommendations, reviews, auth, and chat |
 | **React frontend** (`apps/web/`) | Web UI for search, recommendations, and the AI chat interface |
-| **AI chatbot** | LLM-powered chat with tool-routing (search, recommend, review RAG) via Groq |
+| **AI chatbot** | LLM-powered chat with tool-routing (search, recommend, review RAG) via OpenAI-compatible API |
 | **MCP server** (`mcp/`) | Go-based Model Context Protocol server — exposes tools to Claude Desktop, Cursor, etc. |
 
 ## Project structure
@@ -84,7 +84,8 @@ Edit `.env` and fill in:
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string, e.g. `postgresql+psycopg://user:pw@localhost:1234/bookdb` |
 | `QDRANT_URL` | Qdrant URL, e.g. `http://localhost:6333` |
-| `GROQ_API_KEY` | Groq API key for the LLM chatbot |
+| `OPENAI_API_KEY` | OpenAI API key for the LLM chatbot |
+| `OPENAI_BASE_URL` | Base URL for the LLM provider (e.g., `https://api.groq.com` for Groq, `https://api.together.xyz` for Together) |
 | `EMBEDDING_SERVICE_URL` | URL of the sentence-transformer embedding service |
 | `HF_TOKEN` | HuggingFace token (for model downloads) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3 credentials (for DVC remote data) |

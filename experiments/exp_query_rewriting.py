@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_project_root / ".env")
 
-from bookdb.models.chatbot_llm import create_groq_client_sync, rewrite_query_sync
+from bookdb.models.chatbot_llm import create_llm_client, rewrite_query_sync
 from bookdb.vector_db import BookVectorCRUD
 from experiments.utils.metrics import (
     QueryResult,
@@ -127,7 +127,7 @@ def evaluate_condition(
     queries: list[dict[str, Any]],
     condition: str,
     *,
-    groq_client=None,
+    llm_client=None,
     taste_pool: list[str] | None = None,
     rng_seed: int = 42,
 ) -> list[QueryResult]:
@@ -159,19 +159,19 @@ def evaluate_condition(
 
             elif condition == "rewritten":
                 # LLM rewrites the vague query into a richer description
-                assert groq_client is not None, "groq_client required for rewriting"
+                assert llm_client is not None, "llm_client required for rewriting"
                 vague = _make_vague_query(full_query_text)
-                desc, _ = rewrite_query_sync(groq_client, vague)
+                desc, _ = rewrite_query_sync(llm_client, vague)
                 search_text = desc or vague
                 rewritten_text = desc
 
             elif condition == "personalized":
                 # LLM rewrites with a randomly sampled user taste profile injected
-                assert groq_client is not None, "groq_client required for rewriting"
+                assert llm_client is not None, "llm_client required for rewriting"
                 pool = taste_pool or []
                 taste = rng.choice(pool) if pool else None
                 vague = _make_vague_query(full_query_text)
-                desc, _ = rewrite_query_sync(groq_client, vague, taste_profile=taste)
+                desc, _ = rewrite_query_sync(llm_client, vague, taste_profile=taste)
                 search_text = desc or vague
                 rewritten_text = desc
 
@@ -224,11 +224,11 @@ def run_experiment(
 
     # Condition 2: LLM-rewritten query (generic)
     rewritten_results: list[QueryResult] = []
-    groq_client = None
+    llm_client = None
     if run_rewriting:
-        groq_client = create_groq_client_sync()
+        llm_client = create_llm_client()
         print("\nCondition 2/4: rewritten (LLM expands vague query — no user context)")
-        rewritten_results = evaluate_condition(queries, "rewritten", groq_client=groq_client)
+        rewritten_results = evaluate_condition(queries, "rewritten", llm_client=llm_client)
 
     # Condition 3: LLM-rewritten query + user taste profile (personalized)
     personalized_results: list[QueryResult] = []
@@ -239,7 +239,7 @@ def run_experiment(
         if taste_pool:
             personalized_results = evaluate_condition(
                 queries, "personalized",
-                groq_client=groq_client or create_groq_client_sync(),
+                llm_client=llm_client or create_llm_client(),
                 taste_pool=taste_pool,
             )
         else:

@@ -104,23 +104,23 @@ def test_string_similarity_special_characters():
 
 
 # ============================================================================
-# LLM Integration Tests (Only run if GROQ_API_KEY is set)
+# LLM Integration Tests (Only run if OPENAI_API_KEY is set)
 # ============================================================================
 
 
 @pytest.mark.skipif(
-    "GROQ_API_KEY" not in os.environ,
-    reason="LLM tests require GROQ_API_KEY environment variable",
+    "OPENAI_API_KEY" not in os.environ,
+    reason="LLM tests require OPENAI_API_KEY environment variable",
 )
 def test_extract_book_entities_basic():
-    """Test basic entity extraction (requires GROQ_API_KEY)."""
+    """Test basic entity extraction (requires OPENAI_API_KEY)."""
     from apps.api.core.entity_extraction import extract_book_entities
-    from bookdb.models.chatbot_llm import create_groq_client_sync
+    from bookdb.models.chatbot_llm import create_llm_client
 
-    if "GROQ_API_KEY" not in os.environ:
-        pytest.skip("GROQ_API_KEY not set")
+    if "OPENAI_API_KEY" not in os.environ:
+        pytest.skip("OPENAI_API_KEY not set")
 
-    client = create_groq_client_sync()
+    client = create_llm_client()
     result = extract_book_entities("I love Harry Potter", client=client)
 
     assert "book_titles" in result
@@ -129,18 +129,18 @@ def test_extract_book_entities_basic():
 
 
 @pytest.mark.skipif(
-    "GROQ_API_KEY" not in os.environ,
-    reason="LLM tests require GROQ_API_KEY environment variable",
+    "OPENAI_API_KEY" not in os.environ,
+    reason="LLM tests require OPENAI_API_KEY environment variable",
 )
 def test_extract_book_entities_empty_query():
-    """Handle empty queries (requires GROQ_API_KEY)."""
+    """Handle empty queries (requires OPENAI_API_KEY)."""
     from apps.api.core.entity_extraction import extract_book_entities
-    from bookdb.models.chatbot_llm import create_groq_client_sync
+    from bookdb.models.chatbot_llm import create_llm_client
 
-    if "GROQ_API_KEY" not in os.environ:
-        pytest.skip("GROQ_API_KEY not set")
+    if "OPENAI_API_KEY" not in os.environ:
+        pytest.skip("OPENAI_API_KEY not set")
 
-    client = create_groq_client_sync()
+    client = create_llm_client()
     result = extract_book_entities("", client=client)
 
     assert result.get("book_titles", []) == []

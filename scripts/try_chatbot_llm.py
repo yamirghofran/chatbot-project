@@ -1,6 +1,6 @@
 import asyncio
 from dotenv import load_dotenv
-from bookdb.models.chatbot_llm import create_groq_client, rewrite_query, generate_response
+from bookdb.models.chatbot_llm import create_async_llm_client, rewrite_query, generate_response
 
 load_dotenv()
 
@@ -46,7 +46,7 @@ REVIEWS = [
 
 
 async def main():
-    client = create_groq_client()
+    client = create_async_llm_client()
 
     description, review = await rewrite_query(client, QUERY)
     print("REWRITTEN DESCRIPTION:\n", description)
