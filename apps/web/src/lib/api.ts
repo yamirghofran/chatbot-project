@@ -243,6 +243,13 @@ export async function getUserLists(id: string | number): Promise<List[]> {
   return apiFetch<List[]>(`/user/${id}/lists`);
 }
 
+export async function getUserShell(
+  id: string | number,
+  limit = 20,
+): Promise<Book[]> {
+  return apiFetch<Book[]>(`/user/${id}/shell?limit=${limit}`);
+}
+
 export async function getUserFavorites(
   id: string | number,
   limit = 3,

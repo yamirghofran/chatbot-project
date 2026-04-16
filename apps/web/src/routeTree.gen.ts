@@ -15,6 +15,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUsernameRouteImport } from './routes/user/$username'
 import { Route as ListsListIdRouteImport } from './routes/lists/$listId'
 import { Route as BooksBookIdRouteImport } from './routes/books/$bookId'
+import { Route as UserUsernameIndexRouteImport } from './routes/user/$username/index'
+import { Route as UserUsernameShellRouteImport } from './routes/user/$username/shell'
 
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
@@ -46,6 +48,16 @@ const BooksBookIdRoute = BooksBookIdRouteImport.update({
   path: '/books/$bookId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UserUsernameIndexRoute = UserUsernameIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => UserUsernameRoute,
+} as any)
+const UserUsernameShellRoute = UserUsernameShellRouteImport.update({
+  id: '/shell',
+  path: '/shell',
+  getParentRoute: () => UserUsernameRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,7 +65,9 @@ export interface FileRoutesByFullPath {
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/user/$username': typeof UserUsernameRoute
+  '/user/$username': typeof UserUsernameRouteWithChildren
+  '/user/$username/': typeof UserUsernameIndexRoute
+  '/user/$username/shell': typeof UserUsernameShellRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -61,7 +75,8 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/user/$username': typeof UserUsernameRoute
+  '/user/$username': typeof UserUsernameIndexRoute
+  '/user/$username/shell': typeof UserUsernameShellRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -70,7 +85,9 @@ export interface FileRoutesById {
   '/search': typeof SearchRoute
   '/books/$bookId': typeof BooksBookIdRoute
   '/lists/$listId': typeof ListsListIdRoute
-  '/user/$username': typeof UserUsernameRoute
+  '/user/$username': typeof UserUsernameRouteWithChildren
+  '/user/$username/': typeof UserUsernameIndexRoute
+  '/user/$username/shell': typeof UserUsernameShellRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +98,8 @@ export interface FileRouteTypes {
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
+    | '/user/$username/'
+    | '/user/$username/shell'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +108,7 @@ export interface FileRouteTypes {
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
+    | '/user/$username/shell'
   id:
     | '__root__'
     | '/'
@@ -97,15 +117,30 @@ export interface FileRouteTypes {
     | '/books/$bookId'
     | '/lists/$listId'
     | '/user/$username'
+    | '/user/$username/'
+    | '/user/$username/shell'
   fileRoutesById: FileRoutesById
 }
+
+export interface UserUsernameRouteChildren {
+  UserUsernameIndexRoute: typeof UserUsernameIndexRoute
+  UserUsernameShellRoute: typeof UserUsernameShellRoute
+}
+
+const UserUsernameRouteChildren: UserUsernameRouteChildren = {
+  UserUsernameIndexRoute: UserUsernameIndexRoute,
+  UserUsernameShellRoute: UserUsernameShellRoute,
+}
+
+const UserUsernameRouteWithChildren = UserUsernameRoute._addFileChildren(UserUsernameRouteChildren)
+
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
   SearchRoute: typeof SearchRoute
   BooksBookIdRoute: typeof BooksBookIdRoute
   ListsListIdRoute: typeof ListsListIdRoute
-  UserUsernameRoute: typeof UserUsernameRoute
+  UserUsernameRoute: typeof UserUsernameRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -138,6 +173,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserUsernameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/user/$username/': {
+      id: '/user/$username/'
+      path: '/'
+      fullPath: '/user/$username/'
+      preLoaderRoute: typeof UserUsernameIndexRouteImport
+      parentRoute: typeof UserUsernameRouteImport
+    }
+    '/user/$username/shell': {
+      id: '/user/$username/shell'
+      path: '/shell'
+      fullPath: '/user/$username/shell'
+      preLoaderRoute: typeof UserUsernameShellRouteImport
+      parentRoute: typeof UserUsernameRouteImport
+    }
     '/lists/$listId': {
       id: '/lists/$listId'
       path: '/lists/$listId'
@@ -161,7 +210,7 @@ const rootRouteChildren: RootRouteChildren = {
   SearchRoute: SearchRoute,
   BooksBookIdRoute: BooksBookIdRoute,
   ListsListIdRoute: ListsListIdRoute,
-  UserUsernameRoute: UserUsernameRoute,
+  UserUsernameRoute: UserUsernameRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
