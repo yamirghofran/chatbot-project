@@ -14,6 +14,7 @@ const meta = {
   args: {
     user: mockUser,
     favorites: mockFavorites,
+
     ratedBooks: mockRatedBooks,
     activity: mockUserActivity,
     lists: mockLists,
@@ -39,6 +40,7 @@ export const OwnProfile: Story = {
 export const EmptyProfile: Story = {
   args: {
     favorites: [],
+
     ratedBooks: [],
     activity: [],
     lists: [],
@@ -57,6 +59,7 @@ export const NewUser: Story = {
     },
     isOwnProfile: true,
     favorites: [],
+
     ratedBooks: [],
     activity: [],
     lists: [],

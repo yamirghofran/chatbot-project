@@ -126,6 +126,34 @@ def get_user_favorites(
     return [serialize_book(row.book) for row in rows if row.book is not None]
 
 
+@router.get("/{username}/shell")
+def get_user_shell(
+    username: str,
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    user = _get_user_or_404(db, username)
+    shell = db.scalar(select(Shell).where(Shell.user_id == user.id))
+    if shell is None:
+        return []
+    rows = db.scalars(
+        select(ShellBook)
+        .where(ShellBook.shell_id == shell.id)
+        .options(
+            selectinload(ShellBook.book)
+            .selectinload(Book.authors)
+            .selectinload(BookAuthor.author),
+            selectinload(ShellBook.book)
+            .selectinload(Book.tags)
+            .selectinload(BookTag.tag),
+        )
+        .order_by(ShellBook.added_at.desc())
+        .limit(limit)
+    ).all()
+    engagement_by_id = build_book_engagement_map(db, [sb.book.id for sb in rows if sb.book is not None])
+    return [serialize_book(sb.book, engagement=engagement_by_id.get(sb.book.id)) for sb in rows if sb.book is not None]
+
+
 @router.get("/{username}/activity")
 def get_user_activity(
     username: str,
