@@ -6,10 +6,9 @@ BookDB is a full-stack book discovery platform that combines the best of collabo
 
 Built on 229 million Goodreads interactions and a catalogue of 2.3 million books, the system runs different recommendation strategies like BPR, and vector similarity, fusing their outputs with weighted scoring and RRF reranking so you always get the most relevant result. The AI chatbot understands natural language queries, rewrites them for better retrieval, and can explain _why_ it's recommending a book by pulling from real user reviews.
 
-![![BookDB Demo]([https://github.com/user-attachments/assets/d2a8d58f-9988-451c-a46a-37d1a538392f](https://github.com/user-attachments/assets/9ba822b3-6495-4e13-9831-6da30ed7666b))]([https://assets.amirghofran.com/amirghofran-com-astro-public/bookdb-vid1.mp4](https://pub-cb8b3df74f8941b7a14e2ba6346106cb.r2.dev/BF8C61A0-CleanShot%202026-04-21%20at%2012.48.09.mp4))
+[![BookDB Demo](https://github.com/user-attachments/assets/9ba822b3-6495-4e13-9831-6da30ed7666b)](https://pub-cb8b3df74f8941b7a14e2ba6346106cb.r2.dev/BF8C61A0-CleanShot%202026-04-21%20at%2012.48.09.mp4)
 
-
-Built on the [Goodreads dataset](https://mengtingwan.github.io/data/goodreads.html).
+Built with the [Goodreads dataset](https://mengtingwan.github.io/data/goodreads.html).
 
 ## What's in this repo
 
