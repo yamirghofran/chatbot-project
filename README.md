@@ -4,24 +4,23 @@
 
 BookDB is a full-stack book discovery platform that combines the best of collaborative filtering, semantic search, and conversational AI. Tell the chatbot what you're in the mood for, get personalised recommendations ranked by multiple ML models, and dive into community reviews... all in one place! Unlike generic recommendation engines that recycle the same bestsellers, BookDB learns from your reading history and taste profile to surface books you'll actually want to read, whether that's an obscure 1970s sci-fi novel or the latest literary fiction.
 
-Built on 229 million Goodreads interactions and a catalogue of 2.3 million books, the system runs different recommendation strategies like BPR, and vector similarity, fusing their outputs with weighted scoring and RRF reranking so you always get the most relevant result. The AI chatbot understands natural language queries, rewrites them for better retrieval, and can explain *why* it's recommending a book by pulling from real user reviews.
+Built on 229 million Goodreads interactions and a catalogue of 2.3 million books, the system runs different recommendation strategies like BPR, and vector similarity, fusing their outputs with weighted scoring and RRF reranking so you always get the most relevant result. The AI chatbot understands natural language queries, rewrites them for better retrieval, and can explain _why_ it's recommending a book by pulling from real user reviews.
 
-[ADD VIDEO HERE]
+![BookDB Demo Video](https://pub-cb8b3df74f8941b7a14e2ba6346106cb.r2.dev/BF8C61A0-CleanShot%202026-04-21%20at%2012.48.09.mp4)
 
 Built on the [Goodreads dataset](https://mengtingwan.github.io/data/goodreads.html).
 
-
 ## What's in this repo
 
-| Layer | What it does |
-|---|---|
-| **Data pipeline** | Marimo notebooks that clean, standardise, and aggregate raw Goodreads data |
-| **ML models** | BPR, SAR, NCF training + tuning notebooks, exported to Parquet/MLflow |
-| **`bookdb/` library** | Shared Python library — data processing, EDA utilities, models, vector DB, validation |
-| **FastAPI backend** (`apps/api/`) | REST + SSE API for books, recommendations, reviews, auth, and chat |
-| **React frontend** (`apps/web/`) | Web UI for search, recommendations, and the AI chat interface |
-| **AI chatbot** | LLM-powered chat with tool-routing (search, recommend, review RAG) via OpenAI-compatible API |
-| **MCP server** (`mcp/`) | Go-based Model Context Protocol server — exposes tools to Claude Desktop, Cursor, etc. |
+| Layer                             | What it does                                                                                 |
+| --------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Data pipeline**                 | Marimo notebooks that clean, standardise, and aggregate raw Goodreads data                   |
+| **ML models**                     | BPR, SAR, NCF training + tuning notebooks, exported to Parquet/MLflow                        |
+| **`bookdb/` library**             | Shared Python library — data processing, EDA utilities, models, vector DB, validation        |
+| **FastAPI backend** (`apps/api/`) | REST + SSE API for books, recommendations, reviews, auth, and chat                           |
+| **React frontend** (`apps/web/`)  | Web UI for search, recommendations, and the AI chat interface                                |
+| **AI chatbot**                    | LLM-powered chat with tool-routing (search, recommend, review RAG) via OpenAI-compatible API |
+| **MCP server** (`mcp/`)           | Go-based Model Context Protocol server — exposes tools to Claude Desktop, Cursor, etc.       |
 
 ## Project structure
 
@@ -80,15 +79,15 @@ cp .env.example .env
 
 Edit `.env` and fill in:
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string, e.g. `postgresql+psycopg://user:pw@localhost:1234/bookdb` |
-| `QDRANT_URL` | Qdrant URL, e.g. `http://localhost:6333` |
-| `OPENAI_API_KEY` | OpenAI API key for the LLM chatbot |
-| `OPENAI_BASE_URL` | Base URL for the LLM provider (e.g., `https://api.groq.com` for Groq, `https://api.together.xyz` for Together) |
-| `EMBEDDING_SERVICE_URL` | URL of the sentence-transformer embedding service |
-| `HF_TOKEN` | HuggingFace token (for model downloads) |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3 credentials (for DVC remote data) |
+| Variable                                      | Description                                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                | PostgreSQL connection string, e.g. `postgresql+psycopg://user:pw@localhost:1234/bookdb`                        |
+| `QDRANT_URL`                                  | Qdrant URL, e.g. `http://localhost:6333`                                                                       |
+| `OPENAI_API_KEY`                              | OpenAI API key for the LLM chatbot                                                                             |
+| `OPENAI_BASE_URL`                             | Base URL for the LLM provider (e.g., `https://api.groq.com` for Groq, `https://api.together.xyz` for Together) |
+| `EMBEDDING_SERVICE_URL`                       | URL of the sentence-transformer embedding service                                                              |
+| `HF_TOKEN`                                    | HuggingFace token (for model downloads)                                                                        |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3 credentials (for DVC remote data)                                                                           |
 
 ### 3. Start infrastructure services
 
@@ -169,16 +168,16 @@ A Go-based [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) serv
 
 ### Tools
 
-| Tool | Description |
-|---|---|
-| `search_books` | Search books by title, author, or keyword |
-| `get_book` | Get detailed book info and stats |
-| `get_related_books` | Find semantically similar books |
-| `get_book_reviews` | Read reviews for a book |
+| Tool                  | Description                                  |
+| --------------------- | -------------------------------------------- |
+| `search_books`        | Search books by title, author, or keyword    |
+| `get_book`            | Get detailed book info and stats             |
+| `get_related_books`   | Find semantically similar books              |
+| `get_book_reviews`    | Read reviews for a book                      |
 | `get_recommendations` | Personalised recommendations (requires auth) |
-| `get_staff_picks` | Curated well-rated books |
-| `get_user_profile` | Look up a user profile |
-| `get_user_ratings` | View a user's rated books |
+| `get_staff_picks`     | Curated well-rated books                     |
+| `get_user_profile`    | Look up a user profile                       |
+| `get_user_ratings`    | View a user's rated books                    |
 
 ### Claude Desktop config
 
@@ -202,13 +201,11 @@ Get a JWT token:
 ./bookdb-mcp login -email you@example.com
 ```
 
-
-
 ## Dataset citations
 
-Mengting Wan, Julian McAuley, "Item Recommendation on Monotonic Behavior Chains", in *RecSys'18*.
+Mengting Wan, Julian McAuley, "Item Recommendation on Monotonic Behavior Chains", in _RecSys'18_.
 
-Mengting Wan, Rishabh Misra, Ndapa Nakashole, Julian McAuley, "Fine-Grained Spoiler Detection from Large-Scale Review Corpora", in *ACL'19*.
+Mengting Wan, Rishabh Misra, Ndapa Nakashole, Julian McAuley, "Fine-Grained Spoiler Detection from Large-Scale Review Corpora", in _ACL'19_.
 
 ## Development principles
 
